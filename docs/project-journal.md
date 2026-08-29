@@ -588,6 +588,21 @@ The benchmark runner and the full result review are retained in
 `scripts/benchmark_ollama_chess.py` and
 `docs/evaluations/2026-08-29-ollama-chess-models.md`.
 
+### First learner usability finding
+
+The first manual launch exposed an onboarding failure before the learner could
+make a move. Selecting White looked sufficient, but the board remained inactive
+until the separate `Training starten` button below it was pressed. The server
+log confirmed that no session request had been sent; chess move handling itself
+had not failed.
+
+The inactive board now has a prominent overlay stating that training has not
+started, explaining the required action, and offering the start button directly
+on the board. This keeps session creation explicit while removing the ambiguous
+appearance of draggable but inert pieces. The finding is important for the case
+study: the first real user interaction caught a workflow problem that static
+rendering and backend integration tests could not reveal.
+
 ### First-slice verification evidence
 
 At the time of this journal entry:

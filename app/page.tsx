@@ -244,8 +244,8 @@ export default function Home() {
               <p className="evaluation-help">+ bedeutet Vorteil für Weiß · − bedeutet Vorteil für Schwarz</p>
             </div>
 
-            <div className={loading ? "board-frame thinking" : "board-frame"}>
-              <div className="chessboard" aria-label="Interaktives Schachbrett">
+            <div className={`board-frame${loading ? " thinking" : ""}${session ? "" : " inactive"}`}>
+              <div className="chessboard" aria-disabled={!session} aria-label="Interaktives Schachbrett">
                 {orientedSquares.map((square, index) => {
                   const piece = position[square];
                   const file = square[0];
@@ -281,6 +281,13 @@ export default function Home() {
                   );
                 })}
               </div>
+              {!session && !loading && (
+                <div className="board-start-overlay">
+                  <strong>Das Brett ist noch nicht aktiv</strong>
+                  <span>Wähle deine Farbe und starte dann das Training.</span>
+                  <button onClick={() => void startSession()} type="button">Training starten</button>
+                </div>
+              )}
               {loading && <div className="board-loader">Coach denkt nach …</div>}
             </div>
 
@@ -361,4 +368,3 @@ export default function Home() {
     </main>
   );
 }
-

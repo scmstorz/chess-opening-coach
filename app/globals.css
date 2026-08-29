@@ -71,7 +71,13 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .board-frame { background: #384b40; border-radius: 8px; box-shadow: 0 12px 30px rgba(23, 33, 28, 0.2); overflow: hidden; padding: 8px; }
 .board-frame { position: relative; }
 .board-frame.thinking .chessboard { filter: saturate(.72); opacity: .7; }
+.board-frame.inactive .chessboard { filter: saturate(.45); opacity: .62; }
 .board-loader { align-items: center; background: rgba(23, 33, 28, .72); color: #fff; display: flex; font-size: 13px; font-weight: 750; inset: 0; justify-content: center; letter-spacing: .02em; position: absolute; z-index: 6; }
+.board-start-overlay { align-items: center; background: rgba(23, 33, 28, .76); color: #fff; display: flex; flex-direction: column; inset: 8px; justify-content: center; padding: 20px; position: absolute; text-align: center; z-index: 5; }
+.board-start-overlay strong { font-family: Georgia, serif; font-size: clamp(20px, 3vw, 30px); font-weight: 500; }
+.board-start-overlay span { color: rgba(255, 255, 255, .82); font-size: 12px; margin-top: 7px; }
+.board-start-overlay button { background: var(--coral); border: 0; border-radius: 8px; color: #fff; cursor: pointer; font-size: 12px; font-weight: 800; margin-top: 18px; padding: 11px 16px; }
+.board-start-overlay button:hover { background: #d96145; }
 .chessboard { display: grid; grid-template-columns: repeat(8, 1fr); width: 100%; }
 .square { align-items: center; aspect-ratio: 1; border: 0; cursor: default; display: flex; justify-content: center; min-width: 0; padding: 0; position: relative; }
 .square.light { background: var(--light-square); }

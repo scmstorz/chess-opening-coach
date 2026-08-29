@@ -126,4 +126,4 @@ license are retained in `data/openings/`.
 - [Architecture](docs/architecture.md)
 - [Case study outline](docs/case-study-outline.md)
 - [Architecture decisions](docs/decisions/)
-
+- [Local Ollama chess-model comparison](docs/evaluations/2026-08-29-ollama-chess-models.md)

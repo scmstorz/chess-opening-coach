@@ -543,9 +543,17 @@ selection remains configurable through an environment variable.
 ### Hallucination found during live integration
 
 The first successful Ollama-backed end-to-end response exposed a critical
-grounding failure. After `1. e4 g6`, the generated text incorrectly associated
-Black's move with the King's Gambit and added unsupported frequency claims. This
-happened despite a structured facts object and instructions not to invent names.
+grounding failure in `qwen3.8:27b-mlx`. After `1. e4 g6`, the model incorrectly
+associated Black's move with the King's Gambit and added unsupported frequency
+claims. The same response also introduced the Sicilian Defense while explaining
+`1. e4`, although no such classification was present in the supplied facts.
+
+There was also an application-side context bug: while explaining `1...g6`, the
+prompt still contained the broader identity from before Black's move (`King's
+Pawn Game`) rather than the newly reached identity (`Modern Defense`). This
+stale label may have made the task less clear, but the prompt never contained a
+King's Gambit label and therefore did not support the model's concrete claim.
+Both the context ordering and the generated-output boundary were corrected.
 
 The architecture was changed rather than merely tweaking the prompt:
 
@@ -560,6 +568,25 @@ After hardening, a live `1. e4 e6` cycle produced a grounded Ollama explanation
 for the learner move. The coach explanation safely used the deterministic
 fallback when the validator rejected the generated expansion. ADR 0004 records
 the decision and its evidence.
+
+### Glimmer and Ornith comparison
+
+At the learner's suggestion, `muse-glimmer:30b-mlx` and `ornith-1.5:35b` were
+compared with the selected Qwen model using a reproducible local benchmark. Six
+common opening identities, seven objective concept questions, a deliberate
+King's Gambit false premise, and the real grounded tutor adapter were tested.
+
+Glimmer scored 6/6 on identities and 7/7 on the objective choices, making it the
+most promising chess-knowledge candidate in this small test. Qwen scored 6/6
+and 6/7; Ornith scored 5/6 and selected 7/7 choices, but its JSON was malformed
+and its free prose contained several serious factual or linguistic errors.
+Glimmer also produced some imprecise free explanations and did not fit the
+current adapter's small structured-output budget. The default therefore remains
+Qwen pending a larger, repeated benchmark and Glimmer-specific adapter tuning.
+
+The benchmark runner and the full result review are retained in
+`scripts/benchmark_ollama_chess.py` and
+`docs/evaluations/2026-08-29-ollama-chess-models.md`.
 
 ### First-slice verification evidence
 

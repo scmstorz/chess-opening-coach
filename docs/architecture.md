@@ -92,9 +92,12 @@ only that draft. Generated numbers and opening terminology are checked; output
 that appears to add unsupported facts is discarded in favor of the deterministic
 text.
 
-The initial real-world test justified this boundary: a broadly instructed model
-incorrectly called `1...g6` a King's Gambit line. The hardened flow rejected
-subsequent unsupported expansions while retaining useful local explanations.
+The initial real-world test justified this boundary: `qwen3.8:27b-mlx`, running
+through Ollama, incorrectly called `1...g6` a King's Gambit line. An integration
+bug had also supplied the broader pre-move opening identity instead of the newly
+reached identity, but neither context contained the invented King's Gambit
+claim. The ordering bug was fixed, and the hardened flow rejected subsequent
+unsupported expansions while retaining useful local explanations.
 
 ## Persistence
 
@@ -112,4 +115,3 @@ scheduling.
 - No imported PGN analysis
 - No automatic network refresh
 - No resumable interrupted games
-

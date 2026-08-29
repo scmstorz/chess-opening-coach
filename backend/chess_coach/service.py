@@ -117,6 +117,7 @@ class CoachService:
                 recommended_san = session.board.san(recommended)
                 message = self._solution_message(session, san, recommended_san, analysis)
                 session.board.push(recommended)
+                self._attach_transition(message, recommended, session.board)
                 session.move_history.append({"actor": "learner", "san": recommended_san})
                 session.opening = self.openings.identify(session.board, session.opening)
                 self._record(
@@ -149,6 +150,7 @@ class CoachService:
                 next_opening,
             )
             session.board.push(move)
+            self._attach_transition(message, move, session.board)
             session.move_history.append({"actor": "learner", "san": san})
             session.opening = next_opening
             self._record(
@@ -184,6 +186,7 @@ class CoachService:
         next_opening = self.openings.identify(projected, session.opening)
         message = self._coach_message(session, move, san, theory_match, analysis, next_opening)
         board.push(move)
+        self._attach_transition(message, move, board)
         session.move_history.append({"actor": "coach", "san": san})
         session.opening = next_opening
         self._record(
@@ -383,6 +386,13 @@ class CoachService:
                 "llm_model": message.get("model"),
             }
         )
+
+    @staticmethod
+    def _attach_transition(
+        message: dict[str, Any], move: chess.Move, board_after: chess.Board
+    ) -> None:
+        message["move_uci"] = move.uci()
+        message["fen_after"] = board_after.fen()
 
     def _response(
         self,

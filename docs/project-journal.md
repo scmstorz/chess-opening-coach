@@ -603,6 +603,19 @@ appearance of draggable but inert pieces. The finding is important for the case
 study: the first real user interaction caught a workflow problem that static
 rendering and backend integration tests could not reveal.
 
+The next learner feedback concerned board readability and temporal continuity.
+White used the traditional hollow Unicode chess glyphs, which looked visually
+weaker than Black, and the API returned the learner and coach moves together in
+their final position. The board therefore appeared to jump, making the coach's
+reply hard to follow.
+
+Both colors now use filled silhouettes differentiated by their CSS color. Each
+accepted feedback message also carries its verified UCI move and resulting FEN.
+The browser replays these transitions in order, first the learner move and then
+the coach move, while input remains locked. This preserves the backend as owner
+of accepted board state and avoids optimistic animation of a move that the
+three-attempt correction loop might reject.
+
 ### First-slice verification evidence
 
 At the time of this journal entry:

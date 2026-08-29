@@ -79,6 +79,7 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .board-start-overlay button { background: var(--coral); border: 0; border-radius: 8px; color: #fff; cursor: pointer; font-size: 12px; font-weight: 800; margin-top: 18px; padding: 11px 16px; }
 .board-start-overlay button:hover { background: #d96145; }
 .chessboard { display: grid; grid-template-columns: repeat(8, 1fr); width: 100%; }
+.chessboard { position: relative; }
 .square { align-items: center; aspect-ratio: 1; border: 0; cursor: default; display: flex; justify-content: center; min-width: 0; padding: 0; position: relative; }
 .square.light { background: var(--light-square); }
 .square.dark { background: var(--dark-square); }
@@ -86,6 +87,8 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .square.legal-target::before { background: rgba(23, 33, 28, .28); border-radius: 50%; content: ""; height: 22%; position: absolute; width: 22%; z-index: 3; }
 .square.legal-target:has(.piece)::before { background: transparent; border: 5px solid rgba(227, 111, 81, .72); height: 78%; width: 78%; }
 .piece { cursor: grab; filter: drop-shadow(0 3px 1px rgba(0, 0, 0, 0.2)); font-family: "Arial Unicode MS", "Noto Sans Symbols 2", serif; font-size: clamp(35px, 6vw, 69px); line-height: 1; position: relative; transform: translateY(-2%); user-select: none; z-index: 2; }
+.moving-piece { align-items: center; animation: move-piece 520ms cubic-bezier(.22, .78, .28, 1) forwards; display: flex; justify-content: center; pointer-events: none; position: absolute; z-index: 5; }
+.moving-piece .piece { cursor: default; }
 .piece:active { cursor: grabbing; transform: scale(1.06); }
 .piece.white { color: #fffdf7; text-shadow: 0 0 1px #111, 0 1px 2px #17211c; }
 .piece.black { color: #18251e; text-shadow: 0 1px 1px rgba(255,255,255,.18); }
@@ -169,4 +172,9 @@ details p { color: var(--muted); font-family: inherit !important; font-size: 13p
 
 @media (prefers-reduced-motion: no-preference) {
   .primary-action, .piece { transition: transform 160ms ease, background 160ms ease; }
+}
+
+@keyframes move-piece {
+  from { transform: translate(0, 0); }
+  to { transform: translate(var(--move-x), var(--move-y)); }
 }

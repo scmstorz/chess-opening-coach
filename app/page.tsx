@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 
 type Piece = {
   color: "white" | "black";
@@ -26,6 +26,14 @@ type CoachMessage = {
   model: string | null;
   attempt: number | null;
   engine: EngineInfo | null;
+  move_uci?: string;
+  fen_after?: string;
+};
+
+type MoveAnimation = {
+  from: string;
+  to: string;
+  piece: Piece;
 };
 
 type SessionState = {
@@ -55,8 +63,9 @@ type Health = {
 };
 
 const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+const initialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const symbols: Record<Piece["color"], Record<Piece["kind"], string>> = {
-  white: { king: "♔", queen: "♕", rook: "♖", bishop: "♗", knight: "♘", pawn: "♙" },
+  white: { king: "♚", queen: "♛", rook: "♜", bishop: "♝", knight: "♞", pawn: "♟" },
   black: { king: "♚", queen: "♛", rook: "♜", bishop: "♝", knight: "♞", pawn: "♟" },
 };
 const pieceKinds: Record<string, Piece["kind"]> = {
@@ -88,10 +97,6 @@ function parseFen(fen: string): Record<string, Piece> {
   return result;
 }
 
-function startingPosition(): Record<string, Piece> {
-  return parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-}
-
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...options,
@@ -104,6 +109,10 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 export default function Home() {
   const [requestedColor, setRequestedColor] = useState<PlayerColor>("white");
   const [session, setSession] = useState<SessionState | null>(null);
@@ -111,6 +120,9 @@ export default function Home() {
   const [health, setHealth] = useState<Health | null>(null);
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [draggedFrom, setDraggedFrom] = useState<string | null>(null);
+  const [displayFen, setDisplayFen] = useState(initialFen);
+  const [moveAnimation, setMoveAnimation] = useState<MoveAnimation | null>(null);
+  const [animatingSequence, setAnimatingSequence] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -119,12 +131,31 @@ export default function Home() {
   }, []);
 
   const orientation = session?.learner_color ?? (requestedColor === "black" ? "black" : "white");
-  const position = session ? parseFen(session.fen) : startingPosition();
+  const position = parseFen(displayFen);
   const orientedSquares = useMemo(() => {
     const ranks = orientation === "black" ? [1, 2, 3, 4, 5, 6, 7, 8] : [8, 7, 6, 5, 4, 3, 2, 1];
     const orientedFiles = orientation === "black" ? [...files].reverse() : files;
     return ranks.flatMap((rank) => orientedFiles.map((file) => `${file}${rank}`));
   }, [orientation]);
+
+  const moveAnimationStyle = useMemo(() => {
+    if (!moveAnimation) return undefined;
+    const fromIndex = orientedSquares.indexOf(moveAnimation.from);
+    const toIndex = orientedSquares.indexOf(moveAnimation.to);
+    if (fromIndex < 0 || toIndex < 0) return undefined;
+    const fromColumn = fromIndex % 8;
+    const fromRow = Math.floor(fromIndex / 8);
+    const toColumn = toIndex % 8;
+    const toRow = Math.floor(toIndex / 8);
+    return {
+      "--move-x": `${(toColumn - fromColumn) * 100}%`,
+      "--move-y": `${(toRow - fromRow) * 100}%`,
+      height: "12.5%",
+      left: `${fromColumn * 12.5}%`,
+      top: `${fromRow * 12.5}%`,
+      width: "12.5%",
+    } as CSSProperties;
+  }, [moveAnimation, orientedSquares]);
 
   const legalTargets = useMemo(() => {
     if (!selectedSquare || !session) return new Set<string>();
@@ -139,9 +170,45 @@ export default function Home() {
   const evaluation = latestEngine?.evaluation_played ?? 0;
   const evaluationWidth = Math.max(6, Math.min(94, 50 + evaluation * 8));
 
+  async function animateMoves(
+    startFen: string,
+    nextMessages: CoachMessage[],
+    finalFen: string,
+  ) {
+    const transitions = nextMessages.filter(
+      (message): message is CoachMessage & { move_uci: string; fen_after: string } =>
+        Boolean(message.move_uci && message.fen_after),
+    );
+    if (transitions.length === 0) {
+      setDisplayFen(finalFen);
+      return;
+    }
+
+    setAnimatingSequence(true);
+    let currentFen = startFen;
+    setDisplayFen(currentFen);
+    for (const transition of transitions) {
+      const from = transition.move_uci.slice(0, 2);
+      const to = transition.move_uci.slice(2, 4);
+      const piece = parseFen(currentFen)[from];
+      if (piece) {
+        setMoveAnimation({ from, to, piece });
+        await wait(520);
+      }
+      currentFen = transition.fen_after;
+      setDisplayFen(currentFen);
+      setMoveAnimation(null);
+      await wait(120);
+    }
+    setDisplayFen(finalFen);
+    setAnimatingSequence(false);
+  }
+
   async function startSession() {
     setLoading(true);
     setError(null);
+    setDisplayFen(initialFen);
+    setMoveAnimation(null);
     try {
       const next = await api<SessionState>("/api/sessions", {
         method: "POST",
@@ -150,8 +217,10 @@ export default function Home() {
       setSession(next);
       setMessages(next.messages);
       setSelectedSquare(null);
+      await animateMoves(initialFen, next.messages, next.fen);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Der lokale Coach ist nicht erreichbar.");
+      setAnimatingSequence(false);
     } finally {
       setLoading(false);
     }
@@ -159,6 +228,7 @@ export default function Home() {
 
   async function submitMove(from: string, to: string) {
     if (!session || loading || session.turn !== session.learner_color) return;
+    const fenBefore = displayFen;
     const matchingMove = session.legal_moves.find((move) => move.startsWith(`${from}${to}`));
     setLoading(true);
     setError(null);
@@ -173,8 +243,10 @@ export default function Home() {
       });
       setSession(next);
       setMessages((current) => [...current, ...next.messages]);
+      await animateMoves(fenBefore, next.messages, next.fen);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Der Zug konnte nicht geprüft werden.");
+      setAnimatingSequence(false);
     } finally {
       setSelectedSquare(null);
       setDraggedFrom(null);
@@ -244,7 +316,7 @@ export default function Home() {
               <p className="evaluation-help">+ bedeutet Vorteil für Weiß · − bedeutet Vorteil für Schwarz</p>
             </div>
 
-            <div className={`board-frame${loading ? " thinking" : ""}${session ? "" : " inactive"}`}>
+            <div className={`board-frame${loading && !animatingSequence ? " thinking" : ""}${session ? "" : " inactive"}`}>
               <div className="chessboard" aria-disabled={!session} aria-label="Interaktives Schachbrett">
                 {orientedSquares.map((square, index) => {
                   const piece = position[square];
@@ -266,7 +338,7 @@ export default function Home() {
                     >
                       {index % 8 === 0 && <span className="rank-label">{rank}</span>}
                       {index >= 56 && <span className="file-label">{file}</span>}
-                      {piece && (
+                      {piece && moveAnimation?.from !== square && (
                         <span
                           className={`piece ${piece.color}`}
                           draggable={canDrag}
@@ -280,6 +352,13 @@ export default function Home() {
                     </button>
                   );
                 })}
+                {moveAnimation && moveAnimationStyle && (
+                  <span aria-hidden="true" className="moving-piece" style={moveAnimationStyle}>
+                    <span className={`piece ${moveAnimation.piece.color}`}>
+                      {symbols[moveAnimation.piece.color][moveAnimation.piece.kind]}
+                    </span>
+                  </span>
+                )}
               </div>
               {!session && !loading && (
                 <div className="board-start-overlay">
@@ -288,7 +367,7 @@ export default function Home() {
                   <button onClick={() => void startSession()} type="button">Training starten</button>
                 </div>
               )}
-              {loading && <div className="board-loader">Coach denkt nach …</div>}
+              {loading && !animatingSequence && <div className="board-loader">Coach denkt nach …</div>}
             </div>
 
             <div className="board-footer">

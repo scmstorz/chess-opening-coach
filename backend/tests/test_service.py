@@ -54,6 +54,10 @@ def test_complete_white_turn_keeps_truth_layers_separate() -> None:
     assert len(response["move_history"]) == 2
     assert response["messages"][0]["actor"] == "learner"
     assert response["messages"][1]["actor"] == "coach"
+    assert response["messages"][0]["move_uci"] == "e2e4"
+    assert response["messages"][0]["fen_after"].split()[1] == "b"
+    assert response["messages"][1]["move_uci"]
+    assert response["messages"][1]["fen_after"] == response["fen"]
     assert response["correction"] is None
     assert response["opening"] is not None
 

@@ -19,10 +19,11 @@ chess    TSV graph   UCI process    local API
 SQLite learner log and engine cache
 ```
 
-`scripts/start_local.py` asks the operating system for two available loopback
-ports and starts both services. The browser sees one origin; the web development
-server proxies `/api` requests to the Python service. Neither server binds to the
-LAN by default.
+`scripts/start_local.py` uses stable loopback ports (`53687` for the browser and
+`53686` for FastAPI) and checks that they are available before starting. Both
+can be changed explicitly through environment variables. The browser sees one
+origin; the web development server proxies `/api` requests to the Python
+service. Neither server binds to the LAN by default.
 
 ## Three truth layers
 

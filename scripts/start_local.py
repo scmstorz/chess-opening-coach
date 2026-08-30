@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start the local API and browser UI on operating-system-selected free ports."""
+"""Start the local API and browser UI on stable, configurable ports."""
 
 from __future__ import annotations
 
@@ -13,12 +13,30 @@ import urllib.request
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_BACKEND_PORT = 53686
+DEFAULT_FRONTEND_PORT = 53687
 
 
-def free_port() -> int:
+def configured_port(variable: str, default: int) -> int:
+    raw_value = os.environ.get(variable, str(default))
+    try:
+        port = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{variable} muss eine Portnummer sein, nicht {raw_value!r}") from exc
+    if not 1 <= port <= 65535:
+        raise ValueError(f"{variable} muss zwischen 1 und 65535 liegen")
+    return port
+
+
+def ensure_port_available(port: int, label: str, variable: str) -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError as exc:
+            raise RuntimeError(
+                f"{label}-Port {port} ist bereits belegt. "
+                f"Beende den anderen Dienst oder setze {variable} bewusst auf einen anderen Port."
+            ) from exc
 
 
 def wait_for(url: str, timeout: float = 25) -> None:
@@ -38,8 +56,14 @@ def main() -> int:
     if venv_python.exists() and Path(sys.executable).resolve() != venv_python.resolve():
         os.execv(str(venv_python), [str(venv_python), *sys.argv])
 
-    backend_port = free_port()
-    frontend_port = free_port()
+    try:
+        backend_port = configured_port("CHESS_COACH_BACKEND_PORT", DEFAULT_BACKEND_PORT)
+        frontend_port = configured_port("CHESS_COACH_FRONTEND_PORT", DEFAULT_FRONTEND_PORT)
+        ensure_port_available(backend_port, "Backend", "CHESS_COACH_BACKEND_PORT")
+        ensure_port_available(frontend_port, "Browser", "CHESS_COACH_FRONTEND_PORT")
+    except (RuntimeError, ValueError) as exc:
+        print(f"\nChess Opening Coach konnte nicht starten:\n  {exc}\n", file=sys.stderr)
+        return 2
     environment = os.environ.copy()
     environment["CHESS_COACH_BACKEND_URL"] = f"http://127.0.0.1:{backend_port}"
 
@@ -104,4 +128,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

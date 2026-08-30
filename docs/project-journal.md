@@ -159,9 +159,10 @@ The development machine already runs several local browser applications. The
 coach must therefore not assume that a common development port such as 8000 or
 8080 is available.
 
-- Inspect active listeners before local integration work.
-- Select or request an actually free loopback port at startup.
-- Display the exact local URL clearly.
+- Inspect active listeners before reserving stable development ports.
+- Fail clearly if a reserved port is occupied; change it only through explicit
+  configuration.
+- Keep the documented local URL stable across restarts.
 - Bind locally by default rather than exposing the development server on the
   network.
 
@@ -478,10 +479,21 @@ Active local listeners were inspected before choosing development ports. Many
 services were already present, including ports 80, 443, 3306, 5432/5433, 8025,
 8456, 8501/8502, 8787, 9200, 9515, and 11434.
 
-An early preview used free port 4173 and the API used 8765. The finished launcher
-does not hard-code either port: it asks the operating system for two available
-loopback ports and prints the browser URL. A real launcher test selected backend
-port 49625 and frontend port 49626 and reached both successfully.
+An early preview used free port 4173 and the API used 8765. The first finished
+launcher asked the operating system for two available loopback ports and printed
+the resulting browser URL. A real launcher test selected backend port 49625 and
+frontend port 49626 and reached both successfully.
+
+Repeated hands-on sessions revealed the cost of that decision: every backend
+restart invalidated the open browser URL, so normal reload and bookmarking did
+not work. On 2026-08-30 the launcher changed to stable high defaults: backend
+`53686`, browser `53687`. It verifies availability and stops with an actionable
+error on conflict rather than choosing a surprise URL. Both remain deliberately
+overridable through `CHESS_COACH_BACKEND_PORT` and
+`CHESS_COACH_FRONTEND_PORT`. A live restart returned to the same browser URL; a
+second concurrent launch stopped before spawning processes and named the
+occupied backend port plus its override variable. ADR 0001 records the
+amendment.
 
 ### Runtime architecture
 
@@ -629,6 +641,8 @@ A compact SVG chessboard in the existing green and neutral palette was added as
 the browser favicon. SVG was chosen over a generated raster asset because the
 geometric motif stays crisp at small browser-tab sizes and remains easy to
 version and recolor with the interface.
+After browser inspection, its outer background was changed from green to white
+while retaining a green frame around the board for contrast at tab size.
 
 A screenshot from the continuing manual session exposed two more layout issues.
 The thinking overlay obscured too much of the position, and the fixed 470-pixel
@@ -660,7 +674,7 @@ At the time of this journal entry:
 - Web lint: clean.
 - Vinext production build: successful.
 - Initial rendered route: HTTP 200.
-- Dynamic launcher: successful on automatically selected ports.
+- Stable launcher: successful on the documented ports with explicit overrides.
 - Local health: 3,810 opening entries, Stockfish available, Ollama available.
 - Live sound move: accepted, identified, evaluated, explained, followed by a
   verified coach response.

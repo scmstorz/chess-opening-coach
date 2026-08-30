@@ -22,7 +22,7 @@ separate sources of information.
 ## What works now
 
 - Local browser UI with a drag-and-drop and click-to-move chessboard
-- Automatic selection of free frontend and backend ports
+- Stable local URL at `http://localhost:53687/` with explicit port overrides
 - White, Black, and random learner color
 - Progressive opening recognition across 3,810 local Lichess opening entries
 - Theory-aware and Stockfish-checked coach moves
@@ -67,9 +67,9 @@ capability in the UI.
 npm run coach
 ```
 
-The launcher asks the operating system for two free loopback ports, starts the
-local Python API and browser UI, and prints the exact URL. It does not assume
-that ports such as 8000 or 8080 are free.
+The launcher starts the local Python API on port `53686` and the browser UI at
+`http://localhost:53687/`. It checks both ports first and reports a clear error
+instead of silently changing the browser URL when either is occupied.
 
 Stop both processes with `Ctrl+C`.
 
@@ -80,6 +80,8 @@ All settings are optional environment variables:
 ```bash
 CHESS_COACH_OLLAMA_MODEL=qwen3.8:27b-mlx
 CHESS_COACH_OLLAMA_URL=http://127.0.0.1:11434
+CHESS_COACH_BACKEND_PORT=53686
+CHESS_COACH_FRONTEND_PORT=53687
 STOCKFISH_PATH=/absolute/path/to/stockfish
 STOCKFISH_TIME=0.12
 STOCKFISH_MULTIPV=3
@@ -105,7 +107,7 @@ backend/chess_coach/         verified chess and tutor services
 backend/tests/               backend unit and API tests
 data/openings/               local CC0 opening source data
 docs/                        journal, architecture, ADRs, case-study material
-scripts/start_local.py       free-port local launcher
+scripts/start_local.py       stable-port local launcher
 tests/                       rendered web-shell test
 ```
 

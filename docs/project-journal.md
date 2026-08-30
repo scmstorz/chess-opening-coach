@@ -630,6 +630,15 @@ the browser favicon. SVG was chosen over a generated raster asset because the
 geometric motif stays crisp at small browser-tab sizes and remains easy to
 version and recolor with the interface.
 
+A screenshot from the continuing manual session exposed two more layout issues.
+The thinking overlay obscured too much of the position, and the fixed 470-pixel
+message-feed limit left a large unused vertical region in the otherwise tall
+coach panel. The board now retains 90% opacity with only a light translucent
+input-blocking overlay. The feed is a flexible child that consumes the available
+panel height down to the truth and question controls. It also scrolls smoothly
+to its bottom whenever new feedback arrives, matching the turn-by-turn nature
+of the session and removing repetitive manual scrolling.
+
 ### First-slice verification evidence
 
 At the time of this journal entry:

@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 
 type Piece = {
   color: "white" | "black";
@@ -183,10 +183,19 @@ export default function Home() {
   const [animatingSequence, setAnimatingSequence] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const coachFeedRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     api<Health>("/api/health").then(setHealth).catch(() => setHealth(null));
   }, []);
+
+  useEffect(() => {
+    const feed = coachFeedRef.current;
+    if (!feed || messages.length === 0) return;
+    window.requestAnimationFrame(() => {
+      feed.scrollTo({ top: feed.scrollHeight, behavior: "smooth" });
+    });
+  }, [messages.length]);
 
   const orientation = session?.learner_color ?? (requestedColor === "black" ? "black" : "white");
   const position = parseFen(displayFen);
@@ -482,7 +491,7 @@ export default function Home() {
             <div><p className="eyebrow">Dein Coach</p><h2>{session ? "Wir sind in der Partie" : "Bereit für den ersten Zug"}</h2></div>
           </div>
 
-          <div className="coach-feed" aria-live="polite">
+          <div className="coach-feed" aria-live="polite" ref={coachFeedRef}>
             {messages.length === 0 ? (
               <article className="coach-message">
                 <span className="message-index">01</span>

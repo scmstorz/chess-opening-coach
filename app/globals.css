@@ -70,9 +70,9 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 
 .board-frame { background: #384b40; border-radius: 8px; box-shadow: 0 12px 30px rgba(23, 33, 28, 0.2); overflow: hidden; padding: 8px; }
 .board-frame { position: relative; }
-.board-frame.thinking .chessboard { filter: saturate(.72); opacity: .7; }
+.board-frame.thinking .chessboard { filter: saturate(.9); opacity: .9; }
 .board-frame.inactive .chessboard { filter: saturate(.45); opacity: .62; }
-.board-loader { align-items: center; background: rgba(23, 33, 28, .72); color: #fff; display: flex; font-size: 13px; font-weight: 750; inset: 0; justify-content: center; letter-spacing: .02em; position: absolute; z-index: 6; }
+.board-loader { align-items: center; background: rgba(23, 33, 28, .24); color: #fff; display: flex; font-size: 13px; font-weight: 750; inset: 0; justify-content: center; letter-spacing: .02em; position: absolute; text-shadow: 0 1px 5px rgba(23, 33, 28, .95); z-index: 6; }
 .board-start-overlay { align-items: center; background: rgba(23, 33, 28, .76); color: #fff; display: flex; flex-direction: column; inset: 8px; justify-content: center; padding: 20px; position: absolute; text-align: center; z-index: 5; }
 .board-start-overlay strong { font-family: Georgia, serif; font-size: clamp(20px, 3vw, 30px); font-weight: 500; }
 .board-start-overlay span { color: rgba(255, 255, 255, .82); font-size: 12px; margin-top: 7px; }
@@ -119,7 +119,7 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .coach-heading { align-items: center; display: flex; gap: 14px; }
 .coach-avatar { align-items: center; background: var(--green); border: 5px solid var(--green-soft); border-radius: 50%; color: #fff; display: flex; font-size: 26px; height: 58px; justify-content: center; width: 58px; }
 .coach-heading .eyebrow { margin-bottom: 4px; }
-.coach-feed { margin-top: 22px; max-height: 470px; overflow: auto; padding-right: 8px; }
+.coach-feed { flex: 1 1 auto; margin-top: 22px; min-height: 0; overflow: auto; padding-right: 8px; scroll-behavior: smooth; }
 .coach-message { display: grid; gap: 18px; grid-template-columns: 28px 1fr; padding: 20px 0; }
 .coach-message + .coach-message { border-top: 1px solid var(--line); }
 .coach-message.coach .message-index { border-color: var(--green); color: var(--green); }
@@ -142,7 +142,7 @@ details p { color: var(--muted); font-family: inherit !important; font-size: 13p
 .truth-grid small { color: var(--muted); font-size: 9px; margin-bottom: 3px; text-transform: uppercase; }
 .truth-grid strong { font-size: 10px; }
 
-.question-box { margin-top: auto; padding-top: 34px; }
+.question-box { flex: 0 0 auto; padding-top: 34px; }
 .question-box label { display: block; font-size: 11px; font-weight: 800; margin-bottom: 9px; text-transform: uppercase; }
 .question-box > div { display: flex; }
 .question-box input { background: rgba(255,255,255,.48); border: 1px solid var(--line); border-radius: 8px 0 0 8px; color: var(--muted); min-width: 0; padding: 12px 13px; width: 100%; }

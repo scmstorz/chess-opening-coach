@@ -653,6 +653,13 @@ panel height down to the truth and question controls. It also scrolls smoothly
 to its bottom whenever new feedback arrives, matching the turn-by-turn nature
 of the session and removing repetitive manual scrolling.
 
+That first flexbox adjustment was insufficient because the grid row could still
+grow with the feed's content; `overflow-y: auto` has no effect without a bounded
+height. The coach panel is now a sticky, viewport-bounded flex container on
+desktop. Its feed uses the remaining height with `min-height: 0` and internal
+vertical scrolling, while the heading, truth sources, and question control stay
+fixed. The stacked layout uses a bounded feed region rather than a sticky panel.
+
 The learner then requested a turn-back control with an important semantic
 constraint: undoing their move must also remove the coach's reply. Undo is
 therefore modeled as a verified learner-turn transaction rather than a raw

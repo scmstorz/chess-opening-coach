@@ -239,9 +239,13 @@ class CoachService:
                 "opening": asdict(opening) if opening else None,
                 "summary": summary,
                 "details": (
-                    f"{_move_concept(session.board, move)} {source_detail} "
+                    f"{_move_concept(session.board, move)} "
+                    f"{_move_response_context(session.board, move)} "
+                    f"{_heuristic_context(session.board, move)} "
+                    f"{_continuation_context(session.board, move, analysis)} "
+                    f"{source_detail} "
                     "Der Zug wird nur auf dem Brett markiert; du spielst ihn selbst."
-                ),
+                ).replace("  ", " "),
                 "engine": asdict(analysis),
             }
 
@@ -391,7 +395,7 @@ class CoachService:
         theory_match: bool,
         analysis: MoveAnalysis,
         opening: OpeningIdentity | None,
-    ) -> tuple[TutorText, list[dict[str, str]]]:
+    ) -> tuple[TutorText, list[dict[str, Any]]]:
         if theory_match:
             theory_text = "Der Zug ist in den lokalen Eröffnungslinien enthalten."
         else:
@@ -414,6 +418,9 @@ class CoachService:
             f"Nach dem Zug ist die Stellung als {opening.name} eingeordnet. " if opening else ""
         )
         concept_text = _move_concept(board, move)
+        response_text = _move_response_context(board, move)
+        heuristic_text = _heuristic_context(board, move)
+        continuation_text = _continuation_context(board, move, analysis)
         contrast_text = _tactical_contrast(board, move, analysis)
         pv_moves = " ".join(analysis.played_pv_san[:4])
         pv_text = f"Eine kurze Stockfish-Prüfvariante beginnt mit: {pv_moves}." if pv_moves else ""
@@ -432,21 +439,37 @@ class CoachService:
             verdict_text = f"{san} ist hier eine legale Alternative."
 
         fact_values = (
-            ("focus", f"Ich beziehe deine Frage auf {san}."),
-            ("verdict", verdict_text),
-            ("concept", concept_text),
-            ("contrast", contrast_text),
-            ("theory", theory_text),
-            ("engine", quality_text),
-            ("opening", opening_text.strip()),
-            ("pv", pv_text),
+            ("focus", f"Ich beziehe deine Frage auf {san}.", False),
+            ("verdict", verdict_text, False),
+            ("concept", concept_text, True),
+            ("direct_threat", response_text, True),
+            ("heuristic", heuristic_text, True),
+            ("continuation", continuation_text, True),
+            ("contrast", contrast_text, True),
+            ("theory", theory_text, False),
+            ("engine", quality_text, False),
+            ("opening", opening_text.strip(), False),
+            ("pv", pv_text, False),
         )
-        answer_facts = [{"id": fact_id, "text": text} for fact_id, text in fact_values if text]
+        answer_facts = [
+            {"id": fact_id, "text": text, "required": required}
+            for fact_id, text, required in fact_values
+            if text
+        ]
         fallback = TutorText(
             summary=f"Ich beziehe deine Frage auf {san}. {verdict_text}",
             details=" ".join(
                 part
-                for part in (concept_text, contrast_text, theory_text, quality_text, pv_text)
+                for part in (
+                    response_text,
+                    heuristic_text,
+                    concept_text,
+                    continuation_text,
+                    contrast_text,
+                    theory_text,
+                    quality_text,
+                    pv_text,
+                )
                 if part
             ),
             source="deterministic",
@@ -673,7 +696,10 @@ class CoachService:
         return " ".join(
             part
             for part in (
+                _move_response_context(board, move),
+                _heuristic_context(board, move),
                 _move_concept(board, move),
+                _continuation_context(board, move, analysis),
                 _tactical_contrast(board, move, analysis),
                 self._engine_details(analysis),
             )
@@ -803,16 +829,6 @@ def _move_concept(board: chess.Board, move: chess.Move) -> str:
     if board.is_castling(move):
         return "Die Rochade bringt den König in Sicherheit und verbindet die Türme."
     if piece.piece_type == chess.PAWN:
-        if target in {"e4", "d4", "e5", "d5"}:
-            return "Der Bauernzug beansprucht Raum im Zentrum und öffnet Linien für Figuren."
-        if target in {"e3", "e6"}:
-            return "Der Zug stützt den späteren d-Bauernzug und öffnet die Diagonale des Läufers."
-        if target in {"d3", "d6"}:
-            return "Der Zug stabilisiert das Zentrum und öffnet die Diagonale des Läufers."
-        if target in {"g3", "g6", "b3", "b6"}:
-            return (
-                "Der Bauernzug bereitet die Entwicklung des Läufers auf der langen Diagonale vor."
-            )
         before = _square_list(board.attacks(move.from_square))
         projected = board.copy(stack=False)
         projected.push(move)
@@ -830,14 +846,43 @@ def _move_concept(board: chess.Board, move: chess.Move) -> str:
             explanation += " Außerdem kann ein eigener Springer dieses Feld nun nicht benutzen."
         return explanation
     if piece.piece_type == chess.KNIGHT:
-        return "Der Springer wird entwickelt und nimmt Einfluss auf zentrale Felder."
-    if piece.piece_type == chess.BISHOP:
-        return "Der Läufer wird entwickelt und richtet sich auf eine aktive Diagonale."
-    if piece.piece_type == chess.ROOK:
-        return "Der Turm verbessert seine Aktivität auf einer wichtigen Linie."
-    if piece.piece_type == chess.QUEEN:
-        return "Die Dame wird aktiv; in der Eröffnung muss sie dabei gegnerische Tempi vermeiden."
-    return "Der Königszug verändert Sicherheit und Figurenkoordination."
+        projected = board.copy(stack=False)
+        projected.push(move)
+        controlled = projected.attacks(move.to_square)
+        central = controlled & chess.SquareSet(chess.BB_CENTER)
+        center_text = (
+            f" Davon {'ist' if len(central) == 1 else 'sind'} {_square_list(central)} "
+            f"{'ein Zentrumsfeld' if len(central) == 1 else 'Zentrumsfelder'}."
+            if central
+            else " Keines davon ist eines der vier Zentrumsfelder d4, e4, d5 und e5."
+        )
+        attacked_pieces = _attacked_piece_list(projected, move.to_square, board.turn)
+        attack_text = f" Dabei greift er {attacked_pieces} an." if attacked_pieces else ""
+        return (
+            f"Der Springer zieht nach {target} und kontrolliert von dort "
+            f"{_square_list(controlled)}.{center_text}{attack_text}"
+        )
+
+    piece_name, pronoun = {
+        chess.BISHOP: ("Läufer", "er"),
+        chess.ROOK: ("Turm", "er"),
+        chess.QUEEN: ("Dame", "sie"),
+        chess.KING: ("König", "er"),
+    }[piece.piece_type]
+    projected = board.copy(stack=False)
+    projected.push(move)
+    controlled = projected.attacks(move.to_square)
+    central = controlled & chess.SquareSet(chess.BB_CENTER)
+    if central:
+        center_text = f"Von dort kontrolliert {pronoun} direkt {_square_list(central)} im Zentrum."
+    else:
+        center_text = (
+            f"Von dort kontrolliert {pronoun} keines der vier Zentrumsfelder "
+            "d4, e4, d5 und e5 direkt."
+        )
+    attacked_pieces = _attacked_piece_list(projected, move.to_square, board.turn)
+    attack_text = f" Außerdem greift {pronoun} {attacked_pieces} an." if attacked_pieces else ""
+    return f"Der {piece_name} zieht nach {target}. {center_text}{attack_text}"
 
 
 def _square_list(squares: chess.SquareSet) -> str:
@@ -847,6 +892,150 @@ def _square_list(squares: chess.SquareSet) -> str:
     if len(names) == 1:
         return names[0]
     return f"{', '.join(names[:-1])} und {names[-1]}"
+
+
+def _move_response_context(board: chess.Board, move: chess.Move) -> str:
+    """Describe when the move answers a direct attack on the moving piece."""
+    piece = board.piece_at(move.from_square)
+    if piece is None:
+        return ""
+    attackers = board.attackers(not board.turn, move.from_square)
+    if not attackers:
+        return ""
+
+    attacker_square = next(
+        (
+            square
+            for square in attackers
+            if (attacker := board.piece_at(square)) and attacker.piece_type == chess.PAWN
+        ),
+        next(iter(attackers)),
+    )
+    attacker = board.piece_at(attacker_square)
+    if attacker is None:
+        return ""
+    piece_name, possessive, accusative = {
+        chess.PAWN: ("Bauer", "dein", "den Bauern"),
+        chess.KNIGHT: ("Springer", "dein", "den Springer"),
+        chess.BISHOP: ("Läufer", "dein", "den Läufer"),
+        chess.ROOK: ("Turm", "dein", "den Turm"),
+        chess.QUEEN: ("Dame", "deine", "die Dame"),
+        chess.KING: ("König", "dein", "den König"),
+    }[piece.piece_type]
+    attacker_phrase = {
+        chess.PAWN: "vom gegnerischen Bauern",
+        chess.KNIGHT: "vom gegnerischen Springer",
+        chess.BISHOP: "vom gegnerischen Läufer",
+        chess.ROOK: "vom gegnerischen Turm",
+        chess.QUEEN: "von der gegnerischen Dame",
+        chess.KING: "vom gegnerischen König",
+    }[attacker.piece_type]
+    san = board.san(move)
+    source = chess.square_name(move.from_square)
+    projected = board.copy(stack=False)
+    projected.push(move)
+    if projected.attackers(not board.turn, move.to_square):
+        result = (
+            f"{san} löst den bisherigen Angriff, auf {chess.square_name(move.to_square)} "
+            f"ist {accusative} aber weiterhin angegriffen."
+        )
+    else:
+        result = f"{san} bringt {accusative} aus diesem Angriff."
+    return (
+        f"Vor {san} wird {possessive} {piece_name} auf {source} {attacker_phrase} auf "
+        f"{chess.square_name(attacker_square)} angegriffen. {result}"
+    )
+
+
+def _continuation_context(board: chess.Board, move: chess.Move, analysis: MoveAnalysis) -> str:
+    """Identify a verified temporary square when the PV moves the same piece again."""
+    line = analysis.played_pv_san
+    if len(line) < 3:
+        return ""
+    replay = board.copy(stack=False)
+    try:
+        first = replay.parse_san(line[0])
+        if first != move:
+            return ""
+        moved_piece = replay.piece_at(first.from_square)
+        replay.push(first)
+        reply = replay.parse_san(line[1])
+        reply_piece = replay.piece_at(reply.from_square)
+        reply_was_attacked = reply.from_square in replay.attacks(first.to_square)
+        reply_from = chess.square_name(reply.from_square)
+        replay.push(reply)
+        continuation = replay.parse_san(line[2])
+        continuing_piece = replay.piece_at(continuation.from_square)
+    except (chess.IllegalMoveError, chess.InvalidMoveError, chess.AmbiguousMoveError, ValueError):
+        return ""
+    if (
+        moved_piece is None
+        or continuing_piece != moved_piece
+        or continuation.from_square != move.to_square
+    ):
+        return ""
+    reply_context = ""
+    if reply_was_attacked and reply_piece is not None and reply_piece.color != moved_piece.color:
+        reply_name = {
+            chess.PAWN: "Bauern",
+            chess.KNIGHT: "Springer",
+            chess.BISHOP: "Läufer",
+            chess.ROOK: "Turm",
+            chess.QUEEN: "Dame",
+            chess.KING: "König",
+        }[reply_piece.piece_type]
+        reply_context = (
+            f"Die Antwort {line[1]} zieht den von {line[0]} angegriffenen {reply_name} "
+            f"von {reply_from} weg. "
+        )
+    return (
+        f"{reply_context}In der Stockfish-Prüfvariante zieht dieselbe Figur nach der Antwort "
+        f"{line[1]} mit {line[2]} gleich noch einmal weiter. "
+        f"{chess.square_name(move.to_square)} ist in dieser Variante also eine "
+        "Zwischenstation und kein dauerhafter Posten."
+    )
+
+
+def _heuristic_context(board: chess.Board, move: chess.Move) -> str:
+    """Put a knight-on-the-rim heuristic behind a verified immediate threat."""
+    piece = board.piece_at(move.from_square)
+    if piece is None or piece.piece_type != chess.KNIGHT:
+        return ""
+    if chess.square_file(move.to_square) not in {0, 7}:
+        return ""
+    if not board.attackers(not board.turn, move.from_square):
+        return ""
+    projected = board.copy(stack=False)
+    projected.push(move)
+    if projected.attacks(move.to_square) & chess.SquareSet(chess.BB_CENTER):
+        return ""
+    san = board.san(move)
+    return (
+        f"Dein Einwand zur Faustregel „Springer am Rand“ ist richtig: {san} ist kein "
+        "aktiver Zentrumszug. Die Faustregel ist aber nicht absolut; zuerst muss der "
+        "konkret angegriffene Springer einen brauchbaren Rückzugsplatz finden."
+    )
+
+
+def _attacked_piece_list(
+    board: chess.Board, attacking_square: chess.Square, color: chess.Color
+) -> str:
+    targets: list[str] = []
+    labels = {
+        chess.PAWN: "den gegnerischen Bauern",
+        chess.KNIGHT: "den gegnerischen Springer",
+        chess.BISHOP: "den gegnerischen Läufer",
+        chess.ROOK: "den gegnerischen Turm",
+        chess.QUEEN: "die gegnerische Dame",
+        chess.KING: "den gegnerischen König",
+    }
+    for square in board.attacks(attacking_square):
+        piece = board.piece_at(square)
+        if piece and piece.color != color:
+            targets.append(f"{labels[piece.piece_type]} auf {chess.square_name(square)}")
+    if len(targets) <= 1:
+        return "" if not targets else targets[0]
+    return f"{', '.join(targets[:-1])} und {targets[-1]}"
 
 
 def _tactical_contrast(board: chess.Board, move: chess.Move, analysis: MoveAnalysis) -> str:

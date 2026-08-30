@@ -182,6 +182,54 @@ def test_feedback_explains_when_a_move_ignores_an_attacked_piece() -> None:
     assert "konkreten Rechenweg" in feedback["details"]
 
 
+def test_na2_question_corrects_the_generic_center_development_template() -> None:
+    coach = service()
+    session = coach.create_session("white")
+    active = coach.sessions[session["session_id"]]
+    active.board = chess.Board(
+        "r1b2rk1/p3nppp/2pq1n2/1p2p1B1/Pb1pP2N/1BNP1Q2/1PP2PPP/R4RK1 w - - 0 13"
+    )
+    coach.openings.moves.clear()
+
+    class Na2Engine(FakeEngine):
+        def analyze_move(self, board: chess.Board, move: chess.Move) -> MoveAnalysis:
+            best = chess.Move.from_uci("c3a2")
+            return MoveAnalysis(
+                available=True,
+                engine_name=self.name,
+                best_move_uci=best.uci(),
+                best_move_san="Na2",
+                evaluation_before=0.43,
+                evaluation_played=0.43,
+                mate_before=None,
+                mate_played=None,
+                loss_pawns=0.0,
+                classification="practically_equal",
+                best_pv_san=("Na2", "Bc5", "Nc1", "a5"),
+                played_pv_san=("Na2", "Bc5", "Nc1", "a5"),
+            )
+
+    coach.engine = Na2Engine()
+    response = coach.answer_question(
+        session["session_id"],
+        "Warum ist Na2 gut, obwohl ein Springer am Rand schlecht steht?",
+        "c3a2",
+    )
+    details = response["message"]["details"]
+
+    assert "Springer auf c3" in details
+    assert "Bauern auf d4 angegriffen" in details
+    assert "Na2 bringt den Springer aus diesem Angriff" in details
+    assert "kontrolliert von dort c1, c3 und b4" in details
+    assert "Keines davon ist eines der vier Zentrumsfelder" in details
+    assert "greift er den gegnerischen Läufer auf b4 an" in details
+    assert "Dein Einwand zur Faustregel „Springer am Rand“ ist richtig" in details
+    assert "kein aktiver Zentrumszug" in details
+    assert "Bc5 zieht den von Na2 angegriffenen Läufer von b4 weg" in details
+    assert "Zwischenstation und kein dauerhafter Posten" in details
+    assert "entwickelt" not in details
+
+
 def test_question_about_suggestion_is_grounded_without_playing_the_move() -> None:
     coach = service()
     session = coach.create_session("white")

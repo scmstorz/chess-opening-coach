@@ -126,3 +126,40 @@ deliberate follow-up work and a possible model switch after:
 
 Do not use any model's parametric chess knowledge as ground truth. Opening data,
 python-chess, and Stockfish retain that responsibility.
+
+## Follow-up: explaining the surprising `Na2`
+
+On 2026-08-30 the learner challenged a live answer that called `Na2` a
+development move influencing central squares. The position was
+`r1b2rk1/p3nppp/2pq1n2/1p2p1B1/Pb1pP2N/1BNP1Q2/1PP2PPP/R4RK1 w - - 0 13`.
+The criticism was correct: from `a2` the knight controls `c1`, `c3`, and `b4`,
+none of the four central squares.
+
+The first hand-assembled exploratory prompt accidentally omitted `c3` from
+that list. The production fix derives all three squares from the board instead
+of relying on manually transcribed facts; the omission did not support any of
+the models' invented strategic claims.
+
+A three-second Stockfish 18 MultiPV check preferred `Na2` at +0.43, ahead of
+`Nb1` at -0.06 and `Nd1` at -0.34. A free explanation prompt gave each model
+the FEN, the attack by the black pawn on `d4`, the verified squares, and the
+engine lines:
+
+- Qwen added an invented “important c1-a3 diagonal”, called `Na2` the only
+  saving move, and produced a truncated response.
+- GPT-OSS returned no visible response through this adapter shape.
+- Ornith claimed that `Nb1` moves the knight to `c1` and attached evidence that
+  did not support its own claim; its response was also truncated.
+
+Direct board inspection supplied the missing explanation without speculation.
+The pawn on `d4` attacks the knight on `c3`; `Na2` escapes that attack and at the
+same time attacks Black's bishop on `b4`. Stockfish's line continues `...Bc5
+Nc1`: the bishop leaves the attacked square, and the same knight immediately
+continues from `a2` to `c1`. Thus `a2` is a tactical intermediate square, not a
+claim that edge knights are generally active.
+
+The production path now derives those relations with `python-chess` and lets
+Qwen select only the verified fact IDs. Required causal facts are added when a
+model does not select them. The final isolated run used Qwen successfully and
+contained the direct attack, the counterattack on `b4`, the lack of central
+control, and the temporary `a2-c1` route without any model-authored chess claim.

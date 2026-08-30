@@ -32,6 +32,10 @@
 13. A technically longer expanded comment proves pedagogically empty when it
     repeats the summary; exact board effects and engine-line contrasts replace
     generic prose before considering a multi-model ensemble.
+14. `Na2` exposes that even deterministic prose can be false when its template
+    is too broad. Geometry derived from the live board reveals the real
+    double-purpose move, while free Qwen and Ornith explanations demonstrate
+    why LLM fluency still needs claim-level grounding.
 
 ## Evidence already captured
 
@@ -43,6 +47,7 @@
 - Measured local-model behavior and real end-to-end examples
 - A concrete course correction from unsafe generation to verified paraphrasing
 - A concrete example where richer verified inputs mattered more than adding more models
+- A position-level regression from a real learner challenge (`Na2` versus the rim heuristic)
 - Comparable local chess benchmarks for Qwen, Glimmer, Ornith, and GPT-OSS
 
 ## Questions for later evaluation

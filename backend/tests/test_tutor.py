@@ -93,3 +93,27 @@ def test_question_tutor_rejects_unknown_fact_ids() -> None:
 
     assert result == fallback
     assert "invalid" in (tutor.last_error or "")
+
+
+def test_question_tutor_appends_required_verified_facts() -> None:
+    fallback = TutorText("Sicher.", "Geprüft.", "deterministic", None)
+    facts = {
+        "user_question": "Warum?",
+        "answer_facts": [
+            {"id": "engine", "text": "Stockfish bevorzugt Na2."},
+            {"id": "concept", "text": "Na2 kontrolliert kein Zentrumsfeld."},
+            {
+                "id": "threat",
+                "text": "Der Springer auf c3 ist angegriffen.",
+                "required": True,
+            },
+        ],
+    }
+    tutor = SelectionTutor('{"summary_fact_ids":["engine"],"detail_fact_ids":["concept"]}')
+
+    result = tutor.answer_question(facts, fallback)
+
+    assert result.summary == "Stockfish bevorzugt Na2."
+    assert result.details == (
+        "Na2 kontrolliert kein Zentrumsfeld. Der Springer auf c3 ist angegriffen."
+    )

@@ -29,6 +29,7 @@ separate sources of information.
 - Theory-aware and Stockfish-checked coach moves
 - Non-playing `Zug vorschlagen` hint from opening theory or Stockfish, with source/target highlighting
 - Grounded follow-up questions about the current position or suggested move
+- Board-derived explanations of direct threats, controlled squares, and concrete engine lines
 - Visible engine evaluation using the standard White-positive convention
 - German feedback after every learner and coach move
 - Expandable explanation detail

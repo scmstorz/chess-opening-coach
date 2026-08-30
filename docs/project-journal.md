@@ -830,6 +830,53 @@ attacked-bishop regression and a real-Stockfish best-move check. Python and web
 lint, the production browser build, the rendered-shell test, and whitespace
 checks are clean.
 
+### A generic template contradicted the board: the `Na2` case
+
+The next live challenge was sharper: after an engine suggestion of `Na2`, the
+coach answered that the knight was developed and influenced central squares.
+The learner correctly objected that a knight on the rim does neither. This was
+not an LLM hallucination in the usual sense. The false sentence came from the
+deterministic `_move_concept` template, and Qwen's grounded selector faithfully
+selected that bad input. “Deterministic” therefore did not mean “true”; the
+fact producer itself needed verification.
+
+The exact position was recovered from the running local session:
+`r1b2rk1/p3nppp/2pq1n2/1p2p1B1/Pb1pP2N/1BNP1Q2/1PP2PPP/R4RK1 w - - 0 13`.
+A three-second Stockfish 18 MultiPV check confirmed `Na2` (+0.43) over `Nb1`
+(-0.06) and `Nd1` (-0.34), but the evaluation alone still did not answer why.
+Board geometry revealed the causal explanation: the black pawn on `d4` attacks
+the knight on `c3`; `Na2` escapes that attack and simultaneously attacks the
+black bishop on `b4`. In the principal variation `Na2 Bc5 Nc1`, the bishop moves
+away and the knight immediately continues to `c1`. The rim square is a
+double-purpose intermediate square, not an active permanent post.
+
+The first hand-written model probe itself listed only `c1/b4` and omitted the
+additional controlled square `c3`. That transcription mistake did not affect
+the central-square conclusion, but it supplied another reason to generate
+facts from board geometry rather than manually composing model context.
+
+The learner explicitly asked whether the LLM could provide the explanation.
+Qwen, GPT-OSS, and Ornith were tested with the same verified position and engine
+facts. Free generation did not solve the reliability problem: Qwen invented a
+`c1-a3` diagonal and called `Na2` the only saving move; GPT-OSS returned no
+visible answer; Ornith claimed `Nb1` moved the knight to `c1` and cited unrelated
+evidence. These outputs reinforced the claim-level grounding boundary rather
+than arguing against LLM use.
+
+The corrected pipeline now asks Qwen to rank complete verified facts. Actual
+piece attacks, controlled squares, central-square intersection, counterattacks,
+and same-piece PV continuations come from `python-chess` plus Stockfish. Facts
+that carry the causal explanation are marked required and appended if the model
+does not select them. In an isolated live run Qwen selected a concise answer
+that explicitly agreed with the learner's rim heuristic, named the attack from
+`d4`, listed `c1/c3/b4` and no central squares, identified the attack on the
+bishop at `b4`, and explained the temporary `a2-c1` route.
+
+The regression suite now contains the exact FEN and forbids the word
+“entwickelt” in this explanation. Verification: 21 Python tests pass; Python
+and web lint, the production build, rendered-shell test, and whitespace checks
+are clean.
+
 ### First-slice verification evidence
 
 At the time of this journal entry:

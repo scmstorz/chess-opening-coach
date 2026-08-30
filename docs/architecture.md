@@ -129,6 +129,12 @@ contrast from `python-chess`. Short principal variations then show the engine's
 concrete calculation. The active Ollama model may make these facts easier to
 read, but must preserve concrete move, square, and number anchors inside the
 detail layer. The runtime does not merge unverified prose from multiple models.
+Generic piece templates are not treated as verified facts: controlled central
+squares, attacked pieces, attacks on the moving piece, and same-piece
+continuations are derived from the actual board and PV. Ollama ranks these
+atomic facts for relevance. Mechanically important facts are marked required
+and appended if the model omits them, so language selection cannot empty the
+answer of its causal explanation.
 
 The initial real-world test justified this boundary: `qwen3.8:27b-mlx`, running
 through Ollama, incorrectly called `1...g6` a King's Gambit line. An integration
@@ -159,7 +165,8 @@ user question + current FEN + optional highlighted move
 The user question itself is treated as untrusted context, not as evidence. The
 answer is added to the in-memory conversation feed but not recorded as a move or
 learner attempt in SQLite. If the local theory graph provides no safe anchor,
-the coach states that limitation instead of inventing an explanation.
+Stockfish provides one; if Stockfish is also unavailable, the coach states that
+capability limit instead of inventing an explanation.
 
 The initial implementation briefly allowed Ollama to paraphrase the complete
 answer. A live `Warum ist dieser Zug gut?` test caused Qwen to add an unsupported

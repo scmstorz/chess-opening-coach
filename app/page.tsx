@@ -676,7 +676,7 @@ export default function Home() {
                 {askingQuestion ? "…" : "↑"}
               </button>
             </form>
-            <small>{askingQuestion ? "Der lokale Tutor formuliert aus geprüften Fakten …" : `Geerdet mit Stellung, Eröffnungstheorie und Stockfish${health?.ollama.model ? ` · ${health.ollama.model}` : ""}`}</small>
+            <small>{askingQuestion ? "Der lokale Tutor wählt die relevantesten geprüften Fakten …" : `Geerdet mit Stellung, Eröffnungstheorie und Stockfish${health?.ollama.model ? ` · ${health.ollama.model}` : ""}`}</small>
           </div>
         </aside>
       </section>

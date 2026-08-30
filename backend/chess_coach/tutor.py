@@ -138,6 +138,11 @@ class OllamaTutor:
         }
         if not answer_facts:
             return fallback
+        required_fact_ids = [
+            str(item["id"])
+            for item in facts.get("answer_facts", [])
+            if item.get("required") and item.get("id") in answer_facts
+        ]
         payload = {
             "model": self.model,
             "stream": False,
@@ -172,6 +177,9 @@ class OllamaTutor:
                 or any(fact_id not in answer_facts for fact_id in selected_ids)
             ):
                 raise ValueError("Ollama selected invalid or duplicate fact IDs")
+            detail_ids.extend(
+                fact_id for fact_id in required_fact_ids if fact_id not in selected_ids
+            )
             result = TutorText(
                 summary=" ".join(answer_facts[fact_id] for fact_id in summary_ids),
                 details=" ".join(answer_facts[fact_id] for fact_id in detail_ids),

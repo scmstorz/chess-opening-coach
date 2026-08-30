@@ -34,6 +34,10 @@ class FakeEngine:
     def close(self) -> None:
         pass
 
+    def get_best_move(self, board: chess.Board) -> tuple[chess.Move, MoveAnalysis]:
+        move = next(iter(board.legal_moves))
+        return move, self.analyze_move(board, move)
+
 
 def service() -> CoachService:
     return CoachService(
@@ -96,6 +100,7 @@ def test_suggestion_is_theory_grounded_and_does_not_change_the_session() -> None
     unchanged = coach.sessions[session["session_id"]]
 
     assert suggestion["move_uci"] in session["legal_moves"]
+    assert suggestion["basis"] == "theory"
     assert suggestion["move_uci"] in {
         move.uci for move in coach.openings.theory_moves(unchanged.board)
     }
@@ -104,6 +109,77 @@ def test_suggestion_is_theory_grounded_and_does_not_change_the_session() -> None
     assert unchanged.move_history == []
     assert unchanged.message_history == []
     assert coach.store.summary()["attempts"] == 0
+
+
+def test_suggestion_falls_back_to_stockfish_after_local_theory_ends() -> None:
+    coach = service()
+    coach.openings.moves.clear()
+    session = coach.create_session("white")
+
+    suggestion = coach.suggest_move(session["session_id"])
+    unchanged = coach.sessions[session["session_id"]]
+
+    assert suggestion["basis"] == "engine"
+    assert suggestion["move_uci"] in session["legal_moves"]
+    assert suggestion["move_uci"] == suggestion["engine"]["best_move_uci"]
+    assert "Stockfish bevorzugt" in suggestion["summary"]
+    assert unchanged.board.fen() == session["fen"]
+    assert unchanged.move_history == []
+    assert coach.store.summary()["attempts"] == 0
+
+
+def test_pawn_feedback_explains_irreversible_square_changes_concretely() -> None:
+    coach = service()
+    session = coach.create_session("white")
+
+    response = coach.play_learner_move(session["session_id"], "c2", "c3")
+    feedback = response["messages"][0]
+
+    assert "b4 und d4" in feedback["details"]
+    assert "b3 und d3" in feedback["details"]
+    assert "nicht rückwärts" in feedback["details"]
+    assert "Springer" in feedback["details"]
+    assert feedback["details"] != feedback["summary"]
+
+
+def test_feedback_explains_when_a_move_ignores_an_attacked_piece() -> None:
+    coach = service()
+    board = chess.Board()
+    for san in ("e4", "e5", "Nf3", "Nc6", "Bb5", "a6"):
+        board.push_san(san)
+    coach.openings.moves.clear()
+    session = coach.create_session("white")
+    active = coach.sessions[session["session_id"]]
+    active.board = board
+
+    class AttackedBishopEngine(FakeEngine):
+        def analyze_move(self, board: chess.Board, move: chess.Move) -> MoveAnalysis:
+            if board.turn == chess.BLACK:
+                return super().analyze_move(board, move)
+            best = board.parse_san("Ba4")
+            return MoveAnalysis(
+                available=True,
+                engine_name=self.name,
+                best_move_uci=best.uci(),
+                best_move_san="Ba4",
+                evaluation_before=0.2,
+                evaluation_played=-0.45,
+                mate_before=None,
+                mate_played=None,
+                loss_pawns=0.65,
+                classification="inaccuracy",
+                best_pv_san=("Ba4", "Nf6", "O-O"),
+                played_pv_san=(board.san(move), "axb5"),
+            )
+
+    coach.engine = AttackedBishopEngine()
+    response = coach.play_learner_move(session["session_id"], "c2", "c3")
+    feedback = response["messages"][0]
+
+    assert "Läufer auf b5 angegriffen" in feedback["details"]
+    assert "c3 lässt diesen Angriff bestehen" in feedback["details"]
+    assert "Ba4 bringt den Läufer aus dem Angriff" in feedback["details"]
+    assert "konkreten Rechenweg" in feedback["details"]
 
 
 def test_question_about_suggestion_is_grounded_without_playing_the_move() -> None:

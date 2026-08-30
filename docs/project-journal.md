@@ -723,8 +723,9 @@ An explicitly written legal SAN or UCI move overrides the highlighted
 suggestion, preventing a question such as “Warum nicht d4?” from accidentally
 receiving an explanation of the prior hint. If no move is named and no hint is
 active, the service uses the same highest-ranked, engine-safe theory candidate
-as the suggestion feature. If local theory has ended, it says that the facts are
-insufficient rather than improvising.
+as the suggestion feature. If local theory has ended, the service now uses
+Stockfish's preferred legal move as the concrete anchor and identifies its
+engine basis instead of presenting it as opening theory.
 
 GPT-OSS 20B was added to the existing local chess benchmark before choosing a
 model for this interaction. It scored 6/6 opening names and 7/7 concept choices,
@@ -755,6 +756,79 @@ rendered prose contained no model-authored chess sentence. A second question,
 and returned its verified concept and principal variation. The final automated
 state is 15 passing Python tests plus clean Python/web lint, production build,
 and rendered-shell test.
+
+### Opening coverage is not the boundary of useful help
+
+Continued play revealed that `Zug vorschlagen` still treated the end of the
+local opening graph as the end of its responsibility. In the middle of a game,
+the learner received “Für diese Stellung ist kein Zug in der lokalen
+Eröffnungstheorie hinterlegt”. The statement was factually correct but
+product-wise wrong: a request for help is still meaningful after the opening.
+
+Suggestion selection is now explicitly two-stage. While local theory is
+available, the existing coverage ranking and Stockfish safety check remain in
+control. Once theory coverage ends, Stockfish supplies its current preferred
+legal move. The response carries `basis: theory|engine`, and the browser labels
+the latter `Engine-Vorschlag`; it never presents an engine-only move as opening
+orthodoxy. The same fallback supports position questions without a named move.
+If Stockfish itself is unavailable beyond local theory, the service states this
+capability limit rather than guessing.
+
+This change preserves learner agency and state semantics: a suggestion only
+highlights the move, records no attempt, adds no move to the board, and can still
+be followed by “Warum ist dieser Zug gut?”. A new service test removes all local
+theory edges and verifies the complete engine branch, while the conditional
+engine test verifies that the returned move is legal and practically equal to
+Stockfish's own best result.
+
+### “More details” must mean more explanation
+
+A second live example exposed a pedagogical quality problem. The summary for
+`c3` said that a pawn move “legt neue Felder dauerhaft fest”; expanding the
+details repeated that phrase, added an evaluation, and named `Ba4` without
+explaining either relationship. The details were longer but not deeper. The
+root cause was a generic pawn template plus a model prompt that allowed summary
+and detail content to drift between output fields.
+
+Pawn explanations now derive exact square changes from the board. For `c2-c3`,
+the coach says that the pawn changes its control from `b3/d3` to `b4/d4`, that
+pawns cannot move backwards, and—when true—that the occupied square is no
+longer available to a knight. A separate deterministic contrast checks whether
+the engine's preferred move responds to an already attacked piece that the
+learner's move leaves in place. In the concrete `1.e4 e5 2.Nf3 Nc6 3.Bb5 a6
+4.c3` fixture, the detail must now connect all three facts: the bishop on `b5`
+is attacked, `c3` leaves the attack in place, and `Ba4` moves the bishop out of
+it. Short played-move and best-move Stockfish variations expose the calculation
+behind the comparison and are explicitly described as examples rather than
+forced lines. The tutor prompt now keeps verified summary and verified detail
+in their respective output layers. A grounding regression additionally rejects
+any rewrite that moves or drops concrete move, square, or number anchors from
+the expanded detail layer; the deterministic explanation is safer than a fluent
+but emptied-out rewrite.
+
+The learner proposed consulting Qwen, GPT-OSS, and Ornith and merging all
+comments. This was recorded as an evaluation direction, but not adopted as the
+runtime truth mechanism. Several fluent model opinions do not become verified
+by consensus, and merging them makes provenance, contradiction handling, and
+hallucination checks harder. The current decision is to improve the verified
+facts first and use one selected local model for pedagogy. A later optional
+“deep explanation” experiment may let multiple models propose interpretations
+only if every surviving chess claim maps back to board, repertoire, or engine
+evidence.
+
+The original local interaction was retained in SQLite and made the regression
+reproducible: before `c3` the FEN was
+`3r1rk1/ppp2ppp/3q1n2/1B2p3/2Pn4/3P3P/P1P2PP1/R1BQR1K1 w - - 3 14`.
+Stockfish measured a 0.43-pawn loss, preferred `Ba4`, and calculated the sample
+continuation `c3 Nxb5 cxb5 Qxd3`. Running the revised code against that exact
+position now explains that the bishop on `b5` is attacked, that `c3` leaves the
+attack in place, and that `Ba4` moves the bishop away before showing either
+number or line.
+
+Verification after both changes: 19 Python tests pass, including the explicit
+attacked-bishop regression and a real-Stockfish best-move check. Python and web
+lint, the production browser build, the rendered-shell test, and whitespace
+checks are clean.
 
 ### First-slice verification evidence
 

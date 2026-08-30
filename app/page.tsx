@@ -62,6 +62,7 @@ type SessionState = {
 type MoveSuggestion = {
   move_uci: string;
   move_san: string;
+  basis: "theory" | "engine";
   opening: { eco: string; name: string } | null;
   summary: string;
   details: string;
@@ -583,7 +584,7 @@ export default function Home() {
                   className="secondary-action suggestion-action"
                   disabled={!session || interactionLocked || session.turn !== session.learner_color || session.game_over}
                   onClick={() => void requestSuggestion()}
-                  title="Markiert einen bewährten, von Stockfish geprüften Eröffnungszug"
+                  title="Markiert einen guten Zug aus Eröffnungstheorie oder Stockfish-Analyse"
                   type="button"
                 >
                   <span aria-hidden="true">✦</span>Zug vorschlagen
@@ -598,7 +599,7 @@ export default function Home() {
               <div className="suggestion-banner" role="status">
                 <span aria-hidden="true">✦</span>
                 <div>
-                  <strong>Vorschlag · {suggestion.move_san}</strong>
+                  <strong>{suggestion.basis === "engine" ? "Engine-Vorschlag" : "Eröffnungsvorschlag"} · {suggestion.move_san}</strong>
                   <p>{suggestion.summary}</p>
                   <details><summary>Warum dieser Zug?</summary><p>{suggestion.details}</p></details>
                 </div>

@@ -26,6 +26,12 @@
     theory proposes, Stockfish checks, and the learner retains agency.
 11. The hint immediately triggers a natural “why?” question, turning a disabled
     UI placeholder into the next grounded vertical slice.
+12. Continued play exposes a product boundary disguised as a data boundary:
+    ending local opening coverage must switch the hint to a clearly labeled
+    Stockfish suggestion, not end the learner's access to help.
+13. A technically longer expanded comment proves pedagogically empty when it
+    repeats the summary; exact board effects and engine-line contrasts replace
+    generic prose before considering a multi-model ensemble.
 
 ## Evidence already captured
 
@@ -36,6 +42,7 @@
 - Automated backend, rendered-page, lint, and build checks
 - Measured local-model behavior and real end-to-end examples
 - A concrete course correction from unsafe generation to verified paraphrasing
+- A concrete example where richer verified inputs mattered more than adding more models
 - Comparable local chess benchmarks for Qwen, Glimmer, Ornith, and GPT-OSS
 
 ## Questions for later evaluation

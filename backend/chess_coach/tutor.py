@@ -89,6 +89,10 @@ class OllamaTutor:
                     "content": (
                         "Du redigierst einen bereits verifizierten deutschen Schachkommentar für "
                         "einen Spieler mit etwa 700 Elo. Paraphrasiere nur verified_feedback. "
+                        "Paraphrasiere verified_feedback.summary nur in summary und "
+                        "verified_feedback.details nur in details. Die Details müssen die "
+                        "konkrete Zusatzinformation erhalten und dürfen die Zusammenfassung "
+                        "nicht bloß wiederholen. "
                         "Füge keinerlei Eröffnungsnamen, Varianten, Häufigkeiten, Züge, Zahlen, "
                         "Bewertungen oder taktische Behauptungen hinzu. Nenne überhaupt keinen "
                         "Eröffnungsnamen. Antworte als JSON mit summary und details; beide sind "
@@ -228,4 +232,18 @@ def _is_grounded_rewrite(candidate: TutorText, fallback: TutorText) -> bool:
     candidate_numbers = {
         number.replace(".", ",") for number in number_pattern.findall(candidate_text)
     }
-    return candidate_numbers <= allowed_numbers
+    if not candidate_numbers <= allowed_numbers:
+        return False
+
+    required_detail_anchors = _detail_anchors(fallback.details)
+    candidate_detail_anchors = _detail_anchors(candidate.details)
+    return required_detail_anchors <= candidate_detail_anchors
+
+
+def _detail_anchors(text: str) -> set[str]:
+    """Keep concrete moves, squares, and numbers in the expanded detail layer."""
+    pattern = re.compile(
+        r"(?:O-O(?:-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?[+#]?|"
+        r"[+#−-]?\d+(?:[,.]\d+)?)"
+    )
+    return {anchor.replace(".", ",") for anchor in pattern.findall(text)}

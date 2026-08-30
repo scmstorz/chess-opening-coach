@@ -43,6 +43,23 @@ def test_grounding_rejects_new_opening_claims_and_numbers() -> None:
     assert _is_grounded_rewrite(invented, fallback) is False
 
 
+def test_grounding_keeps_concrete_explanation_in_details() -> None:
+    fallback = TutorText(
+        summary="c3 ist eine kleine Ungenauigkeit.",
+        details="c3 kontrolliert b4 und d4. Stockfish bevorzugt Ba4.",
+        source="deterministic",
+        model=None,
+    )
+    misplaced = TutorText(
+        summary="c3 kontrolliert b4 und d4; besser ist Ba4.",
+        details="Der Bauernzug verändert die Stellung.",
+        source="ollama",
+        model="test",
+    )
+
+    assert _is_grounded_rewrite(misplaced, fallback) is False
+
+
 def test_question_tutor_can_only_select_verified_fact_text() -> None:
     fallback = TutorText("Sicher.", "Geprüft.", "deterministic", None)
     facts = {

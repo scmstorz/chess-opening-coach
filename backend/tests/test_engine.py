@@ -18,9 +18,15 @@ def test_local_stockfish_adapter_when_engine_is_installed() -> None:
     try:
         board = chess.Board()
         analysis = engine.analyze_move(board, chess.Move.from_uci("e2e4"))
+        best_move, best_analysis = engine.get_best_move(board)
     finally:
         engine.close()
 
     assert analysis.available is True
     assert analysis.best_move_uci is not None
     assert analysis.evaluation_played is not None
+    assert best_move is not None
+    assert best_move in board.legal_moves
+    assert best_analysis.available is True
+    assert best_analysis.loss_pawns is not None
+    assert best_analysis.loss_pawns < 0.15

@@ -27,7 +27,7 @@ separate sources of information.
 - Immediately playable White game on page load; choosing a color starts a fresh game
 - Progressive opening recognition across 3,810 local Lichess opening entries
 - Theory-aware and Stockfish-checked coach moves
-- Non-playing `Zug vorschlagen` hint with source/target highlighting
+- Non-playing `Zug vorschlagen` hint from opening theory or Stockfish, with source/target highlighting
 - Grounded follow-up questions about the current position or suggested move
 - Visible engine evaluation using the standard White-positive convention
 - German feedback after every learner and coach move

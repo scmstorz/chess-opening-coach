@@ -204,31 +204,42 @@ class CoachService:
             if session.board.turn != session.learner_color:
                 raise ValueError("Der Coach ist am Zug")
 
-            theory_move, analysis = self._select_theory_suggestion(session.board)
-
-            move = chess.Move.from_uci(theory_move.uci)
+            move, analysis, basis, theory_move = self._select_suggestion(session.board)
+            san = theory_move.san if theory_move else session.board.san(move)
             projected = session.board.copy(stack=False)
             projected.push(move)
             opening = self.openings.identify(projected, session.opening)
-            opening_name = opening.name if opening else "den lokalen Eröffnungslinien"
-            if analysis.available and analysis.loss_pawns is not None:
-                quality = (
-                    "Stockfish bewertet ihn als objektiv stark."
-                    if analysis.loss_pawns < 0.15
-                    else "Stockfish bewertet ihn als gut spielbar."
-                )
+            if basis == "theory":
+                opening_name = opening.name if opening else "den lokalen Eröffnungslinien"
+                if analysis.available and analysis.loss_pawns is not None:
+                    quality = (
+                        "Stockfish bewertet ihn als objektiv stark."
+                        if analysis.loss_pawns < 0.15
+                        else "Stockfish bewertet ihn als gut spielbar."
+                    )
+                else:
+                    quality = (
+                        "Stockfish ist gerade nicht verfügbar; der Hinweis stammt aus der Theorie."
+                    )
+                summary = f"{san} ist ein bewährter Zug in {opening_name}. {quality}"
+                source_detail = "Der Vorschlag stammt aus den lokalen Eröffnungslinien."
             else:
-                quality = (
-                    "Stockfish ist gerade nicht verfügbar; der Hinweis stammt aus der Theorie."
+                summary = (
+                    f"Stockfish bevorzugt {san} in dieser Stellung. "
+                    "Die lokale Eröffnungstheorie enthält hier keine Fortsetzung mehr."
+                )
+                source_detail = (
+                    "Der Vorschlag stammt deshalb direkt aus der aktuellen Engine-Analyse."
                 )
 
             return {
-                "move_uci": theory_move.uci,
-                "move_san": theory_move.san,
+                "move_uci": move.uci(),
+                "move_san": san,
+                "basis": basis,
                 "opening": asdict(opening) if opening else None,
-                "summary": f"{theory_move.san} ist ein bewährter Zug in {opening_name}. {quality}",
+                "summary": summary,
                 "details": (
-                    f"{_move_concept(session.board, move)} "
+                    f"{_move_concept(session.board, move)} {source_detail} "
                     "Der Zug wird nur auf dem Brett markiert; du spielst ihn selbst."
                 ),
                 "engine": asdict(analysis),
@@ -258,8 +269,7 @@ class CoachService:
             precomputed_analysis: MoveAnalysis | None = None
             if move is None:
                 try:
-                    theory_move, precomputed_analysis = self._select_theory_suggestion(board)
-                    move = chess.Move.from_uci(theory_move.uci)
+                    move, precomputed_analysis, _, _ = self._select_suggestion(board)
                 except ValueError:
                     move = None
 
@@ -348,6 +358,21 @@ class CoachService:
             else candidates[0]
         )
 
+    def _select_suggestion(
+        self, board: chess.Board
+    ) -> tuple[chess.Move, MoveAnalysis, str, TheoryMove | None]:
+        try:
+            theory_move, analysis = self._select_theory_suggestion(board)
+            return chess.Move.from_uci(theory_move.uci), analysis, "theory", theory_move
+        except ValueError:
+            move, analysis = self.engine.get_best_move(board)
+            if move is None or not analysis.available:
+                raise ValueError(
+                    "Außerhalb der lokalen Eröffnungstheorie wird Stockfish für einen "
+                    "verlässlichen Zugvorschlag benötigt"
+                ) from None
+            return move, analysis, "engine", None
+
     @staticmethod
     def _mentioned_legal_move(board: chess.Board, question: str) -> chess.Move | None:
         for move in board.legal_moves:
@@ -389,6 +414,7 @@ class CoachService:
             f"Nach dem Zug ist die Stellung als {opening.name} eingeordnet. " if opening else ""
         )
         concept_text = _move_concept(board, move)
+        contrast_text = _tactical_contrast(board, move, analysis)
         pv_moves = " ".join(analysis.played_pv_san[:4])
         pv_text = f"Eine kurze Stockfish-Prüfvariante beginnt mit: {pv_moves}." if pv_moves else ""
         if (
@@ -400,6 +426,8 @@ class CoachService:
             verdict_text = f"{san} ist hier ein bewährter und objektiv starker Zug."
         elif theory_match:
             verdict_text = f"{san} ist hier ein bewährter Eröffnungszug."
+        elif analysis.available and analysis.best_move_uci == move.uci():
+            verdict_text = f"Stockfish bevorzugt {san} in dieser Stellung."
         else:
             verdict_text = f"{san} ist hier eine legale Alternative."
 
@@ -407,6 +435,7 @@ class CoachService:
             ("focus", f"Ich beziehe deine Frage auf {san}."),
             ("verdict", verdict_text),
             ("concept", concept_text),
+            ("contrast", contrast_text),
             ("theory", theory_text),
             ("engine", quality_text),
             ("opening", opening_text.strip()),
@@ -416,7 +445,9 @@ class CoachService:
         fallback = TutorText(
             summary=f"Ich beziehe deine Frage auf {san}. {verdict_text}",
             details=" ".join(
-                part for part in (concept_text, theory_text, quality_text, pv_text) if part
+                part
+                for part in (concept_text, contrast_text, theory_text, quality_text, pv_text)
+                if part
             ),
             source="deterministic",
             model=None,
@@ -486,7 +517,7 @@ class CoachService:
             verdict = f"{san} ist legal, bringt aber eine kleine praktische Ungenauigkeit mit."
         fallback = TutorText(
             summary=verdict,
-            details=f"{_move_concept(session.board, move)} {self._engine_details(analysis)}",
+            details=self._move_details(session.board, move, analysis),
             source="deterministic",
             model=None,
         )
@@ -505,7 +536,7 @@ class CoachService:
         opening = opening_after.name if opening_after else "der aktuellen Stellung"
         fallback = TutorText(
             summary=f"Ich spiele {san}. Der Zug führt {opening} solide weiter.",
-            details=f"{_move_concept(session.board, move)} {self._engine_details(analysis)}",
+            details=self._move_details(session.board, move, analysis),
             source="deterministic",
             model=None,
         )
@@ -613,7 +644,41 @@ class CoachService:
             )
         evaluation = _format_evaluation(analysis.evaluation_played, analysis.mate_played)
         best = f" Der beste Engine-Zug ist {analysis.best_move_san}." if reveal_best else ""
-        return f"Stockfish bewertet die entstehende Stellung mit {evaluation}.{best}"
+        loss = ""
+        if reveal_best and analysis.loss_pawns is not None and analysis.loss_pawns >= 0.15:
+            formatted_loss = f"{analysis.loss_pawns:.2f}".replace(".", ",")
+            loss = (
+                f" Der Abstand zum besten Zug beträgt {formatted_loss} Bauerneinheiten; "
+                "1,00 entspricht ungefähr dem Wert eines Bauern."
+            )
+        variation = ""
+        if (
+            reveal_best
+            and analysis.played_pv_san
+            and analysis.best_pv_san
+            and analysis.played_pv_san[0] != analysis.best_pv_san[0]
+        ):
+            played_line = " ".join(analysis.played_pv_san[:4])
+            best_line = " ".join(analysis.best_pv_san[:4])
+            variation = (
+                f" Als konkreten Rechenweg prüft Stockfish nach deinem Zug {played_line}; "
+                f"nach der Alternative {best_line}. Diese Varianten sind Beispiele, keine "
+                "erzwungenen Zugfolgen."
+            )
+        return (
+            f"Stockfish bewertet die entstehende Stellung mit {evaluation}.{best}{loss}{variation}"
+        )
+
+    def _move_details(self, board: chess.Board, move: chess.Move, analysis: MoveAnalysis) -> str:
+        return " ".join(
+            part
+            for part in (
+                _move_concept(board, move),
+                _tactical_contrast(board, move, analysis),
+                self._engine_details(analysis),
+            )
+            if part
+        )
 
     def _record(
         self,
@@ -748,7 +813,22 @@ def _move_concept(board: chess.Board, move: chess.Move) -> str:
             return (
                 "Der Bauernzug bereitet die Entwicklung des Läufers auf der langen Diagonale vor."
             )
-        return "Der Bauernzug gewinnt Raum, legt aber zugleich neue Felder dauerhaft fest."
+        before = _square_list(board.attacks(move.from_square))
+        projected = board.copy(stack=False)
+        projected.push(move)
+        after = _square_list(projected.attacks(move.to_square))
+        explanation = (
+            f"Mit {board.san(move)} kontrolliert der Bauer nun {after}; von "
+            f"{chess.square_name(move.from_square)} aus kontrollierte er {before}. "
+            "Weil Bauern nicht rückwärts ziehen können, ist diese Änderung nicht einfach "
+            "rückgängig zu machen."
+        )
+        if any(
+            move.to_square in chess.SquareSet(chess.BB_KNIGHT_ATTACKS[square])
+            for square in board.pieces(chess.KNIGHT, board.turn)
+        ):
+            explanation += " Außerdem kann ein eigener Springer dieses Feld nun nicht benutzen."
+        return explanation
     if piece.piece_type == chess.KNIGHT:
         return "Der Springer wird entwickelt und nimmt Einfluss auf zentrale Felder."
     if piece.piece_type == chess.BISHOP:
@@ -758,3 +838,59 @@ def _move_concept(board: chess.Board, move: chess.Move) -> str:
     if piece.piece_type == chess.QUEEN:
         return "Die Dame wird aktiv; in der Eröffnung muss sie dabei gegnerische Tempi vermeiden."
     return "Der Königszug verändert Sicherheit und Figurenkoordination."
+
+
+def _square_list(squares: chess.SquareSet) -> str:
+    names = [chess.square_name(square) for square in squares]
+    if not names:
+        return "keine Felder"
+    if len(names) == 1:
+        return names[0]
+    return f"{', '.join(names[:-1])} und {names[-1]}"
+
+
+def _tactical_contrast(board: chess.Board, move: chess.Move, analysis: MoveAnalysis) -> str:
+    """Explain one mechanically verifiable reason for an engine alternative."""
+    if not analysis.available or not analysis.best_move_uci:
+        return ""
+    try:
+        best = chess.Move.from_uci(analysis.best_move_uci)
+    except (chess.InvalidMoveError, ValueError):
+        return ""
+    if best not in board.legal_moves or best == move or best.from_square == move.from_square:
+        return ""
+
+    piece = board.piece_at(best.from_square)
+    if piece is None or piece.color != board.turn:
+        return ""
+    attackers = board.attackers(not board.turn, best.from_square)
+    if not attackers:
+        return ""
+
+    projected = board.copy(stack=False)
+    projected.push(move)
+    remaining = projected.piece_at(best.from_square)
+    if remaining != piece or not projected.attackers(not board.turn, best.from_square):
+        return ""
+
+    piece_name, possessive, accusative = {
+        chess.PAWN: ("Bauer", "dein", "den Bauern"),
+        chess.KNIGHT: ("Springer", "dein", "den Springer"),
+        chess.BISHOP: ("Läufer", "dein", "den Läufer"),
+        chess.ROOK: ("Turm", "dein", "den Turm"),
+        chess.QUEEN: ("Dame", "deine", "die Dame"),
+        chess.KING: ("König", "dein", "den König"),
+    }[piece.piece_type]
+    attacked_square = chess.square_name(best.from_square)
+    played_san = board.san(move)
+    best_san = board.san(best)
+    best_position = board.copy(stack=False)
+    best_position.push(best)
+    if best_position.attackers(not board.turn, best.to_square):
+        response = f"{best_san} reagiert dagegen unmittelbar mit dieser Figur."
+    else:
+        response = f"{best_san} bringt {accusative} aus dem Angriff."
+    return (
+        f"Vor {played_san} ist {possessive} {piece_name} auf {attacked_square} angegriffen. "
+        f"{played_san} lässt diesen Angriff bestehen; {response}"
+    )

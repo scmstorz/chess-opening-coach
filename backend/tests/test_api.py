@@ -24,6 +24,7 @@ def test_api_session_and_move_round_trip() -> None:
         suggested = client.post(f"/api/sessions/{session.json()['session_id']}/suggestion")
 
         assert suggested.status_code == 200
+        assert suggested.json()["basis"] == "theory"
         assert suggested.json()["move_uci"] in session.json()["legal_moves"]
         assert suggested.json()["move_san"]
 

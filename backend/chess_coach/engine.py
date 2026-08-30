@@ -139,6 +139,25 @@ class StockfishService:
             except (OSError, chess.engine.EngineError, KeyError) as exc:
                 return unavailable_analysis(str(exc))
 
+    def get_best_move(self, board: chess.Board) -> tuple[chess.Move | None, MoveAnalysis]:
+        """Return Stockfish's preferred move and its verified move analysis."""
+        probe_move = next(iter(board.legal_moves), None)
+        if probe_move is None:
+            return None, unavailable_analysis("Die Partie enthält keinen legalen Zug mehr")
+
+        probe = self.analyze_move(board, probe_move)
+        if not probe.available or not probe.best_move_uci:
+            return None, probe
+        try:
+            best_move = chess.Move.from_uci(probe.best_move_uci)
+        except (chess.InvalidMoveError, ValueError):
+            return None, unavailable_analysis("Stockfish lieferte keinen gültigen besten Zug")
+        if best_move not in board.legal_moves:
+            return None, unavailable_analysis("Stockfish lieferte einen illegalen besten Zug")
+        if best_move == probe_move:
+            return best_move, probe
+        return best_move, self.analyze_move(board, best_move)
+
     def close(self) -> None:
         with self._lock:
             if self._engine:

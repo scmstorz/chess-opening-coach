@@ -73,19 +73,30 @@ frequency. Coach candidates are checked with Stockfish; a candidate losing at
 least 0.40 pawns is replaced by the current engine best move.
 
 The learner's move suggestion uses the same truth boundary but has no game-side
-effects. It considers up to five of the most represented legal theory edges in
-order and selects the first candidate losing less than 0.40 pawns in Stockfish.
-If no candidate clears that safety threshold, the least-losing theory candidate
-is used. Without Stockfish, the highest-ranked local theory edge remains the
-offline fallback. The response marks its source and destination squares and
-gives a deterministic concept explanation; it neither plays the move nor adds a
-learner interaction. The SQLite engine cache may still be populated.
+effects. While local theory edges exist, it considers up to five of the most
+represented legal edges and selects the first candidate losing less than 0.40
+pawns in Stockfish. If no candidate clears that safety threshold, the
+least-losing theory candidate is used. Without Stockfish, the highest-ranked
+local theory edge remains the offline fallback.
+
+After the local opening graph ends, Stockfish supplies its current preferred
+legal move directly. The response includes a `basis` discriminator and the UI
+labels it as an `Engine-Vorschlag`, not as opening theory. This avoids turning a
+coverage boundary into a false claim about the quality or status of the
+position. Post-theory suggestions require Stockfish; if it is unavailable, the
+service reports that limitation instead of inventing a move. Both suggestion
+types mark source and destination and give a deterministic concept explanation;
+neither plays the move nor adds a learner interaction. The SQLite engine cache
+may still be populated.
 
 ```text
 local theory edges
   -> top five by dataset coverage
   -> Stockfish safety check
-  -> mark one sound theory move
+  -> mark one sound theory move [basis: theory]
+no local theory edge
+  -> Stockfish preferred legal move
+  -> mark engine move [basis: engine]
   -> learner decides and plays
 ```
 
@@ -110,6 +121,15 @@ only that draft. Generated numbers and opening terminology are checked; output
 that appears to add unsupported facts is discarded in favor of the deterministic
 text.
 
+Expanded move details are intentionally a separate information layer, not a
+longer copy of the summary. Pawn explanations enumerate their verified before-
+and-after controlled squares. When the best engine move relocates an already
+attacked piece and the played move leaves it attacked, the service derives that
+contrast from `python-chess`. Short principal variations then show the engine's
+concrete calculation. The active Ollama model may make these facts easier to
+read, but must preserve concrete move, square, and number anchors inside the
+detail layer. The runtime does not merge unverified prose from multiple models.
+
 The initial real-world test justified this boundary: `qwen3.8:27b-mlx`, running
 through Ollama, incorrectly called `1...g6` a King's Gambit line. An integration
 bug had also supplied the broader pre-move opening identity instead of the newly
@@ -124,7 +144,7 @@ browser sends the question and, when present, the currently highlighted
 suggestion. The service verifies that the referenced move is legal in the
 unchanged session position. An explicitly named legal SAN/UCI move in the
 question takes precedence over the highlighted move; otherwise the service uses
-the highest-ranked engine-safe theory candidate as a concrete anchor.
+the same theory-first, Stockfish-after-theory selection as the visible hint.
 
 ```text
 user question + current FEN + optional highlighted move

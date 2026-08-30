@@ -117,6 +117,37 @@ reached identity, but neither context contained the invented King's Gambit
 claim. The ordering bug was fixed, and the hardened flow rejected subsequent
 unsupported expansions while retaining useful local explanations.
 
+## Grounded position questions
+
+Position questions use the same verified-answer pattern as move feedback. The
+browser sends the question and, when present, the currently highlighted
+suggestion. The service verifies that the referenced move is legal in the
+unchanged session position. An explicitly named legal SAN/UCI move in the
+question takes precedence over the highlighted move; otherwise the service uses
+the highest-ranked engine-safe theory candidate as a concrete anchor.
+
+```text
+user question + current FEN + optional highlighted move
+  -> resolve and validate one legal move with python-chess
+  -> check local theory membership and resulting opening identity
+  -> analyze the move and a short PV with Stockfish
+  -> build atomic, deterministic German answer facts
+  -> let Ollama select only the fact IDs most relevant to the question
+  -> render the selected verified text or use the deterministic fallback
+```
+
+The user question itself is treated as untrusted context, not as evidence. The
+answer is added to the in-memory conversation feed but not recorded as a move or
+learner attempt in SQLite. If the local theory graph provides no safe anchor,
+the coach states that limitation instead of inventing an explanation.
+
+The initial implementation briefly allowed Ollama to paraphrase the complete
+answer. A live `Warum ist dieser Zug gut?` test caused Qwen to add an unsupported
+claim about the absence of tactical or material drawbacks. The question adapter
+was therefore tightened before release: the model can now select only IDs from
+an allowlisted set of already written facts. This preserves adaptive
+emphasis while making novel chess prose structurally impossible in this path.
+
 ## Persistence
 
 SQLite stores interactions and cached Stockfish results. Games are held in

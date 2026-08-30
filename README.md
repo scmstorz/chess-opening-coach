@@ -28,6 +28,7 @@ separate sources of information.
 - Progressive opening recognition across 3,810 local Lichess opening entries
 - Theory-aware and Stockfish-checked coach moves
 - Non-playing `Zug vorschlagen` hint with source/target highlighting
+- Grounded follow-up questions about the current position or suggested move
 - Visible engine evaluation using the standard White-positive convention
 - German feedback after every learner and coach move
 - Expandable explanation detail
@@ -37,9 +38,9 @@ separate sources of information.
 - Local SQLite interaction history and Stockfish cache
 - Responsive layout and keyboard-focusable board squares
 
-The first milestone intentionally does not yet include free-form position
-questions, deliberate opponent inaccuracies, opening summaries, PGN export,
-review recommendations, or timed 10+0 simulation.
+The first milestone intentionally does not yet include deliberate opponent
+inaccuracies, opening summaries, PGN export, review recommendations, or timed
+10+0 simulation.
 
 ## Prerequisites
 

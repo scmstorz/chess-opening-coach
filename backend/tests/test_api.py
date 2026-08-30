@@ -27,6 +27,18 @@ def test_api_session_and_move_round_trip() -> None:
         assert suggested.json()["move_uci"] in session.json()["legal_moves"]
         assert suggested.json()["move_san"]
 
+        answered = client.post(
+            f"/api/sessions/{session.json()['session_id']}/questions",
+            json={
+                "question": "Warum ist dieser Zug gut?",
+                "focus_move_uci": suggested.json()["move_uci"],
+            },
+        )
+
+        assert answered.status_code == 200
+        assert answered.json()["message"]["kind"] == "question"
+        assert answered.json()["message"]["move"] == suggested.json()["move_san"]
+
         played = client.post(
             f"/api/sessions/{session.json()['session_id']}/moves",
             json={"from_square": "e2", "to_square": "e4"},
@@ -39,5 +51,5 @@ def test_api_session_and_move_round_trip() -> None:
 
         assert undone.status_code == 200
         assert undone.json()["move_history"] == []
-        assert undone.json()["message_history"] == []
+        assert undone.json()["message_history"] == answered.json()["message_history"]
         assert undone.json()["can_undo"] is False

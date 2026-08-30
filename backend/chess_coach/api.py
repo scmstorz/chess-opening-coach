@@ -25,6 +25,11 @@ class MoveRequest(BaseModel):
     promotion: str | None = Field(default=None, pattern="^[qrbn]$")
 
 
+class QuestionRequest(BaseModel):
+    question: str = Field(min_length=2, max_length=600)
+    focus_move_uci: str | None = Field(default=None, pattern="^[a-h][1-8][a-h][1-8][qrbn]?$")
+
+
 def build_service(settings: Settings | None = None) -> CoachService:
     settings = settings or Settings()
     store = SQLiteStore(settings.database_path)
@@ -106,6 +111,17 @@ def create_app(service: CoachService | None = None) -> FastAPI:
     def suggest_move(session_id: Annotated[str, Path(min_length=1)]) -> dict[str, Any]:
         try:
             return coach.suggest_move(session_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/sessions/{session_id}/questions")
+    def answer_question(
+        session_id: Annotated[str, Path(min_length=1)], request: QuestionRequest
+    ) -> dict[str, Any]:
+        try:
+            return coach.answer_question(session_id, request.question, request.focus_move_uci)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:

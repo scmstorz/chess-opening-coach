@@ -24,6 +24,8 @@
    has no product value and removes it in favor of immediate play.
 10. A requested move hint becomes another example of verified AI architecture:
     theory proposes, Stockfish checks, and the learner retains agency.
+11. The hint immediately triggers a natural “why?” question, turning a disabled
+    UI placeholder into the next grounded vertical slice.
 
 ## Evidence already captured
 
@@ -34,6 +36,7 @@
 - Automated backend, rendered-page, lint, and build checks
 - Measured local-model behavior and real end-to-end examples
 - A concrete course correction from unsafe generation to verified paraphrasing
+- Comparable local chess benchmarks for Qwen, Glimmer, Ornith, and GPT-OSS
 
 ## Questions for later evaluation
 

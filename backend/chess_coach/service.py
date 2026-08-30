@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import re
 import threading
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -203,40 +204,7 @@ class CoachService:
             if session.board.turn != session.learner_color:
                 raise ValueError("Der Coach ist am Zug")
 
-            theory_moves = self.openings.theory_moves(session.board)
-            if not theory_moves:
-                raise ValueError(
-                    "Für diese Stellung ist kein Zug in der lokalen Eröffnungstheorie hinterlegt"
-                )
-
-            candidates: list[tuple[TheoryMove, MoveAnalysis]] = []
-            selected: tuple[TheoryMove, MoveAnalysis] | None = None
-            for candidate in theory_moves[:5]:
-                analysis = self.engine.analyze_move(
-                    session.board, chess.Move.from_uci(candidate.uci)
-                )
-                candidates.append((candidate, analysis))
-                if (
-                    analysis.available
-                    and analysis.loss_pawns is not None
-                    and analysis.loss_pawns < 0.40
-                ):
-                    selected = (candidate, analysis)
-                    break
-
-            if selected:
-                theory_move, analysis = selected
-            else:
-                engine_candidates = [
-                    item
-                    for item in candidates
-                    if item[1].available and item[1].loss_pawns is not None
-                ]
-                theory_move, analysis = (
-                    min(engine_candidates, key=lambda item: item[1].loss_pawns)
-                    if engine_candidates
-                    else candidates[0]
-                )
+            theory_move, analysis = self._select_theory_suggestion(session.board)
 
             move = chess.Move.from_uci(theory_move.uci)
             projected = session.board.copy(stack=False)
@@ -265,6 +233,195 @@ class CoachService:
                 ),
                 "engine": asdict(analysis),
             }
+
+    def answer_question(
+        self, session_id: str, question: str, focus_move_uci: str | None = None
+    ) -> dict[str, Any]:
+        """Answer a position question from verified theory and engine facts."""
+        session = self._session(session_id)
+        with session.lock:
+            clean_question = question.strip()
+            if not clean_question:
+                raise ValueError("Bitte gib eine Frage ein")
+
+            board = session.board
+            move = self._mentioned_legal_move(board, clean_question)
+            if move is None and focus_move_uci:
+                try:
+                    focused = chess.Move.from_uci(focus_move_uci)
+                except (chess.InvalidMoveError, ValueError) as exc:
+                    raise ValueError("Der Bezugszug ist ungültig") from exc
+                if focused not in board.legal_moves:
+                    raise ValueError("Der Bezugszug passt nicht mehr zur aktuellen Stellung")
+                move = focused
+
+            precomputed_analysis: MoveAnalysis | None = None
+            if move is None:
+                try:
+                    theory_move, precomputed_analysis = self._select_theory_suggestion(board)
+                    move = chess.Move.from_uci(theory_move.uci)
+                except ValueError:
+                    move = None
+
+            if move is None:
+                fallback = TutorText(
+                    summary=(
+                        "Für diese Stellung enthalten die lokalen Eröffnungsdaten keinen weiteren "
+                        "Zug, auf den ich die Frage sicher beziehen kann."
+                    ),
+                    details=(
+                        "Ich möchte keine Begründung erfinden. Nenne einen konkreten legalen Zug "
+                        "oder beginne eine neue Eröffnungsstellung."
+                    ),
+                    source="deterministic",
+                    model=None,
+                )
+                text = fallback
+                analysis = None
+                san = None
+                theory_match = False
+                opening = session.opening
+            else:
+                san = board.san(move)
+                theory_moves = self.openings.theory_moves(board)
+                theory_match = move.uci() in {candidate.uci for candidate in theory_moves}
+                analysis = precomputed_analysis or self.engine.analyze_move(board, move)
+                projected = board.copy(stack=False)
+                projected.push(move)
+                opening = self.openings.identify(projected, session.opening)
+                fallback, answer_facts = self._question_fallback(
+                    board, san, move, theory_match, analysis, opening
+                )
+                facts = {
+                    "task": "Beantworte die Rückfrage zur aktuellen Stellung.",
+                    "user_question": clean_question,
+                    "fen": board.fen(),
+                    "side_to_move": "white" if board.turn == chess.WHITE else "black",
+                    "focus_move": {"uci": move.uci(), "san": san},
+                    "opening": asdict(opening) if opening else None,
+                    "theory_match": theory_match,
+                    "theory_moves": [candidate.san for candidate in theory_moves[:5]],
+                    "engine": asdict(analysis),
+                    "answer_facts": answer_facts,
+                }
+                text = self.tutor.answer_question(facts, fallback)
+
+            message = {
+                "kind": "question",
+                "actor": "coach",
+                "question": clean_question,
+                "move": san,
+                "summary": text.summary,
+                "details": text.details,
+                "source": text.source,
+                "model": text.model,
+                "attempt": None,
+                "engine": asdict(analysis) if analysis else None,
+            }
+            session.message_history.append(message)
+            return {"message": message, "message_history": session.message_history}
+
+    def _select_theory_suggestion(self, board: chess.Board) -> tuple[TheoryMove, MoveAnalysis]:
+        theory_moves = self.openings.theory_moves(board)
+        if not theory_moves:
+            raise ValueError(
+                "Für diese Stellung ist kein Zug in der lokalen Eröffnungstheorie hinterlegt"
+            )
+
+        candidates: list[tuple[TheoryMove, MoveAnalysis]] = []
+        for candidate in theory_moves[:5]:
+            analysis = self.engine.analyze_move(board, chess.Move.from_uci(candidate.uci))
+            candidates.append((candidate, analysis))
+            if (
+                analysis.available
+                and analysis.loss_pawns is not None
+                and analysis.loss_pawns < 0.40
+            ):
+                return candidate, analysis
+
+        engine_candidates = [
+            item for item in candidates if item[1].available and item[1].loss_pawns is not None
+        ]
+        return (
+            min(engine_candidates, key=lambda item: item[1].loss_pawns)
+            if engine_candidates
+            else candidates[0]
+        )
+
+    @staticmethod
+    def _mentioned_legal_move(board: chess.Board, question: str) -> chess.Move | None:
+        for move in board.legal_moves:
+            san = board.san(move).rstrip("+#")
+            if re.search(rf"(?<![A-Za-z0-9]){re.escape(san)}(?![A-Za-z0-9])", question, re.I):
+                return move
+            if move.uci().lower() in question.lower():
+                return move
+        return None
+
+    def _question_fallback(
+        self,
+        board: chess.Board,
+        san: str,
+        move: chess.Move,
+        theory_match: bool,
+        analysis: MoveAnalysis,
+        opening: OpeningIdentity | None,
+    ) -> tuple[TutorText, list[dict[str, str]]]:
+        if theory_match:
+            theory_text = "Der Zug ist in den lokalen Eröffnungslinien enthalten."
+        else:
+            theory_text = "Der Zug ist legal, aber nicht in den lokalen Eröffnungslinien enthalten."
+
+        if analysis.available and analysis.loss_pawns is not None:
+            if analysis.loss_pawns < 0.15:
+                quality_text = "Stockfish sieht ihn praktisch auf Augenhöhe mit dem besten Zug."
+            elif analysis.loss_pawns < 0.40:
+                quality_text = "Stockfish sieht nur einen kleinen Unterschied zum besten Zug."
+            else:
+                quality_text = (
+                    "Stockfish sieht einen spürbaren Nachteil gegenüber dem besten Zug "
+                    f"{analysis.best_move_san}."
+                )
+        else:
+            quality_text = "Stockfish ist gerade nicht verfügbar."
+
+        opening_text = (
+            f"Nach dem Zug ist die Stellung als {opening.name} eingeordnet. " if opening else ""
+        )
+        concept_text = _move_concept(board, move)
+        pv_moves = " ".join(analysis.played_pv_san[:4])
+        pv_text = f"Eine kurze Stockfish-Prüfvariante beginnt mit: {pv_moves}." if pv_moves else ""
+        if (
+            theory_match
+            and analysis.available
+            and analysis.loss_pawns is not None
+            and analysis.loss_pawns < 0.15
+        ):
+            verdict_text = f"{san} ist hier ein bewährter und objektiv starker Zug."
+        elif theory_match:
+            verdict_text = f"{san} ist hier ein bewährter Eröffnungszug."
+        else:
+            verdict_text = f"{san} ist hier eine legale Alternative."
+
+        fact_values = (
+            ("focus", f"Ich beziehe deine Frage auf {san}."),
+            ("verdict", verdict_text),
+            ("concept", concept_text),
+            ("theory", theory_text),
+            ("engine", quality_text),
+            ("opening", opening_text.strip()),
+            ("pv", pv_text),
+        )
+        answer_facts = [{"id": fact_id, "text": text} for fact_id, text in fact_values if text]
+        fallback = TutorText(
+            summary=f"Ich beziehe deine Frage auf {san}. {verdict_text}",
+            details=" ".join(
+                part for part in (concept_text, theory_text, quality_text, pv_text) if part
+            ),
+            source="deterministic",
+            model=None,
+        )
+        return fallback, answer_facts
 
     def _play_coach_move(self, session: GameSession) -> dict[str, Any]:
         board = session.board

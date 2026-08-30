@@ -18,7 +18,9 @@ type EngineInfo = {
 };
 
 type CoachMessage = {
+  kind?: "move" | "question";
   actor: "learner" | "coach";
+  question?: string;
   move: string | null;
   summary: string;
   details: string;
@@ -64,6 +66,11 @@ type MoveSuggestion = {
   summary: string;
   details: string;
   engine: EngineInfo;
+};
+
+type QuestionResponse = {
+  message: CoachMessage;
+  message_history: CoachMessage[];
 };
 
 type Health = {
@@ -192,11 +199,14 @@ export default function Home() {
   const [displayFen, setDisplayFen] = useState(initialFen);
   const [moveAnimation, setMoveAnimation] = useState<MoveAnimation | null>(null);
   const [suggestion, setSuggestion] = useState<MoveSuggestion | null>(null);
+  const [questionText, setQuestionText] = useState("");
+  const [askingQuestion, setAskingQuestion] = useState(false);
   const [animatingSequence, setAnimatingSequence] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const coachFeedRef = useRef<HTMLDivElement | null>(null);
   const initialSessionRequestedRef = useRef(false);
+  const interactionLocked = loading || askingQuestion;
 
   useEffect(() => {
     api<Health>("/api/health").then(setHealth).catch(() => setHealth(null));
@@ -312,6 +322,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setSuggestion(null);
+    setQuestionText("");
     setDisplayFen(initialFen);
     setMoveAnimation(null);
     try {
@@ -332,7 +343,7 @@ export default function Home() {
   }
 
   async function submitMove(from: string, to: string) {
-    if (!session || loading || session.turn !== session.learner_color) return;
+    if (!session || interactionLocked || session.turn !== session.learner_color) return;
     setSuggestion(null);
     const fenBefore = displayFen;
     const matchingMove = session.legal_moves.find((move) => move.startsWith(`${from}${to}`));
@@ -372,7 +383,7 @@ export default function Home() {
   }
 
   async function undoLastTurn() {
-    if (!session?.can_undo || loading) return;
+    if (!session?.can_undo || interactionLocked) return;
     setLoading(true);
     setError(null);
     setSuggestion(null);
@@ -394,7 +405,7 @@ export default function Home() {
   }
 
   async function requestSuggestion() {
-    if (!session || loading || session.turn !== session.learner_color) return;
+    if (!session || interactionLocked || session.turn !== session.learner_color) return;
     setLoading(true);
     setError(null);
     setSuggestion(null);
@@ -412,8 +423,33 @@ export default function Home() {
     }
   }
 
+  async function askQuestion() {
+    const question = questionText.trim();
+    if (!session || interactionLocked || question.length < 2) return;
+    setAskingQuestion(true);
+    setError(null);
+    try {
+      const response = await api<QuestionResponse>(
+        `/api/sessions/${session.session_id}/questions`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            question,
+            focus_move_uci: suggestion?.move_uci,
+          }),
+        },
+      );
+      setMessages(response.message_history);
+      setQuestionText("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Die Frage konnte nicht beantwortet werden.");
+    } finally {
+      setAskingQuestion(false);
+    }
+  }
+
   function selectOrMove(square: string) {
-    if (!session || loading) return;
+    if (!session || interactionLocked) return;
     const piece = position[square];
     if (selectedSquare && legalTargets.has(square)) {
       void submitMove(selectedSquare, square);
@@ -457,7 +493,7 @@ export default function Home() {
               {(["white", "black", "random"] as PlayerColor[]).map((color) => (
                 <button
                   className={requestedColor === color ? "color-option active" : "color-option"}
-                  disabled={loading}
+                  disabled={interactionLocked}
                   key={color}
                   onClick={() => void startSession(color)}
                   aria-pressed={requestedColor === color}
@@ -477,14 +513,14 @@ export default function Home() {
             </div>
 
             <div className={`board-frame${loading && !animatingSequence ? " thinking" : ""}`}>
-              <div className="chessboard" aria-disabled={!session || loading} aria-label="Interaktives Schachbrett">
+              <div className="chessboard" aria-disabled={!session || interactionLocked} aria-label="Interaktives Schachbrett">
                 {orientedSquares.map((square, index) => {
                   const piece = position[square];
                   const file = square[0];
                   const rank = square[1];
                   const isLight = (files.indexOf(file) + Number(rank)) % 2 === 1;
                   const canDrag = Boolean(
-                    session && piece?.color === session.learner_color && session.turn === session.learner_color,
+                    session && !interactionLocked && piece?.color === session.learner_color && session.turn === session.learner_color,
                   );
                   return (
                     <button
@@ -535,7 +571,7 @@ export default function Home() {
                 {session && (
                   <button
                     className="secondary-action"
-                    disabled={loading || !session.can_undo}
+                    disabled={interactionLocked || !session.can_undo}
                     onClick={() => void undoLastTurn()}
                     title="Nimmt deinen letzten Zug und die Coach-Antwort zurück"
                     type="button"
@@ -545,14 +581,14 @@ export default function Home() {
                 )}
                 <button
                   className="secondary-action suggestion-action"
-                  disabled={!session || loading || session.turn !== session.learner_color || session.game_over}
+                  disabled={!session || interactionLocked || session.turn !== session.learner_color || session.game_over}
                   onClick={() => void requestSuggestion()}
                   title="Markiert einen bewährten, von Stockfish geprüften Eröffnungszug"
                   type="button"
                 >
                   <span aria-hidden="true">✦</span>Zug vorschlagen
                 </button>
-                <button className="primary-action" onClick={() => void startSession()} disabled={loading} type="button">
+                <button className="primary-action" onClick={() => void startSession()} disabled={interactionLocked} type="button">
                   Neue Partie<span aria-hidden="true">→</span>
                 </button>
               </div>
@@ -605,10 +641,11 @@ export default function Home() {
               </article>
             ) : (
               messages.map((message, index) => (
-                <article className={`coach-message ${message.actor}`} key={`${index}-${message.move}-${message.summary}`}>
+                <article className={`coach-message ${message.actor}${message.kind === "question" ? " question-answer" : ""}`} key={`${index}-${message.move}-${message.question ?? message.summary}`}>
                   <span className="message-index">{String(index + 1).padStart(2, "0")}</span>
                   <div>
-                    <small className="message-author">{message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
+                    <small className="message-author">{message.kind === "question" ? "Antwort zur Frage" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
+                    {message.question && <blockquote className="question-quote">„{message.question}“</blockquote>}
                     <p>{message.summary}</p>
                     <details><summary>Erklärung aufklappen</summary><p>{message.details}</p></details>
                   </div>
@@ -625,8 +662,20 @@ export default function Home() {
 
           <div className="question-box">
             <label htmlFor="coach-question">Frage zur Stellung</label>
-            <div><input id="coach-question" placeholder="Warum ist e4 hier sinnvoll?" disabled /><button type="button" disabled aria-label="Frage senden">↑</button></div>
-            <small>Freie Rückfragen folgen im nächsten Ausbau</small>
+            <form onSubmit={(event) => { event.preventDefault(); void askQuestion(); }}>
+              <input
+                id="coach-question"
+                onChange={(event) => setQuestionText(event.target.value)}
+                placeholder={suggestion ? `Warum ist ${suggestion.move_san} hier gut?` : "Warum ist e4 hier sinnvoll?"}
+                value={questionText}
+                disabled={!session || interactionLocked}
+                maxLength={600}
+              />
+              <button type="submit" disabled={!session || interactionLocked || questionText.trim().length < 2} aria-label="Frage senden">
+                {askingQuestion ? "…" : "↑"}
+              </button>
+            </form>
+            <small>{askingQuestion ? "Der lokale Tutor formuliert aus geprüften Fakten …" : `Geerdet mit Stellung, Eröffnungstheorie und Stockfish${health?.ollama.model ? ` · ${health.ollama.model}` : ""}`}</small>
           </div>
         </aside>
       </section>

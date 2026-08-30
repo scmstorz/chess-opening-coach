@@ -104,3 +104,34 @@ def test_suggestion_is_theory_grounded_and_does_not_change_the_session() -> None
     assert unchanged.move_history == []
     assert unchanged.message_history == []
     assert coach.store.summary()["attempts"] == 0
+
+
+def test_question_about_suggestion_is_grounded_without_playing_the_move() -> None:
+    coach = service()
+    session = coach.create_session("white")
+    suggestion = coach.suggest_move(session["session_id"])
+
+    response = coach.answer_question(
+        session["session_id"],
+        "Warum ist dieser Zug gut?",
+        suggestion["move_uci"],
+    )
+    unchanged = coach.sessions[session["session_id"]]
+
+    assert response["message"]["kind"] == "question"
+    assert response["message"]["question"] == "Warum ist dieser Zug gut?"
+    assert response["message"]["move"] == suggestion["move_san"]
+    assert response["message"]["source"] == "deterministic"
+    assert response["message"]["engine"]["loss_pawns"] < 0.40
+    assert unchanged.board.fen() == session["fen"]
+    assert unchanged.move_history == []
+    assert unchanged.message_history == response["message_history"]
+    assert coach.store.summary()["attempts"] == 0
+
+    alternative = coach.answer_question(
+        session["session_id"],
+        "Warum nicht d4?",
+        suggestion["move_uci"],
+    )
+
+    assert alternative["message"]["move"] == "d4"

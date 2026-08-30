@@ -121,6 +121,65 @@ class OllamaTutor:
             self.last_error = f"{type(exc).__name__}: {exc}"
             return fallback
 
+    def answer_question(self, facts: dict[str, Any], fallback: TutorText) -> TutorText:
+        """Let the model select verified facts without allowing it to write chess claims."""
+        if not self.model:
+            self.status()
+        if not self.model:
+            return fallback
+        answer_facts = {
+            str(item["id"]): str(item["text"])
+            for item in facts.get("answer_facts", [])
+            if item.get("id") and item.get("text")
+        }
+        if not answer_facts:
+            return fallback
+        payload = {
+            "model": self.model,
+            "stream": False,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Wähle für einen Schachschüler die verifizierten answer_facts aus, die "
+                        "seine user_question am direktesten beantworten. Antworte nur mit den "
+                        "IDs vorhandener Fakten. Schreibe und ergänze keinerlei Schachtext. "
+                        "Nutze für summary 1 bis 2 zentrale IDs und für details 1 bis 4 weitere "
+                        "hilfreiche IDs. Wiederhole keine ID. Antworte ausschließlich als "
+                        'JSON-Objekt der Form {"summary_fact_ids":["id"],'
+                        '"detail_fact_ids":["id"]}.'
+                    ),
+                },
+                {"role": "user", "content": json.dumps(facts, ensure_ascii=False)},
+            ],
+            "think": False,
+            "options": {"temperature": 0, "num_predict": 240},
+        }
+        try:
+            body = self._request("/api/chat", payload)
+            content = _parse_model_json(body["message"]["content"])
+            summary_ids = [str(item) for item in content["summary_fact_ids"]]
+            detail_ids = [str(item) for item in content["detail_fact_ids"]]
+            selected_ids = summary_ids + detail_ids
+            if (
+                not summary_ids
+                or not detail_ids
+                or len(selected_ids) != len(set(selected_ids))
+                or any(fact_id not in answer_facts for fact_id in selected_ids)
+            ):
+                raise ValueError("Ollama selected invalid or duplicate fact IDs")
+            result = TutorText(
+                summary=" ".join(answer_facts[fact_id] for fact_id in summary_ids),
+                details=" ".join(answer_facts[fact_id] for fact_id in detail_ids),
+                source="ollama-selection",
+                model=self.model,
+            )
+            self.last_error = None
+            return result
+        except (RuntimeError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            self.last_error = f"{type(exc).__name__}: {exc}"
+            return fallback
+
     def _models(self) -> list[str]:
         body = self._request("/api/tags")
         return [str(model["name"]) for model in body.get("models", []) if model.get("name")]

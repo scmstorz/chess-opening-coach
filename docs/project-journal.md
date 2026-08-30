@@ -702,6 +702,60 @@ are clean, the production build and rendered-shell test pass, and an end-to-end
 request returned the theory move `1.e4` with Stockfish 18 verification in 0.16
 seconds. An immediate stop/start cycle also succeeded on ports 53686/53687.
 
+### Suggested moves exposed the next learning interaction
+
+The first use of `Zug vorschlagen` immediately produced the natural follow-up
+question “Warum ist dieser Zug gut?”. The visible question field was still a
+disabled roadmap placeholder, which made the otherwise coherent learning flow
+stop exactly where understanding should begin. This observation promoted
+grounded position questions into the next vertical slice.
+
+The browser now sends the question together with the current session and the
+highlighted suggestion. The backend validates the reference against the current
+legal moves, checks its local-theory membership and resulting opening identity,
+and asks Stockfish for quality and a short principal variation. It then creates
+a set of complete deterministic answer facts. The question is context, never
+chess evidence. The answer appears in the same scrolling feed and retains the
+original question. Asking changes neither the board nor the SQLite learner
+statistics.
+
+An explicitly written legal SAN or UCI move overrides the highlighted
+suggestion, preventing a question such as “Warum nicht d4?” from accidentally
+receiving an explanation of the prior hint. If no move is named and no hint is
+active, the service uses the same highest-ranked, engine-safe theory candidate
+as the suggestion feature. If local theory has ended, it says that the facts are
+insufficient rather than improvising.
+
+GPT-OSS 20B was added to the existing local chess benchmark before choosing a
+model for this interaction. It scored 6/6 opening names and 7/7 concept choices,
+including the adversarial false-premise case, with valid JSON. This is the best
+raw result in the small benchmark alongside Glimmer. However, GPT-OSS returned
+no parseable visible content through the current schema-constrained grounded
+adapter and fell back after 0.47 seconds. Qwen remains the production default
+because its adapter behavior is currently more reliable; GPT-OSS is now the
+leading candidate for provider-specific adapter tuning, not a new source of
+chess truth.
+
+The first live Qwen question initially looked fluent but added the sentence that
+there were no tactical disadvantages or material losses. Neither claim existed
+in the Stockfish data or deterministic answer, and the earlier lexical validator
+did not catch the semantic expansion. This became a second concrete grounding
+failure. Before release, the question adapter was changed from free
+paraphrasing to verified-fact selection: Ollama receives atomic explanation
+blocks and may return only their IDs in a small JSON object. The backend renders
+the original verified sentences. Every returned ID is checked against an
+allowlist. Thus the model can decide which facts best
+answer “why?”, “theory?”, or “best move?”, but cannot write a new chess claim.
+
+The hardened live test succeeded with Qwen. For “Warum ist dieser Zug gut?”
+after the `e4` suggestion, the model selected the verified verdict, central-space
+concept, theory membership, and engine-quality facts in 2.97 seconds. The
+rendered prose contained no model-authored chess sentence. A second question,
+“Warum nicht d4?”, correctly overrode the still-highlighted `e4`, analyzed `d4`,
+and returned its verified concept and principal variation. The final automated
+state is 15 passing Python tests plus clean Python/web lint, production build,
+and rendered-shell test.
+
 ### First-slice verification evidence
 
 At the time of this journal entry:

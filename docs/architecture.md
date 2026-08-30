@@ -72,6 +72,23 @@ them. This is useful as an offline coverage proxy but not equivalent to game
 frequency. Coach candidates are checked with Stockfish; a candidate losing at
 least 0.40 pawns is replaced by the current engine best move.
 
+The learner's move suggestion uses the same truth boundary but has no game-side
+effects. It considers up to five of the most represented legal theory edges in
+order and selects the first candidate losing less than 0.40 pawns in Stockfish.
+If no candidate clears that safety threshold, the least-losing theory candidate
+is used. Without Stockfish, the highest-ranked local theory edge remains the
+offline fallback. The response marks its source and destination squares and
+gives a deterministic concept explanation; it neither plays the move nor adds a
+learner interaction. The SQLite engine cache may still be populated.
+
+```text
+local theory edges
+  -> top five by dataset coverage
+  -> Stockfish safety check
+  -> mark one sound theory move
+  -> learner decides and plays
+```
+
 ## Engine semantics
 
 Scores are stored and displayed from White's perspective:

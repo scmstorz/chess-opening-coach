@@ -24,13 +24,16 @@ separate sources of information.
 - Local browser UI with a drag-and-drop and click-to-move chessboard
 - Stable local URL at `http://localhost:53687/` with explicit port overrides
 - White, Black, and random learner color
+- Immediately playable White game on page load; choosing a color starts a fresh game
 - Progressive opening recognition across 3,810 local Lichess opening entries
 - Theory-aware and Stockfish-checked coach moves
+- Non-playing `Zug vorschlagen` hint with source/target highlighting
 - Visible engine evaluation using the standard White-positive convention
 - German feedback after every learner and coach move
 - Expandable explanation detail
 - Ollama explanations with deterministic grounding fallback
 - Three-attempt correction loop for materially bad moves
+- Full-turn undo that removes both learner and coach responses
 - Local SQLite interaction history and Stockfish cache
 - Responsive layout and keyboard-focusable board squares
 

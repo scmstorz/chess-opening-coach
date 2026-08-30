@@ -20,6 +20,10 @@
    and changes the implementation.
 8. The first vertical slice proves a full move cycle and records evidence for
    future learning features.
+9. Hands-on use first improves an explicit start gate, then shows that the gate
+   has no product value and removes it in favor of immediate play.
+10. A requested move hint becomes another example of verified AI architecture:
+    theory proposes, Stockfish checks, and the learner retains agency.
 
 ## Evidence already captured
 
@@ -41,4 +45,3 @@
 - How often does the grounding validator fall back, and does that harm perceived
   quality?
 - Does opening understanding transfer to fewer early errors in real games?
-

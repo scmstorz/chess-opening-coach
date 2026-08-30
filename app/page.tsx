@@ -57,6 +57,15 @@ type SessionState = {
   game_over: boolean;
 };
 
+type MoveSuggestion = {
+  move_uci: string;
+  move_san: string;
+  opening: { eco: string; name: string } | null;
+  summary: string;
+  details: string;
+  engine: EngineInfo;
+};
+
 type Health = {
   status: string;
   openings: { source: string; entries: number };
@@ -182,13 +191,30 @@ export default function Home() {
   const [draggedFrom, setDraggedFrom] = useState<string | null>(null);
   const [displayFen, setDisplayFen] = useState(initialFen);
   const [moveAnimation, setMoveAnimation] = useState<MoveAnimation | null>(null);
+  const [suggestion, setSuggestion] = useState<MoveSuggestion | null>(null);
   const [animatingSequence, setAnimatingSequence] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const coachFeedRef = useRef<HTMLDivElement | null>(null);
+  const initialSessionRequestedRef = useRef(false);
 
   useEffect(() => {
     api<Health>("/api/health").then(setHealth).catch(() => setHealth(null));
+  }, []);
+
+  useEffect(() => {
+    if (initialSessionRequestedRef.current) return;
+    initialSessionRequestedRef.current = true;
+    api<SessionState>("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ color: "white" }),
+    }).then((next) => {
+      setSession(next);
+      setMessages(next.message_history);
+      setDisplayFen(next.fen);
+    }).catch((caught) => {
+      setError(caught instanceof Error ? caught.message : "Der lokale Coach ist nicht erreichbar.");
+    });
   }, []);
 
   useEffect(() => {
@@ -235,6 +261,9 @@ export default function Home() {
     );
   }, [selectedSquare, session]);
 
+  const suggestedFrom = suggestion?.move_uci.slice(0, 2);
+  const suggestedTo = suggestion?.move_uci.slice(2, 4);
+
   const latestEngine = [...messages].reverse().find((message) => message.engine?.available)?.engine;
   const evaluation = latestEngine?.evaluation_played ?? 0;
   const evaluationWidth = Math.max(6, Math.min(94, 50 + evaluation * 8));
@@ -278,15 +307,17 @@ export default function Home() {
     setAnimatingSequence(false);
   }
 
-  async function startSession() {
+  async function startSession(color: PlayerColor = requestedColor) {
+    setRequestedColor(color);
     setLoading(true);
     setError(null);
+    setSuggestion(null);
     setDisplayFen(initialFen);
     setMoveAnimation(null);
     try {
       const next = await api<SessionState>("/api/sessions", {
         method: "POST",
-        body: JSON.stringify({ color: requestedColor }),
+        body: JSON.stringify({ color }),
       });
       setSession(next);
       setMessages(next.message_history);
@@ -302,6 +333,7 @@ export default function Home() {
 
   async function submitMove(from: string, to: string) {
     if (!session || loading || session.turn !== session.learner_color) return;
+    setSuggestion(null);
     const fenBefore = displayFen;
     const matchingMove = session.legal_moves.find((move) => move.startsWith(`${from}${to}`));
     const optimisticFen = matchingMove ? visualFenAfterMove(fenBefore, matchingMove) : fenBefore;
@@ -343,6 +375,7 @@ export default function Home() {
     if (!session?.can_undo || loading) return;
     setLoading(true);
     setError(null);
+    setSuggestion(null);
     setMoveAnimation(null);
     try {
       const next = await api<SessionState>(`/api/sessions/${session.session_id}/undo`, {
@@ -355,6 +388,25 @@ export default function Home() {
       setDraggedFrom(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Der Zug konnte nicht zurückgenommen werden.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function requestSuggestion() {
+    if (!session || loading || session.turn !== session.learner_color) return;
+    setLoading(true);
+    setError(null);
+    setSuggestion(null);
+    setSelectedSquare(null);
+    try {
+      const next = await api<MoveSuggestion>(
+        `/api/sessions/${session.session_id}/suggestion`,
+        { method: "POST" },
+      );
+      setSuggestion(next);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Es konnte kein Zug vorgeschlagen werden.");
     } finally {
       setLoading(false);
     }
@@ -405,8 +457,10 @@ export default function Home() {
               {(["white", "black", "random"] as PlayerColor[]).map((color) => (
                 <button
                   className={requestedColor === color ? "color-option active" : "color-option"}
+                  disabled={loading}
                   key={color}
-                  onClick={() => setRequestedColor(color)}
+                  onClick={() => void startSession(color)}
+                  aria-pressed={requestedColor === color}
                   type="button"
                 >
                   {color === "white" ? "Weiß" : color === "black" ? "Schwarz" : "Zufällig"}
@@ -422,8 +476,8 @@ export default function Home() {
               <p className="evaluation-help">+ bedeutet Vorteil für Weiß · − bedeutet Vorteil für Schwarz</p>
             </div>
 
-            <div className={`board-frame${loading && !animatingSequence ? " thinking" : ""}${session ? "" : " inactive"}`}>
-              <div className="chessboard" aria-disabled={!session} aria-label="Interaktives Schachbrett">
+            <div className={`board-frame${loading && !animatingSequence ? " thinking" : ""}`}>
+              <div className="chessboard" aria-disabled={!session || loading} aria-label="Interaktives Schachbrett">
                 {orientedSquares.map((square, index) => {
                   const piece = position[square];
                   const file = square[0];
@@ -435,7 +489,7 @@ export default function Home() {
                   return (
                     <button
                       aria-label={`${square}${piece ? `, ${piece.color} ${piece.kind}` : ""}`}
-                      className={`square ${isLight ? "light" : "dark"} ${selectedSquare === square ? "selected" : ""} ${legalTargets.has(square) ? "legal-target" : ""}`}
+                      className={`square ${isLight ? "light" : "dark"} ${selectedSquare === square ? "selected" : ""} ${legalTargets.has(square) ? "legal-target" : ""} ${suggestedFrom === square ? "suggested-from" : ""} ${suggestedTo === square ? "suggested-to" : ""}`}
                       key={square}
                       onClick={() => selectOrMove(square)}
                       onDragOver={(event) => event.preventDefault()}
@@ -466,13 +520,6 @@ export default function Home() {
                   </span>
                 )}
               </div>
-              {!session && !loading && (
-                <div className="board-start-overlay">
-                  <strong>Das Brett ist noch nicht aktiv</strong>
-                  <span>Wähle deine Farbe und starte dann das Training.</span>
-                  <button onClick={() => void startSession()} type="button">Training starten</button>
-                </div>
-              )}
               {loading && !animatingSequence && <div className="board-loader">Coach denkt nach …</div>}
             </div>
 
@@ -496,11 +543,31 @@ export default function Home() {
                     <span aria-hidden="true">↶</span>Zug zurück
                   </button>
                 )}
+                <button
+                  className="secondary-action suggestion-action"
+                  disabled={!session || loading || session.turn !== session.learner_color || session.game_over}
+                  onClick={() => void requestSuggestion()}
+                  title="Markiert einen bewährten, von Stockfish geprüften Eröffnungszug"
+                  type="button"
+                >
+                  <span aria-hidden="true">✦</span>Zug vorschlagen
+                </button>
                 <button className="primary-action" onClick={() => void startSession()} disabled={loading} type="button">
-                  {session ? "Neue Partie" : "Training starten"}<span aria-hidden="true">→</span>
+                  Neue Partie<span aria-hidden="true">→</span>
                 </button>
               </div>
             </div>
+
+            {suggestion && (
+              <div className="suggestion-banner" role="status">
+                <span aria-hidden="true">✦</span>
+                <div>
+                  <strong>Vorschlag · {suggestion.move_san}</strong>
+                  <p>{suggestion.summary}</p>
+                  <details><summary>Warum dieser Zug?</summary><p>{suggestion.details}</p></details>
+                </div>
+              </div>
+            )}
 
             {session?.correction && (
               <div className="correction-banner" role="status">
@@ -532,7 +599,7 @@ export default function Home() {
               <article className="coach-message">
                 <span className="message-index">01</span>
                 <div>
-                  <p>Wähle deine Farbe und eröffne die Partie. Ich ordne jeden Zug ein und erkläre dir auch meine Antworten.</p>
+                  <p>Du spielst zunächst Weiß und kannst sofort ziehen. Ich ordne jeden Zug ein und erkläre dir auch meine Antworten.</p>
                   <details><summary>So funktioniert das Training</summary><p>Gute ungewöhnliche Züge bleiben auf dem Brett. Bei einem echten Fehler bekommst du bis zu zwei Hinweise, bevor ich die Lösung zeige.</p></details>
                 </div>
               </article>

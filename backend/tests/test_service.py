@@ -86,3 +86,21 @@ def test_material_mistake_starts_three_attempt_correction_loop() -> None:
     assert second["correction"]["attempt"] == 2
     assert third["correction"] is None
     assert len(third["move_history"]) == 2
+
+
+def test_suggestion_is_theory_grounded_and_does_not_change_the_session() -> None:
+    coach = service()
+    session = coach.create_session("white")
+
+    suggestion = coach.suggest_move(session["session_id"])
+    unchanged = coach.sessions[session["session_id"]]
+
+    assert suggestion["move_uci"] in session["legal_moves"]
+    assert suggestion["move_uci"] in {
+        move.uci for move in coach.openings.theory_moves(unchanged.board)
+    }
+    assert suggestion["engine"]["loss_pawns"] < 0.40
+    assert unchanged.board.fen() == session["fen"]
+    assert unchanged.move_history == []
+    assert unchanged.message_history == []
+    assert coach.store.summary()["attempts"] == 0

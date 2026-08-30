@@ -196,6 +196,76 @@ class CoachService:
             }
             return response
 
+    def suggest_move(self, session_id: str) -> dict[str, Any]:
+        """Return a theory-first, engine-checked hint without changing the game."""
+        session = self._session(session_id)
+        with session.lock:
+            if session.board.turn != session.learner_color:
+                raise ValueError("Der Coach ist am Zug")
+
+            theory_moves = self.openings.theory_moves(session.board)
+            if not theory_moves:
+                raise ValueError(
+                    "Für diese Stellung ist kein Zug in der lokalen Eröffnungstheorie hinterlegt"
+                )
+
+            candidates: list[tuple[TheoryMove, MoveAnalysis]] = []
+            selected: tuple[TheoryMove, MoveAnalysis] | None = None
+            for candidate in theory_moves[:5]:
+                analysis = self.engine.analyze_move(
+                    session.board, chess.Move.from_uci(candidate.uci)
+                )
+                candidates.append((candidate, analysis))
+                if (
+                    analysis.available
+                    and analysis.loss_pawns is not None
+                    and analysis.loss_pawns < 0.40
+                ):
+                    selected = (candidate, analysis)
+                    break
+
+            if selected:
+                theory_move, analysis = selected
+            else:
+                engine_candidates = [
+                    item
+                    for item in candidates
+                    if item[1].available and item[1].loss_pawns is not None
+                ]
+                theory_move, analysis = (
+                    min(engine_candidates, key=lambda item: item[1].loss_pawns)
+                    if engine_candidates
+                    else candidates[0]
+                )
+
+            move = chess.Move.from_uci(theory_move.uci)
+            projected = session.board.copy(stack=False)
+            projected.push(move)
+            opening = self.openings.identify(projected, session.opening)
+            opening_name = opening.name if opening else "den lokalen Eröffnungslinien"
+            if analysis.available and analysis.loss_pawns is not None:
+                quality = (
+                    "Stockfish bewertet ihn als objektiv stark."
+                    if analysis.loss_pawns < 0.15
+                    else "Stockfish bewertet ihn als gut spielbar."
+                )
+            else:
+                quality = (
+                    "Stockfish ist gerade nicht verfügbar; der Hinweis stammt aus der Theorie."
+                )
+
+            return {
+                "move_uci": theory_move.uci,
+                "move_san": theory_move.san,
+                "opening": asdict(opening) if opening else None,
+                "summary": f"{theory_move.san} ist ein bewährter Zug in {opening_name}. {quality}",
+                "details": (
+                    f"{_move_concept(session.board, move)} "
+                    "Der Zug wird nur auf dem Brett markiert; du spielst ihn selbst."
+                ),
+                "engine": asdict(analysis),
+            }
+
     def _play_coach_move(self, session: GameSession) -> dict[str, Any]:
         board = session.board
         fen_before = board.fen()

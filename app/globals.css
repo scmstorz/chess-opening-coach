@@ -58,7 +58,8 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .color-picker { background: #e9e4d9; border-radius: 10px; display: flex; padding: 4px; }
 .color-option { background: transparent; border: 0; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 9px 13px; }
 .color-option.active { background: var(--surface); box-shadow: 0 2px 8px rgba(23, 33, 28, 0.1); }
-.color-option:focus-visible, .primary-action:focus-visible, .square:focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
+.color-option:focus-visible, .primary-action:focus-visible, .secondary-action:focus-visible, .square:focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
+.color-option:disabled { cursor: wait; opacity: .65; }
 
 .board-stage { background: rgba(255, 253, 248, 0.78); border: 1px solid rgba(23, 33, 28, 0.12); border-radius: 20px; box-shadow: 0 24px 70px rgba(43, 52, 46, 0.12); padding: clamp(13px, 2vw, 22px); }
 .evaluation { margin: 2px 0 13px; }
@@ -71,19 +72,16 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .board-frame { background: #384b40; border-radius: 8px; box-shadow: 0 12px 30px rgba(23, 33, 28, 0.2); overflow: hidden; padding: 8px; }
 .board-frame { position: relative; }
 .board-frame.thinking .chessboard { filter: saturate(.9); opacity: .9; }
-.board-frame.inactive .chessboard { filter: saturate(.45); opacity: .62; }
 .board-loader { align-items: center; background: rgba(23, 33, 28, .24); color: #fff; display: flex; font-size: 13px; font-weight: 750; inset: 0; justify-content: center; letter-spacing: .02em; position: absolute; text-shadow: 0 1px 5px rgba(23, 33, 28, .95); z-index: 6; }
-.board-start-overlay { align-items: center; background: rgba(23, 33, 28, .76); color: #fff; display: flex; flex-direction: column; inset: 8px; justify-content: center; padding: 20px; position: absolute; text-align: center; z-index: 5; }
-.board-start-overlay strong { font-family: Georgia, serif; font-size: clamp(20px, 3vw, 30px); font-weight: 500; }
-.board-start-overlay span { color: rgba(255, 255, 255, .82); font-size: 12px; margin-top: 7px; }
-.board-start-overlay button { background: var(--coral); border: 0; border-radius: 8px; color: #fff; cursor: pointer; font-size: 12px; font-weight: 800; margin-top: 18px; padding: 11px 16px; }
-.board-start-overlay button:hover { background: #d96145; }
 .chessboard { display: grid; grid-template-columns: repeat(8, 1fr); width: 100%; }
 .chessboard { position: relative; }
 .square { align-items: center; aspect-ratio: 1; border: 0; cursor: default; display: flex; justify-content: center; min-width: 0; padding: 0; position: relative; }
 .square.light { background: var(--light-square); }
 .square.dark { background: var(--dark-square); }
 .square.selected::after { border: 4px solid rgba(227, 111, 81, .92); content: ""; inset: 3px; pointer-events: none; position: absolute; z-index: 3; }
+.square.suggested-from { box-shadow: inset 0 0 0 5px rgba(235, 180, 68, .92); }
+.square.suggested-to { box-shadow: inset 0 0 0 5px rgba(227, 111, 81, .92); }
+.square.suggested-to::after { background: rgba(227, 111, 81, .88); border: 3px solid rgba(255, 253, 248, .85); border-radius: 50%; content: ""; height: 22%; pointer-events: none; position: absolute; width: 22%; z-index: 3; }
 .square.legal-target::before { background: rgba(23, 33, 28, .28); border-radius: 50%; content: ""; height: 22%; position: absolute; width: 22%; z-index: 3; }
 .square.legal-target:has(.piece)::before { background: transparent; border: 5px solid rgba(227, 111, 81, .72); height: 78%; width: 78%; }
 .piece { cursor: grab; filter: drop-shadow(0 3px 1px rgba(0, 0, 0, 0.2)); font-family: "Arial Unicode MS", "Noto Sans Symbols 2", serif; font-size: clamp(35px, 6vw, 69px); line-height: 1; position: relative; transform: translateY(-2%); user-select: none; z-index: 2; }
@@ -111,8 +109,16 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .secondary-action { align-items: center; background: transparent; border: 1px solid var(--line); border-radius: 9px; color: var(--green); cursor: pointer; display: flex; font-size: 12px; font-weight: 800; gap: 7px; padding: 12px 14px; }
 .secondary-action:hover:not(:disabled) { background: var(--green-soft); border-color: #b8cabe; }
 .secondary-action:disabled { color: var(--muted); cursor: not-allowed; opacity: .45; }
+.suggestion-action { background: #f7f0db; border-color: #e2cf96; color: #654e16; }
+.suggestion-action:hover:not(:disabled) { background: #f3e5b9; border-color: #d4b969; }
 
-.correction-banner, .error-banner { border-radius: 9px; display: flex; font-size: 12px; gap: 10px; margin-top: 14px; padding: 11px 13px; }
+.suggestion-banner, .correction-banner, .error-banner { border-radius: 9px; display: flex; font-size: 12px; gap: 10px; margin-top: 14px; padding: 11px 13px; }
+.suggestion-banner { background: #f7f0db; border: 1px solid #e2cf96; color: #594715; }
+.suggestion-banner > span { font-size: 18px; line-height: 1.2; }
+.suggestion-banner strong { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.suggestion-banner p { line-height: 1.5; margin: 4px 0 0; }
+.suggestion-banner details { border-color: rgba(101, 78, 22, .2); margin-top: 9px; padding-top: 8px; }
+.suggestion-banner details p { color: #6d5b2a; }
 .correction-banner { background: #f7e7db; border: 1px solid #e9bba9; color: #713a2b; }
 .error-banner { background: #f5dddd; border: 1px solid #e4abab; color: #812f2f; }
 .move-strip { align-items: baseline; color: var(--muted); display: flex; flex-wrap: wrap; font-size: 12px; gap: 8px; padding: 14px 5px 0; }

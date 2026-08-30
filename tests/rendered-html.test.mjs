@@ -22,8 +22,10 @@ test("server-renders the chess coach product shell", async () => {
   assert.match(html, /favicon\.svg/);
   assert.match(html, /Deine ersten Züge/);
   assert.match(html, /Interaktives Schachbrett/);
-  assert.match(html, /Das Brett ist noch nicht aktiv/);
+  assert.doesNotMatch(html, /Das Brett ist noch nicht aktiv/);
   assert.doesNotMatch(html, /♙/);
-  assert.match(html, /Training starten/);
+  assert.doesNotMatch(html, /Training starten/);
+  assert.match(html, /Zug vorschlagen/);
+  assert.match(html, /Neue Partie/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|SkeletonPreview/);
 });

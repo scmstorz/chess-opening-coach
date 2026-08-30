@@ -21,6 +21,12 @@ def test_api_session_and_move_round_trip() -> None:
         session = client.post("/api/sessions", json={"color": "white"})
         assert session.status_code == 200
 
+        suggested = client.post(f"/api/sessions/{session.json()['session_id']}/suggestion")
+
+        assert suggested.status_code == 200
+        assert suggested.json()["move_uci"] in session.json()["legal_moves"]
+        assert suggested.json()["move_san"]
+
         played = client.post(
             f"/api/sessions/{session.json()['session_id']}/moves",
             json={"from_square": "e2", "to_square": "e4"},

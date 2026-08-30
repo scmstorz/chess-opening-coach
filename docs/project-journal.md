@@ -671,6 +671,37 @@ undone experiment does not distort later learning statistics. Snapshots form a
 stack, allowing repeated undo while preserving an initial coach move when the
 learner chose Black.
 
+The explicit start gate was reconsidered once the onboarding overlay made its
+purpose visible. It protected no meaningful choice: White was already the
+default, sessions are local and disposable, and a new-game control exists. The
+extra state therefore cost one click while making the initial board feel inert.
+The browser now creates a White session on page load without darkening the
+board. Selecting White, Black, or Random immediately creates a corresponding
+fresh session, while `Neue Partie` repeats the currently selected choice. This
+is a useful product-design reversal for the case study: improving explanation
+of an unnecessary step did not make the step necessary.
+
+The same feedback added a learner-controlled `Zug vorschlagen` hint. It was
+deliberately not implemented as an LLM answer and does not play automatically.
+The local opening graph supplies candidates; Stockfish rejects objectively
+problematic theory edges; the interface highlights source and destination and
+shows a short deterministic reason. The selection favors the most represented
+safe theory edge, using a 0.40-pawn safety threshold. If the engine is offline,
+the local theory ranking provides the fallback. Requesting a suggestion does
+not create a learner attempt, change the board, or affect later review data.
+
+Restarting the running development stack exposed a fixed-port edge case on
+macOS: after a clean shutdown, neither service was listening, but the backend
+port remained temporarily reserved by the operating system. The launcher's
+bind probe reported this `TIME_WAIT` state as a port collision. Its read-only
+availability socket now enables address reuse, which still rejects an active
+listener but permits an immediate restart on the same stable URL.
+
+Verification after this change: all 12 Python tests pass, Python and web lint
+are clean, the production build and rendered-shell test pass, and an end-to-end
+request returned the theory move `1.e4` with Stockfish 18 verification in 0.16
+seconds. An immediate stop/start cycle also succeeded on ports 53686/53687.
+
 ### First-slice verification evidence
 
 At the time of this journal entry:

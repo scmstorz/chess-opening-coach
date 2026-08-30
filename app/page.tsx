@@ -489,7 +489,7 @@ export default function Home() {
           <div className="session-toolbar">
             <div>
               <p className="eyebrow">Freies Eröffnungsspiel</p>
-              <h1>Deine ersten Züge. Mit Plan.</h1>
+              <h1>Eröffnungen</h1>
             </div>
             <div className="color-picker" aria-label="Farbe wählen">
               {(["white", "black", "random"] as PlayerColor[]).map((color) => (

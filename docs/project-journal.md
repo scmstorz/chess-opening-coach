@@ -923,6 +923,13 @@ claims so future explanation changes can add cases without inventing a new test
 shape. The suite has 25 passing Python tests, plus clean Python/web lint,
 production build, rendered-shell test, and whitespace checks.
 
+### Main heading simplified
+
+The learner replaced the campaign-like main heading “Deine ersten Züge. Mit
+Plan.” with the direct product-area label “Eröffnungen”. The eyebrow still
+identifies the current mode as free opening play, so the shorter heading avoids
+repeating the same context and leaves room for future training modes.
+
 ### First-slice verification evidence
 
 At the time of this journal entry:

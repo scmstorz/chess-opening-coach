@@ -15,12 +15,23 @@ from chess_coach.tutor import OllamaTutor, TutorText
 
 
 @dataclass(slots=True)
+class TurnSnapshot:
+    fen: str
+    opening: OpeningIdentity | None
+    move_history_length: int
+    message_history_length: int
+    interaction_id: int | None
+
+
+@dataclass(slots=True)
 class GameSession:
     session_id: str
     board: chess.Board
     learner_color: chess.Color
     opening: OpeningIdentity | None = None
     move_history: list[dict[str, str]] = field(default_factory=list)
+    message_history: list[dict[str, Any]] = field(default_factory=list)
+    undo_stack: list[TurnSnapshot] = field(default_factory=list)
     attempts_at_position: int = 0
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -116,6 +127,7 @@ class CoachService:
                 recommended = chess.Move.from_uci(analysis.best_move_uci or move.uci())
                 recommended_san = session.board.san(recommended)
                 message = self._solution_message(session, san, recommended_san, analysis)
+                self._save_turn_snapshot(session)
                 session.board.push(recommended)
                 self._attach_transition(message, recommended, session.board)
                 session.move_history.append({"actor": "learner", "san": recommended_san})
@@ -149,6 +161,7 @@ class CoachService:
                 analysis,
                 next_opening,
             )
+            self._save_turn_snapshot(session)
             session.board.push(move)
             self._attach_transition(message, move, session.board)
             session.move_history.append({"actor": "learner", "san": san})
@@ -161,6 +174,27 @@ class CoachService:
             if not session.board.is_game_over():
                 messages.append(self._play_coach_move(session))
             return self._response(session, messages=messages)
+
+    def undo_last_turn(self, session_id: str) -> dict[str, Any]:
+        session = self._session(session_id)
+        with session.lock:
+            if not session.undo_stack:
+                raise ValueError("Es gibt noch keinen vollständigen Zug zum Zurücknehmen")
+            snapshot = session.undo_stack.pop()
+            removed_moves = len(session.move_history) - snapshot.move_history_length
+            removed_messages = len(session.message_history) - snapshot.message_history_length
+            session.board = chess.Board(snapshot.fen)
+            session.opening = snapshot.opening
+            del session.move_history[snapshot.move_history_length :]
+            del session.message_history[snapshot.message_history_length :]
+            session.attempts_at_position = 0
+            self.store.delete_interactions_after(session.session_id, snapshot.interaction_id)
+            response = self._response(session, messages=[])
+            response["undo"] = {
+                "removed_moves": removed_moves,
+                "removed_messages": removed_messages,
+            }
+            return response
 
     def _play_coach_move(self, session: GameSession) -> dict[str, Any]:
         board = session.board
@@ -394,6 +428,17 @@ class CoachService:
         message["move_uci"] = move.uci()
         message["fen_after"] = board_after.fen()
 
+    def _save_turn_snapshot(self, session: GameSession) -> None:
+        session.undo_stack.append(
+            TurnSnapshot(
+                fen=session.board.fen(),
+                opening=session.opening,
+                move_history_length=len(session.move_history),
+                message_history_length=len(session.message_history),
+                interaction_id=self.store.latest_interaction_id(session.session_id),
+            )
+        )
+
     def _response(
         self,
         session: GameSession,
@@ -401,6 +446,7 @@ class CoachService:
         messages: list[dict[str, Any]],
         correction: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        session.message_history.extend(messages)
         opening = asdict(session.opening) if session.opening else None
         legal_moves = [move.uci() for move in session.board.legal_moves]
         return {
@@ -412,6 +458,8 @@ class CoachService:
             "legal_moves": legal_moves,
             "move_history": session.move_history,
             "messages": messages,
+            "message_history": session.message_history,
+            "can_undo": bool(session.undo_stack),
             "correction": correction,
             "game_over": session.board.is_game_over(),
         }

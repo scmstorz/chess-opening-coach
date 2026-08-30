@@ -51,7 +51,7 @@ class SQLiteStore:
             self.connection.execute("PRAGMA optimize")
             self.connection.commit()
 
-    def record(self, values: dict[str, Any]) -> None:
+    def record(self, values: dict[str, Any]) -> int:
         columns = (
             "created_at",
             "session_id",
@@ -74,10 +74,31 @@ class SQLiteStore:
         row = {"created_at": datetime.now(UTC).isoformat(), **values}
         placeholders = ", ".join("?" for _ in columns)
         with self._lock:
-            self.connection.execute(
+            cursor = self.connection.execute(
                 f"INSERT INTO interactions ({', '.join(columns)}) VALUES ({placeholders})",
                 tuple(row.get(column) for column in columns),
             )
+            self.connection.commit()
+            return int(cursor.lastrowid)
+
+    def latest_interaction_id(self, session_id: str) -> int | None:
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT MAX(id) AS id FROM interactions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+        return int(row["id"]) if row and row["id"] is not None else None
+
+    def delete_interactions_after(self, session_id: str, interaction_id: int | None) -> None:
+        with self._lock:
+            if interaction_id is None:
+                self.connection.execute(
+                    "DELETE FROM interactions WHERE session_id = ?", (session_id,)
+                )
+            else:
+                self.connection.execute(
+                    "DELETE FROM interactions WHERE session_id = ? AND id > ?",
+                    (session_id, interaction_id),
+                )
             self.connection.commit()
 
     def get_analysis(self, cache_key: str) -> str | None:

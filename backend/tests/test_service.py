@@ -48,6 +48,7 @@ def service() -> CoachService:
 def test_complete_white_turn_keeps_truth_layers_separate() -> None:
     coach = service()
     session = coach.create_session("white")
+    initial_fen = session["fen"]
 
     response = coach.play_learner_move(session["session_id"], "e2", "e4")
 
@@ -58,8 +59,19 @@ def test_complete_white_turn_keeps_truth_layers_separate() -> None:
     assert response["messages"][0]["fen_after"].split()[1] == "b"
     assert response["messages"][1]["move_uci"]
     assert response["messages"][1]["fen_after"] == response["fen"]
+    assert response["message_history"] == response["messages"]
+    assert response["can_undo"] is True
     assert response["correction"] is None
     assert response["opening"] is not None
+
+    undone = coach.undo_last_turn(session["session_id"])
+
+    assert undone["fen"] == initial_fen
+    assert undone["move_history"] == []
+    assert undone["message_history"] == []
+    assert undone["can_undo"] is False
+    assert undone["undo"] == {"removed_moves": 2, "removed_messages": 2}
+    assert coach.store.summary()["attempts"] == 0
 
 
 def test_material_mistake_starts_three_attempt_correction_loop() -> None:

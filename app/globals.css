@@ -99,6 +99,7 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .dark .file-label, .dark .rank-label { color: var(--light-square); }
 
 .board-footer { align-items: center; display: flex; justify-content: space-between; padding: 16px 2px 0; }
+.board-actions { align-items: center; display: flex; gap: 9px; }
 .opening-chip { align-items: center; display: flex; gap: 10px; }
 .opening-icon { align-items: center; background: var(--green-soft); border-radius: 50%; color: var(--green); display: flex; font-size: 20px; height: 39px; justify-content: center; width: 39px; }
 .opening-chip small, .opening-chip strong { display: block; }
@@ -107,6 +108,9 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .primary-action { align-items: center; background: var(--coral); border: 0; border-radius: 9px; box-shadow: 0 9px 22px rgba(227, 111, 81, 0.25); color: #fff; cursor: pointer; display: flex; font-size: 13px; font-weight: 800; gap: 18px; padding: 13px 17px; }
 .primary-action:hover { background: #d96145; transform: translateY(-1px); }
 .primary-action:disabled { cursor: wait; opacity: .65; transform: none; }
+.secondary-action { align-items: center; background: transparent; border: 1px solid var(--line); border-radius: 9px; color: var(--green); cursor: pointer; display: flex; font-size: 12px; font-weight: 800; gap: 7px; padding: 12px 14px; }
+.secondary-action:hover:not(:disabled) { background: var(--green-soft); border-color: #b8cabe; }
+.secondary-action:disabled { color: var(--muted); cursor: not-allowed; opacity: .45; }
 
 .correction-banner, .error-banner { border-radius: 9px; display: flex; font-size: 12px; gap: 10px; margin-top: 14px; padding: 11px 13px; }
 .correction-banner { background: #f7e7db; border: 1px solid #e9bba9; color: #713a2b; }
@@ -166,6 +170,7 @@ details p { color: var(--muted); font-family: inherit !important; font-size: 13p
   .board-frame { padding: 5px; }
   .piece { font-size: clamp(30px, 11vw, 55px); }
   .board-footer { align-items: flex-start; gap: 12px; }
+  .board-actions { align-items: stretch; flex-direction: column-reverse; }
   .primary-action { gap: 8px; padding: 12px; }
   .coach-panel { margin: 0 8px; }
 }

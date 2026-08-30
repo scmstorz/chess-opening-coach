@@ -639,6 +639,17 @@ panel height down to the truth and question controls. It also scrolls smoothly
 to its bottom whenever new feedback arrives, matching the turn-by-turn nature
 of the session and removing repetitive manual scrolling.
 
+The learner then requested a turn-back control with an important semantic
+constraint: undoing their move must also remove the coach's reply. Undo is
+therefore modeled as a verified learner-turn transaction rather than a raw
+single-ply board pop. Before each accepted learner turn, the service snapshots
+the board, opening identity, move-list length, feedback-list length, and latest
+SQLite interaction ID. `Zug zurück` restores that snapshot, removes both plies
+and both explanations, and deletes the corresponding interaction records so an
+undone experiment does not distort later learning statistics. Snapshots form a
+stack, allowing repeated undo while preserving an initial coach move when the
+learner chose Black.
+
 ### First-slice verification evidence
 
 At the time of this journal entry:

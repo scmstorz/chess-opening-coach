@@ -28,3 +28,10 @@ def test_api_session_and_move_round_trip() -> None:
 
         assert played.status_code == 200
         assert played.json()["move_history"][0]["san"] == "e4"
+
+        undone = client.post(f"/api/sessions/{session.json()['session_id']}/undo")
+
+        assert undone.status_code == 200
+        assert undone.json()["move_history"] == []
+        assert undone.json()["message_history"] == []
+        assert undone.json()["can_undo"] is False

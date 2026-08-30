@@ -45,6 +45,8 @@ type SessionState = {
   legal_moves: string[];
   move_history: { actor: "learner" | "coach"; san: string }[];
   messages: CoachMessage[];
+  message_history: CoachMessage[];
+  can_undo: boolean;
   correction: {
     active: boolean;
     attempt: number;
@@ -287,7 +289,7 @@ export default function Home() {
         body: JSON.stringify({ color: requestedColor }),
       });
       setSession(next);
-      setMessages(next.messages);
+      setMessages(next.message_history);
       setSelectedSquare(null);
       await animateMoves(initialFen, next.messages, next.fen);
     } catch (caught) {
@@ -316,7 +318,7 @@ export default function Home() {
         }),
       });
       setSession(next);
-      setMessages((current) => [...current, ...next.messages]);
+      setMessages(next.message_history);
       const learnerMoveWasAccepted = next.messages.some(
         (message) => message.actor === "learner" && message.move_uci === matchingMove,
       );
@@ -333,6 +335,27 @@ export default function Home() {
     } finally {
       setSelectedSquare(null);
       setDraggedFrom(null);
+      setLoading(false);
+    }
+  }
+
+  async function undoLastTurn() {
+    if (!session?.can_undo || loading) return;
+    setLoading(true);
+    setError(null);
+    setMoveAnimation(null);
+    try {
+      const next = await api<SessionState>(`/api/sessions/${session.session_id}/undo`, {
+        method: "POST",
+      });
+      setSession(next);
+      setMessages(next.message_history);
+      setDisplayFen(next.fen);
+      setSelectedSquare(null);
+      setDraggedFrom(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Der Zug konnte nicht zurückgenommen werden.");
+    } finally {
       setLoading(false);
     }
   }
@@ -461,9 +484,22 @@ export default function Home() {
                   <strong>{session?.opening?.name ?? "Noch nicht erkannt"}</strong>
                 </span>
               </div>
-              <button className="primary-action" onClick={() => void startSession()} disabled={loading} type="button">
-                {session ? "Neue Partie" : "Training starten"}<span aria-hidden="true">→</span>
-              </button>
+              <div className="board-actions">
+                {session && (
+                  <button
+                    className="secondary-action"
+                    disabled={loading || !session.can_undo}
+                    onClick={() => void undoLastTurn()}
+                    title="Nimmt deinen letzten Zug und die Coach-Antwort zurück"
+                    type="button"
+                  >
+                    <span aria-hidden="true">↶</span>Zug zurück
+                  </button>
+                )}
+                <button className="primary-action" onClick={() => void startSession()} disabled={loading} type="button">
+                  {session ? "Neue Partie" : "Training starten"}<span aria-hidden="true">→</span>
+                </button>
+              </div>
             </div>
 
             {session?.correction && (

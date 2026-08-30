@@ -76,6 +76,14 @@ const pieceKinds: Record<string, Piece["kind"]> = {
   n: "knight",
   p: "pawn",
 };
+const fenPieces: Record<Piece["kind"], string> = {
+  king: "k",
+  queen: "q",
+  rook: "r",
+  bishop: "b",
+  knight: "n",
+  pawn: "p",
+};
 
 function parseFen(fen: string): Record<string, Piece> {
   const result: Record<string, Piece> = {};
@@ -95,6 +103,56 @@ function parseFen(fen: string): Record<string, Piece> {
     }
   });
   return result;
+}
+
+function visualFenAfterMove(fen: string, moveUci: string): string {
+  const position = { ...parseFen(fen) };
+  const from = moveUci.slice(0, 2);
+  const to = moveUci.slice(2, 4);
+  const promotion = moveUci[4];
+  const piece = position[from];
+  if (!piece) return fen;
+
+  delete position[from];
+  if (piece.kind === "pawn" && from[0] !== to[0] && !position[to]) {
+    delete position[`${to[0]}${from[1]}`];
+  }
+  if (piece.kind === "king" && Math.abs(files.indexOf(from[0]) - files.indexOf(to[0])) === 2) {
+    const kingside = to[0] === "g";
+    const rookFrom = `${kingside ? "h" : "a"}${from[1]}`;
+    const rookTo = `${kingside ? "f" : "d"}${from[1]}`;
+    if (position[rookFrom]) {
+      position[rookTo] = position[rookFrom];
+      delete position[rookFrom];
+    }
+  }
+  position[to] = {
+    ...piece,
+    kind: promotion ? pieceKinds[promotion] : piece.kind,
+  };
+
+  const ranks = Array.from({ length: 8 }, (_, index) => 8 - index);
+  const boardFen = ranks.map((rank) => {
+    let empty = 0;
+    let row = "";
+    for (const file of files) {
+      const occupant = position[`${file}${rank}`];
+      if (!occupant) {
+        empty += 1;
+        continue;
+      }
+      if (empty) row += String(empty);
+      const symbol = fenPieces[occupant.kind];
+      row += occupant.color === "white" ? symbol.toUpperCase() : symbol;
+      empty = 0;
+    }
+    if (empty) row += String(empty);
+    return row;
+  }).join("/");
+  const fields = fen.split(" ");
+  fields[0] = boardFen;
+  fields[1] = fields[1] === "w" ? "b" : "w";
+  return fields.join(" ");
 }
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
@@ -174,10 +232,15 @@ export default function Home() {
     startFen: string,
     nextMessages: CoachMessage[],
     finalFen: string,
+    learnerMoveToSkip?: string,
   ) {
     const transitions = nextMessages.filter(
       (message): message is CoachMessage & { move_uci: string; fen_after: string } =>
-        Boolean(message.move_uci && message.fen_after),
+        Boolean(
+          message.move_uci
+          && message.fen_after
+          && !(message.actor === "learner" && message.move_uci === learnerMoveToSkip),
+        ),
     );
     if (transitions.length === 0) {
       setDisplayFen(finalFen);
@@ -230,6 +293,8 @@ export default function Home() {
     if (!session || loading || session.turn !== session.learner_color) return;
     const fenBefore = displayFen;
     const matchingMove = session.legal_moves.find((move) => move.startsWith(`${from}${to}`));
+    const optimisticFen = matchingMove ? visualFenAfterMove(fenBefore, matchingMove) : fenBefore;
+    if (matchingMove) setDisplayFen(optimisticFen);
     setLoading(true);
     setError(null);
     try {
@@ -243,8 +308,17 @@ export default function Home() {
       });
       setSession(next);
       setMessages((current) => [...current, ...next.messages]);
-      await animateMoves(fenBefore, next.messages, next.fen);
+      const learnerMoveWasAccepted = next.messages.some(
+        (message) => message.actor === "learner" && message.move_uci === matchingMove,
+      );
+      await animateMoves(
+        learnerMoveWasAccepted ? optimisticFen : fenBefore,
+        next.messages,
+        next.fen,
+        learnerMoveWasAccepted ? matchingMove : undefined,
+      );
     } catch (caught) {
+      setDisplayFen(fenBefore);
       setError(caught instanceof Error ? caught.message : "Der Zug konnte nicht geprüft werden.");
       setAnimatingSequence(false);
     } finally {

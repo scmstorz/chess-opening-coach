@@ -616,6 +616,20 @@ the coach move, while input remains locked. This preserves the backend as owner
 of accepted board state and avoids optimistic animation of a move that the
 three-attempt correction loop might reject.
 
+The first animation version was immediately corrected after hands-on feedback:
+replaying the learner's own drag after the coach finished thinking felt
+redundant and temporally wrong. The browser now applies a legal learner move
+visually as soon as it is dropped, then animates only the coach reply once the
+verified response arrives. If the backend rejects a materially bad move, the
+optimistic visual position returns to the verified position; on the third failed
+attempt, the system-provided solution remains eligible for animation because it
+is not the learner's submitted move.
+
+A compact SVG chessboard in the existing green and neutral palette was added as
+the browser favicon. SVG was chosen over a generated raster asset because the
+geometric motif stays crisp at small browser-tab sizes and remains easy to
+version and recolor with the interface.
+
 ### First-slice verification evidence
 
 At the time of this journal entry:

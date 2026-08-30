@@ -19,6 +19,7 @@ test("server-renders the chess coach product shell", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Chess Opening Coach<\/title>/i);
+  assert.match(html, /favicon\.svg/);
   assert.match(html, /Deine ersten Züge/);
   assert.match(html, /Interaktives Schachbrett/);
   assert.match(html, /Das Brett ist noch nicht aktiv/);

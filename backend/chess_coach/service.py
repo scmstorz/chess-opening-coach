@@ -9,7 +9,7 @@ from typing import Any
 
 import chess
 
-from chess_coach.engine import MoveAnalysis, StockfishService
+from chess_coach.engine import CandidateAnalysis, MoveAnalysis, MoveComparison, StockfishService
 from chess_coach.openings import OpeningBook, OpeningIdentity, TheoryMove
 from chess_coach.storage import SQLiteStore
 from chess_coach.tutor import OllamaTutor, TutorText
@@ -242,6 +242,7 @@ class CoachService:
                     f"{_move_concept(session.board, move)} "
                     f"{_move_response_context(session.board, move)} "
                     f"{_heuristic_context(session.board, move)} "
+                    f"{_concrete_board_changes(session.board, move)} "
                     f"{_continuation_context(session.board, move, analysis)} "
                     f"{source_detail} "
                     "Der Zug wird nur auf dem Brett markiert; du spielst ihn selbst."
@@ -295,16 +296,18 @@ class CoachService:
                 san = None
                 theory_match = False
                 opening = session.opening
+                explanation_sections: list[dict[str, str]] = []
             else:
                 san = board.san(move)
                 theory_moves = self.openings.theory_moves(board)
                 theory_match = move.uci() in {candidate.uci for candidate in theory_moves}
                 analysis = precomputed_analysis or self.engine.analyze_move(board, move)
+                comparison = self.engine.compare_moves(board, count=3, focus_move=move)
                 projected = board.copy(stack=False)
                 projected.push(move)
                 opening = self.openings.identify(projected, session.opening)
-                fallback, answer_facts = self._question_fallback(
-                    board, san, move, theory_match, analysis, opening
+                fallback, answer_facts, explanation_sections = self._question_fallback(
+                    board, san, move, theory_match, analysis, comparison, opening
                 )
                 facts = {
                     "task": "Beantworte die Rückfrage zur aktuellen Stellung.",
@@ -316,6 +319,7 @@ class CoachService:
                     "theory_match": theory_match,
                     "theory_moves": [candidate.san for candidate in theory_moves[:5]],
                     "engine": asdict(analysis),
+                    "engine_comparison": asdict(comparison),
                     "answer_facts": answer_facts,
                 }
                 text = self.tutor.answer_question(facts, fallback)
@@ -331,6 +335,7 @@ class CoachService:
                 "model": text.model,
                 "attempt": None,
                 "engine": asdict(analysis) if analysis else None,
+                "explanation_sections": explanation_sections,
             }
             session.message_history.append(message)
             return {"message": message, "message_history": session.message_history}
@@ -379,13 +384,16 @@ class CoachService:
 
     @staticmethod
     def _mentioned_legal_move(board: chess.Board, question: str) -> chess.Move | None:
+        matches: list[tuple[int, chess.Move]] = []
         for move in board.legal_moves:
             san = board.san(move).rstrip("+#")
-            if re.search(rf"(?<![A-Za-z0-9]){re.escape(san)}(?![A-Za-z0-9])", question, re.I):
-                return move
-            if move.uci().lower() in question.lower():
-                return move
-        return None
+            if match := re.search(
+                rf"(?<![A-Za-z0-9]){re.escape(san)}(?![A-Za-z0-9])", question, re.I
+            ):
+                matches.append((match.start(), move))
+            if (uci_position := question.lower().find(move.uci().lower())) >= 0:
+                matches.append((uci_position, move))
+        return min(matches, key=lambda item: item[0])[1] if matches else None
 
     def _question_fallback(
         self,
@@ -394,8 +402,9 @@ class CoachService:
         move: chess.Move,
         theory_match: bool,
         analysis: MoveAnalysis,
+        comparison: MoveComparison,
         opening: OpeningIdentity | None,
-    ) -> tuple[TutorText, list[dict[str, Any]]]:
+    ) -> tuple[TutorText, list[dict[str, Any]], list[dict[str, str]]]:
         if theory_match:
             theory_text = "Der Zug ist in den lokalen Eröffnungslinien enthalten."
         else:
@@ -420,8 +429,11 @@ class CoachService:
         concept_text = _move_concept(board, move)
         response_text = _move_response_context(board, move)
         heuristic_text = _heuristic_context(board, move)
+        board_changes_text = _concrete_board_changes(board, move)
         continuation_text = _continuation_context(board, move, analysis)
         contrast_text = _tactical_contrast(board, move, analysis)
+        comparison_text = _candidate_comparison_text(board, move, analysis, comparison)
+        engine_lines_text = _candidate_lines_text(move, analysis, comparison)
         pv_moves = " ".join(analysis.played_pv_san[:4])
         pv_text = f"Eine kurze Stockfish-Prüfvariante beginnt mit: {pv_moves}." if pv_moves else ""
         if (
@@ -444,12 +456,14 @@ class CoachService:
             ("concept", concept_text, True),
             ("direct_threat", response_text, True),
             ("heuristic", heuristic_text, True),
+            ("board_changes", board_changes_text, True),
             ("continuation", continuation_text, True),
             ("contrast", contrast_text, True),
+            ("comparison", comparison_text, True),
             ("theory", theory_text, False),
             ("engine", quality_text, False),
             ("opening", opening_text.strip(), False),
-            ("pv", pv_text, False),
+            ("pv", pv_text, not engine_lines_text),
         )
         answer_facts = [
             {"id": fact_id, "text": text, "required": required}
@@ -464,8 +478,10 @@ class CoachService:
                     response_text,
                     heuristic_text,
                     concept_text,
+                    board_changes_text,
                     continuation_text,
                     contrast_text,
+                    comparison_text,
                     theory_text,
                     quality_text,
                     pv_text,
@@ -475,7 +491,31 @@ class CoachService:
             source="deterministic",
             model=None,
         )
-        return fallback, answer_facts
+        concrete_text = " ".join(
+            part
+            for part in (
+                response_text,
+                heuristic_text,
+                concept_text,
+                board_changes_text,
+                continuation_text,
+                contrast_text,
+            )
+            if part
+        )
+        explanation_sections = [
+            {"title": "Was verändert der Zug konkret?", "text": concrete_text},
+            {
+                "title": "Warum nicht die naheliegende Alternative?",
+                "text": comparison_text
+                or "Für einen belastbaren Alternativenvergleich fehlen Engine-Kandidaten.",
+            },
+            {
+                "title": "Stockfish-Rechenwege",
+                "text": engine_lines_text or pv_text or quality_text,
+            },
+        ]
+        return fallback, answer_facts, explanation_sections
 
     def _play_coach_move(self, session: GameSession) -> dict[str, Any]:
         board = session.board
@@ -699,6 +739,7 @@ class CoachService:
                 _move_response_context(board, move),
                 _heuristic_context(board, move),
                 _move_concept(board, move),
+                _concrete_board_changes(board, move),
                 _continuation_context(board, move, analysis),
                 _tactical_contrast(board, move, analysis),
                 self._engine_details(analysis),
@@ -1017,6 +1058,69 @@ def _heuristic_context(board: chess.Board, move: chess.Move) -> str:
     )
 
 
+def _concrete_board_changes(board: chess.Board, move: chess.Move) -> str:
+    """Describe captures, checks, and newly opened lines without strategic guessing."""
+    changes: list[str] = []
+    san = board.san(move)
+    if board.is_capture(move):
+        capture_square = move.to_square
+        if board.is_en_passant(move):
+            capture_square += -8 if board.turn == chess.WHITE else 8
+        captured = board.piece_at(capture_square)
+        if captured:
+            captured_name = {
+                chess.PAWN: "den gegnerischen Bauern",
+                chess.KNIGHT: "den gegnerischen Springer",
+                chess.BISHOP: "den gegnerischen Läufer",
+                chess.ROOK: "den gegnerischen Turm",
+                chess.QUEEN: "die gegnerische Dame",
+                chess.KING: "den gegnerischen König",
+            }[captured.piece_type]
+            changes.append(
+                f"{san} schlägt {captured_name} auf {chess.square_name(capture_square)}."
+            )
+
+    projected = board.copy(stack=False)
+    projected.push(move)
+    if projected.is_check():
+        changes.append(f"{san} gibt dem gegnerischen König Schach.")
+
+    opened_lines: list[str] = []
+    piece_labels = {
+        chess.BISHOP: "des Läufers",
+        chess.ROOK: "des Turms",
+        chess.QUEEN: "der Dame",
+    }
+    for piece_type, label in piece_labels.items():
+        for square in board.pieces(piece_type, board.turn):
+            if square == move.from_square:
+                continue
+            before = board.attacks(square)
+            same_piece = projected.piece_at(square)
+            if same_piece != chess.Piece(piece_type, board.turn):
+                continue
+            newly_reached = projected.attacks(square) - before
+            if newly_reached:
+                opened_lines.append(
+                    f"{label} auf {chess.square_name(square)} bis "
+                    f"{_limited_square_list(newly_reached)}"
+                )
+    if opened_lines:
+        changes.append(
+            f"Der Zug öffnet oder verlängert außerdem die Wirkung "
+            f"{' sowie '.join(opened_lines[:2])}."
+        )
+    return " ".join(changes)
+
+
+def _limited_square_list(squares: chess.SquareSet, *, limit: int = 4) -> str:
+    names = [chess.square_name(square) for square in squares]
+    if len(names) <= limit:
+        return _square_list(chess.SquareSet(squares))
+    visible = names[:limit]
+    return f"{', '.join(visible)} und {len(names) - limit} weitere Felder"
+
+
 def _attacked_piece_list(
     board: chess.Board, attacking_square: chess.Square, color: chess.Color
 ) -> str:
@@ -1036,6 +1140,327 @@ def _attacked_piece_list(
     if len(targets) <= 1:
         return "" if not targets else targets[0]
     return f"{', '.join(targets[:-1])} und {targets[-1]}"
+
+
+def _candidate_comparison_text(
+    board: chess.Board,
+    focus_move: chess.Move,
+    focus_analysis: MoveAnalysis,
+    comparison: MoveComparison,
+) -> str:
+    if not comparison.available or not comparison.candidates:
+        return ""
+    candidates = list(comparison.candidates)
+    focus = next(
+        (candidate for candidate in candidates if candidate.move_uci == focus_move.uci()),
+        None,
+    )
+    if focus is None and focus_analysis.evaluation_played is not None:
+        focus = CandidateAnalysis(
+            move_uci=focus_move.uci(),
+            move_san=board.san(focus_move),
+            evaluation=focus_analysis.evaluation_played,
+            mate=focus_analysis.mate_played,
+            loss_pawns=focus_analysis.loss_pawns or 0.0,
+            pv_san=focus_analysis.played_pv_san,
+        )
+    if focus is None:
+        return ""
+
+    best = candidates[0]
+    if focus.move_uci == best.move_uci:
+        alternative = next(
+            (candidate for candidate in candidates if candidate.move_uci != focus.move_uci),
+            None,
+        )
+        if alternative is None:
+            return ""
+        gap = alternative.loss_pawns
+        comparison_intro = (
+            f"Stockfishs nächster Kandidat ist {alternative.move_san}; die vertiefte "
+            f"Analyse bewertet ihn um {_format_pawns(gap)} Bauerneinheiten schwächer."
+        )
+    else:
+        alternative = best
+        gap = focus.loss_pawns
+        comparison_intro = (
+            f"Stockfish bevorzugt {best.move_san} gegenüber {focus.move_san} um "
+            f"{_format_pawns(gap)} Bauerneinheiten."
+        )
+
+    focus_effects = _move_effects(board, focus_move)
+    try:
+        alternative_move = chess.Move.from_uci(alternative.move_uci)
+    except (chess.InvalidMoveError, ValueError):
+        alternative_move = None
+    alternative_effects = (
+        _move_effects(board, alternative_move)
+        if alternative_move is not None and alternative_move in board.legal_moves
+        else None
+    )
+
+    differences: list[str] = []
+    if alternative_effects:
+        if focus_effects["escapes_attack"] and alternative_effects["escapes_attack"]:
+            if focus_move.from_square == alternative_move.from_square:
+                piece_name = _piece_name(board.piece_at(focus_move.from_square))
+                differences.append(
+                    f"Beide Züge bringen den angegriffenen {piece_name} aus dem bisherigen Angriff."
+                )
+            else:
+                differences.append(
+                    f"{focus.move_san} beantwortet den Angriff auf "
+                    f"{focus_effects['escaped_piece']}; {alternative.move_san} dagegen den "
+                    f"Angriff auf {alternative_effects['escaped_piece']}."
+                )
+        focus_unresolved = focus_effects["unresolved_attacks"]
+        alternative_unresolved = alternative_effects["unresolved_attacks"]
+        if focus_unresolved != alternative_unresolved and (
+            focus_unresolved or alternative_unresolved
+        ):
+            differences.append(
+                f"Nach {focus.move_san} bleiben angegriffen: "
+                f"{focus_unresolved or 'keine eigenen Steine'}; nach "
+                f"{alternative.move_san}: "
+                f"{alternative_unresolved or 'keine eigenen Steine'}."
+            )
+            focus_value = focus_effects["highest_unresolved_value"]
+            alternative_value = alternative_effects["highest_unresolved_value"]
+            if focus_value > alternative_value:
+                differences.append(
+                    f"Der nach {focus.move_san} weiter angegriffene Stein ist materiell "
+                    f"wertvoller ({focus_value} gegenüber {alternative_value} ungefähren "
+                    "Bauerneinheiten)."
+                )
+        focus_targets = focus_effects["new_targets"]
+        alternative_targets = alternative_effects["new_targets"]
+        if focus_targets and not alternative_targets:
+            differences.append(
+                f"Nur {focus.move_san} erzeugt zugleich einen direkten Gegenangriff: "
+                f"{focus_targets}. {alternative.move_san} greift unmittelbar keine neue "
+                "gegnerische Figur an."
+            )
+        elif focus_targets != alternative_targets and (focus_targets or alternative_targets):
+            differences.append(
+                f"{focus.move_san} greift neu {focus_targets or 'keine Figur'} an; "
+                f"{alternative.move_san} dagegen {alternative_targets or 'keine Figur'}."
+            )
+        focus_center = focus_effects["central_squares"]
+        alternative_center = alternative_effects["central_squares"]
+        if focus_center != alternative_center:
+            differences.append(
+                f"Direkte Zentrumsfelder nach {focus.move_san}: {focus_center or 'keine'}; "
+                f"nach {alternative.move_san}: {alternative_center or 'keine'}."
+            )
+
+    focus_reply = _first_reply_event(board, focus)
+    alternative_reply = _first_reply_event(board, alternative)
+    if focus_reply:
+        differences.append(focus_reply)
+    if alternative_reply and alternative_reply != focus_reply:
+        differences.append(alternative_reply)
+
+    if differences:
+        interpretation = (
+            "Diese sichtbaren Unterschiede erklären plausibel einen Teil des Engine-Abstands; "
+            "die Bewertung allein beweist aber keinen einzigen ausschließlichen Grund."
+        )
+    else:
+        interpretation = (
+            "Aus der Bewertungszahl allein folgt kein eindeutiger strategischer Grund; die "
+            "unterschiedlichen Rechenwege stehen im nächsten Abschnitt."
+        )
+    return " ".join((comparison_intro, *differences, interpretation))
+
+
+def _candidate_lines_text(
+    focus_move: chess.Move,
+    focus_analysis: MoveAnalysis,
+    comparison: MoveComparison,
+) -> str:
+    if not comparison.available or not comparison.candidates:
+        return ""
+    candidates = list(comparison.candidates)
+    if (
+        all(candidate.move_uci != focus_move.uci() for candidate in candidates)
+        and focus_analysis.evaluation_played is not None
+    ):
+        candidates.append(
+            CandidateAnalysis(
+                move_uci=focus_move.uci(),
+                move_san=focus_analysis.played_pv_san[0]
+                if focus_analysis.played_pv_san
+                else focus_move.uci(),
+                evaluation=focus_analysis.evaluation_played,
+                mate=focus_analysis.mate_played,
+                loss_pawns=focus_analysis.loss_pawns or 0.0,
+                pv_san=focus_analysis.played_pv_san,
+            )
+        )
+    lines: list[str] = []
+    for candidate in candidates[:4]:
+        evaluation = _format_evaluation(candidate.evaluation, candidate.mate)
+        loss = (
+            f", {_format_pawns(candidate.loss_pawns)} Bauerneinheiten hinter Platz 1"
+            if candidate.loss_pawns >= 0.01
+            else ""
+        )
+        pv = " ".join(candidate.pv_san[:6]) or "keine Variante verfügbar"
+        lines.append(f"{candidate.move_san} ({evaluation}{loss}): {pv}.")
+    return "Bewertungen aus weißer Sicht; + bedeutet Vorteil für Weiß. " + " ".join(lines)
+
+
+def _move_effects(board: chess.Board, move: chess.Move) -> dict[str, Any]:
+    piece = board.piece_at(move.from_square)
+    before_targets = board.attacks(move.from_square)
+    attacked_before = bool(board.attackers(not board.turn, move.from_square))
+    projected = board.copy(stack=False)
+    projected.push(move)
+    after_targets = projected.attacks(move.to_square)
+    new_target_squares = after_targets - before_targets
+    new_targets = _target_descriptions(projected, new_target_squares, board.turn)
+    central = after_targets & chess.SquareSet(chess.BB_CENTER)
+    escaped = attacked_before and not projected.attackers(not board.turn, move.to_square)
+    unresolved: list[tuple[str, int]] = []
+    for square in chess.SQUARES:
+        before_piece = board.piece_at(square)
+        if before_piece is None or before_piece.color != board.turn:
+            continue
+        if not board.attackers(not board.turn, square):
+            continue
+        after_piece = projected.piece_at(square)
+        if after_piece == before_piece and projected.attackers(not board.turn, square):
+            unresolved.append(
+                (
+                    f"{_piece_name_singular(before_piece)} auf {chess.square_name(square)}",
+                    _piece_value(before_piece),
+                )
+            )
+    unresolved.sort(key=lambda item: item[1], reverse=True)
+    return {
+        "piece": _piece_name(piece),
+        "escapes_attack": escaped,
+        "escaped_piece": (
+            f"{_piece_name_accusative(piece)} auf {chess.square_name(move.from_square)}"
+            if escaped
+            else ""
+        ),
+        "unresolved_attacks": _join_descriptions([item[0] for item in unresolved]),
+        "highest_unresolved_value": unresolved[0][1] if unresolved else 0,
+        "new_targets": new_targets,
+        "central_squares": _square_list(central) if central else "",
+    }
+
+
+def _first_reply_event(board: chess.Board, candidate: CandidateAnalysis) -> str:
+    if len(candidate.pv_san) < 2:
+        return ""
+    replay = board.copy(stack=False)
+    try:
+        first = replay.parse_san(candidate.pv_san[0])
+        replay.push(first)
+        reply = replay.parse_san(candidate.pv_san[1])
+    except (chess.IllegalMoveError, chess.InvalidMoveError, chess.AmbiguousMoveError, ValueError):
+        return ""
+    if not replay.is_capture(reply):
+        return ""
+    capture_square = reply.to_square
+    if replay.is_en_passant(reply):
+        capture_square += -8 if replay.turn == chess.WHITE else 8
+    captured = replay.piece_at(capture_square)
+    if captured is None:
+        return ""
+    actor = "Weiß" if replay.turn == chess.WHITE else "Schwarz"
+    return (
+        f"Im konkreten Rechenweg nach {candidate.move_san} folgt sofort "
+        f"{candidate.pv_san[1]}: {actor} schlägt damit "
+        f"{_piece_name_accusative(captured)} auf {chess.square_name(capture_square)}."
+    )
+
+
+def _target_descriptions(
+    board: chess.Board, squares: chess.SquareSet, moving_color: chess.Color
+) -> str:
+    labels = {
+        chess.PAWN: "den gegnerischen Bauern",
+        chess.KNIGHT: "den gegnerischen Springer",
+        chess.BISHOP: "den gegnerischen Läufer",
+        chess.ROOK: "den gegnerischen Turm",
+        chess.QUEEN: "die gegnerische Dame",
+        chess.KING: "den gegnerischen König",
+    }
+    targets = [
+        f"{labels[piece.piece_type]} auf {chess.square_name(square)}"
+        for square in squares
+        if (piece := board.piece_at(square)) and piece.color != moving_color
+    ]
+    if not targets:
+        return ""
+    if len(targets) == 1:
+        return targets[0]
+    return f"{', '.join(targets[:-1])} und {targets[-1]}"
+
+
+def _piece_name(piece: chess.Piece | None) -> str:
+    if piece is None:
+        return "Figur"
+    return {
+        chess.PAWN: "Bauern",
+        chess.KNIGHT: "Springer",
+        chess.BISHOP: "Läufer",
+        chess.ROOK: "Turm",
+        chess.QUEEN: "Dame",
+        chess.KING: "König",
+    }[piece.piece_type]
+
+
+def _piece_name_singular(piece: chess.Piece | None) -> str:
+    if piece is None:
+        return "Figur"
+    return {
+        chess.PAWN: "Bauer",
+        chess.KNIGHT: "Springer",
+        chess.BISHOP: "Läufer",
+        chess.ROOK: "Turm",
+        chess.QUEEN: "Dame",
+        chess.KING: "König",
+    }[piece.piece_type]
+
+
+def _piece_name_accusative(piece: chess.Piece | None) -> str:
+    if piece is None:
+        return "die Figur"
+    return {
+        chess.PAWN: "den Bauern",
+        chess.KNIGHT: "den Springer",
+        chess.BISHOP: "den Läufer",
+        chess.ROOK: "den Turm",
+        chess.QUEEN: "die Dame",
+        chess.KING: "den König",
+    }[piece.piece_type]
+
+
+def _piece_value(piece: chess.Piece) -> int:
+    return {
+        chess.PAWN: 1,
+        chess.KNIGHT: 3,
+        chess.BISHOP: 3,
+        chess.ROOK: 5,
+        chess.QUEEN: 9,
+        chess.KING: 100,
+    }[piece.piece_type]
+
+
+def _join_descriptions(items: list[str]) -> str:
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return f"{', '.join(items[:-1])} und {items[-1]}"
+
+
+def _format_pawns(value: float) -> str:
+    return f"{value:.2f}".replace(".", ",")
 
 
 def _tactical_contrast(board: chess.Board, move: chess.Move, analysis: MoveAnalysis) -> str:

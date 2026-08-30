@@ -1,0 +1,67 @@
+[
+  {
+    "id": "knight_rim_double_purpose",
+    "fen": "r1b2rk1/p3nppp/2pq1n2/1p2p1B1/Pb1pP2N/1BNP1Q2/1PP2PPP/R4RK1 w - - 0 13",
+    "question": "Warum ist Na2 gut, obwohl ein Springer am Rand schlecht steht?",
+    "focus_uci": "c3a2",
+    "analysis": {
+      "best_move_uci": "c3a2",
+      "best_move_san": "Na2",
+      "evaluation_before": 0.43,
+      "evaluation_played": 0.43,
+      "loss_pawns": 0.0,
+      "classification": "practically_equal",
+      "best_pv_san": ["Na2", "Bc5", "Nc1", "a5"],
+      "played_pv_san": ["Na2", "Bc5", "Nc1", "a5"]
+    },
+    "candidates": [
+      ["c3a2", "Na2", 0.43, 0.0, ["Na2", "Bc5", "Nc1", "a5"]],
+      ["c3b1", "Nb1", -0.06, 0.49, ["Nb1", "a5", "c3", "Bc5"]],
+      ["c3d1", "Nd1", -0.34, 0.77, ["Nd1", "a5"]]
+    ],
+    "required_phrases": [
+      "Springer auf c3 vom gegnerischen Bauern auf d4 angegriffen",
+      "kein aktiver Zentrumszug",
+      "greift er den gegnerischen Läufer auf b4 an",
+      "nächster Kandidat ist Nb1",
+      "Nur Na2 erzeugt zugleich einen direkten Gegenangriff",
+      "Zwischenstation und kein dauerhafter Posten"
+    ],
+    "forbidden_phrases": [
+      "Springer wird entwickelt",
+      "nimmt Einfluss auf zentrale Felder"
+    ]
+  },
+  {
+    "id": "save_bishop_before_counterattacking_knight",
+    "fen": "3r1rk1/ppp2ppp/3q1n2/1B2p3/2Pn4/3P3P/P1P2PP1/R1BQR1K1 w - - 3 14",
+    "question": "Warum ist c3 schlechter als Ba4?",
+    "focus_uci": "c2c3",
+    "analysis": {
+      "best_move_uci": "b5a4",
+      "best_move_san": "Ba4",
+      "evaluation_before": 0.0,
+      "evaluation_played": -0.45,
+      "loss_pawns": 0.45,
+      "classification": "inaccuracy",
+      "best_pv_san": ["Ba4", "b6", "Bb2", "h6"],
+      "played_pv_san": ["c3", "Nxb5", "cxb5", "Qxd3"]
+    },
+    "candidates": [
+      ["b5a4", "Ba4", 0.0, 0.0, ["Ba4", "b6", "Bb2", "h6"]],
+      ["c1b2", "Bb2", -0.12, 0.12, ["Bb2", "c6", "Ba4"]],
+      ["c2c3", "c3", -0.45, 0.45, ["c3", "Nxb5", "cxb5", "Qxd3"]]
+    ],
+    "required_phrases": [
+      "c3 beantwortet den Angriff auf den Bauern auf c2",
+      "Ba4 dagegen den Angriff auf den Läufer auf b5",
+      "weiter angegriffene Stein ist materiell wertvoller",
+      "nach c3 folgt sofort Nxb5",
+      "Schwarz schlägt damit den Läufer auf b5",
+      "c3 Nxb5 cxb5 Qxd3"
+    ],
+    "forbidden_phrases": [
+      "legt neue Felder dauerhaft fest"
+    ]
+  }
+]

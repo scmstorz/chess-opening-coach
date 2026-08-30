@@ -141,6 +141,10 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 details { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 15px; }
 summary { color: var(--green); cursor: pointer; font-size: 12px; font-weight: 800; }
 details p { color: var(--muted); font-family: inherit !important; font-size: 13px !important; line-height: 1.6 !important; margin-top: 12px !important; }
+.explanation-sections { display: grid; gap: 15px; margin-top: 15px; }
+.explanation-sections section { border-left: 2px solid var(--green-soft); padding-left: 11px; }
+.explanation-sections h4 { color: var(--green); font-size: 10px; letter-spacing: .07em; margin: 0; text-transform: uppercase; }
+.explanation-sections p { margin-top: 6px !important; }
 
 .truth-grid { border-bottom: 1px solid var(--line); border-top: 1px solid var(--line); display: grid; flex: 0 0 auto; grid-template-columns: repeat(3, 1fr); margin-top: 22px; padding: 19px 0; }
 .truth-grid div { border-right: 1px solid var(--line); padding: 0 12px; }

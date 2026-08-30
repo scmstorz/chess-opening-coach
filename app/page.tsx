@@ -24,6 +24,7 @@ type CoachMessage = {
   move: string | null;
   summary: string;
   details: string;
+  explanation_sections?: { title: string; text: string }[];
   source: string;
   model: string | null;
   attempt: number | null;
@@ -648,7 +649,19 @@ export default function Home() {
                     <small className="message-author">{message.kind === "question" ? "Antwort zur Frage" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
                     {message.question && <blockquote className="question-quote">„{message.question}“</blockquote>}
                     <p>{message.summary}</p>
-                    <details><summary>Erklärung aufklappen</summary><p>{message.details}</p></details>
+                    <details>
+                      <summary>{message.explanation_sections?.length ? "Erklärung und Vergleich aufklappen" : "Erklärung aufklappen"}</summary>
+                      {message.explanation_sections?.length ? (
+                        <div className="explanation-sections">
+                          {message.explanation_sections.map((section) => (
+                            <section key={section.title}>
+                              <h4>{section.title}</h4>
+                              <p>{section.text}</p>
+                            </section>
+                          ))}
+                        </div>
+                      ) : <p>{message.details}</p>}
+                    </details>
                   </div>
                 </article>
               ))

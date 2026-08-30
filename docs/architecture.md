@@ -113,6 +113,14 @@ Move loss is normalized to the side that moved. Analysis keys include the
 position, candidate, engine identity, time budget, and MultiPV setting and are
 cached in SQLite.
 
+Normal move feedback uses the short engine budget. A `why?` question uses a
+separate explanation budget and a depth-18, three-candidate MultiPV search. If
+the questioned move is not among the leading candidates, Stockfish analyzes it
+again as a forced root move and adds it to the comparison. Cache keys include
+the FEN, engine, explanation time, depth, candidate count, and optional focus
+move. This gives weak moves a real continuation instead of comparing a deep
+best line with a one-ply placeholder.
+
 ## LLM grounding boundary
 
 Ollama never receives authority to produce the verdict. The core first creates a
@@ -136,6 +144,14 @@ atomic facts for relevance. Mechanically important facts are marked required
 and appended if the model omits them, so language selection cannot empty the
 answer of its causal explanation.
 
+The comparison layer also computes move deltas for the focus and nearest engine
+candidate: which attacked piece each move saves, which own pieces remain under
+attack, approximate material priority, new counterattacks, central-square
+control, captures in the first reply, checks, and newly opened slider lines.
+Interpretive wording is deliberately qualified: these visible differences can
+explain part of an evaluation gap, but the number does not prove one exclusive
+strategic cause.
+
 The initial real-world test justified this boundary: `qwen3.8:27b-mlx`, running
 through Ollama, incorrectly called `1...g6` a King's Gambit line. An integration
 bug had also supplied the broader pre-move opening identity instead of the newly
@@ -156,11 +172,17 @@ the same theory-first, Stockfish-after-theory selection as the visible hint.
 user question + current FEN + optional highlighted move
   -> resolve and validate one legal move with python-chess
   -> check local theory membership and resulting opening identity
-  -> analyze the move and a short PV with Stockfish
-  -> build atomic, deterministic German answer facts
+  -> run depth-18 MultiPV plus a forced line for the focus move when needed
+  -> compare concrete board effects and principal variations
+  -> build atomic, deterministic German answer facts and three UI sections
   -> let Ollama select only the fact IDs most relevant to the question
   -> render the selected verified text or use the deterministic fallback
 ```
+
+The browser renders the short selected answer first. Its expander then keeps
+three deterministic layers separate: `Was verändert der Zug konkret?`, `Warum
+nicht die naheliegende Alternative?`, and `Stockfish-Rechenwege`. This prevents
+a fluent summary from hiding the evidence needed to learn from the position.
 
 The user question itself is treated as untrusted context, not as evidence. The
 answer is added to the in-memory conversation feed but not recorded as a move or

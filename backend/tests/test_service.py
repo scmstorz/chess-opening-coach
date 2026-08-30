@@ -1,7 +1,7 @@
 import random
 
 import chess
-from chess_coach.engine import MoveAnalysis
+from chess_coach.engine import CandidateAnalysis, MoveAnalysis, MoveComparison
 from chess_coach.openings import OpeningBook
 from chess_coach.service import CoachService
 from chess_coach.storage import SQLiteStore
@@ -37,6 +37,34 @@ class FakeEngine:
     def get_best_move(self, board: chess.Board) -> tuple[chess.Move, MoveAnalysis]:
         move = next(iter(board.legal_moves))
         return move, self.analyze_move(board, move)
+
+    def compare_moves(
+        self, board: chess.Board, *, count: int = 3, focus_move: chess.Move | None = None
+    ) -> MoveComparison:
+        candidates = []
+        for index, move in enumerate(list(board.legal_moves)[:count]):
+            candidates.append(
+                CandidateAnalysis(
+                    move_uci=move.uci(),
+                    move_san=board.san(move),
+                    evaluation=round(0.2 - index * 0.1, 2),
+                    mate=None,
+                    loss_pawns=round(index * 0.1, 2),
+                    pv_san=(board.san(move),),
+                )
+            )
+        if focus_move and all(candidate.move_uci != focus_move.uci() for candidate in candidates):
+            candidates.append(
+                CandidateAnalysis(
+                    move_uci=focus_move.uci(),
+                    move_san=board.san(focus_move),
+                    evaluation=-0.5,
+                    mate=None,
+                    loss_pawns=0.7,
+                    pv_san=(board.san(focus_move),),
+                )
+            )
+        return MoveComparison(True, self.name, tuple(candidates))
 
 
 def service() -> CoachService:
@@ -209,6 +237,37 @@ def test_na2_question_corrects_the_generic_center_development_template() -> None
                 played_pv_san=("Na2", "Bc5", "Nc1", "a5"),
             )
 
+        def compare_moves(
+            self, board: chess.Board, *, count: int = 3, focus_move: chess.Move | None = None
+        ) -> MoveComparison:
+            candidates = (
+                CandidateAnalysis(
+                    "c3a2",
+                    "Na2",
+                    0.43,
+                    None,
+                    0.0,
+                    ("Na2", "Bc5", "Nc1", "a5"),
+                ),
+                CandidateAnalysis(
+                    "c3b1",
+                    "Nb1",
+                    -0.06,
+                    None,
+                    0.49,
+                    ("Nb1", "a5", "c3", "Bc5"),
+                ),
+                CandidateAnalysis(
+                    "c3d1",
+                    "Nd1",
+                    -0.34,
+                    None,
+                    0.77,
+                    ("Nd1",),
+                ),
+            )
+            return MoveComparison(True, self.name, candidates[:count])
+
     coach.engine = Na2Engine()
     response = coach.answer_question(
         session["session_id"],
@@ -227,7 +286,28 @@ def test_na2_question_corrects_the_generic_center_development_template() -> None
     assert "kein aktiver Zentrumszug" in details
     assert "Bc5 zieht den von Na2 angegriffenen Läufer von b4 weg" in details
     assert "Zwischenstation und kein dauerhafter Posten" in details
+    assert "nächster Kandidat ist Nb1" in details
+    assert "um 0,49 Bauerneinheiten schwächer" in details
+    assert "Nur Na2 erzeugt zugleich einen direkten Gegenangriff" in details
     assert "entwickelt" not in details
+    sections = response["message"]["explanation_sections"]
+    assert [section["title"] for section in sections] == [
+        "Was verändert der Zug konkret?",
+        "Warum nicht die naheliegende Alternative?",
+        "Stockfish-Rechenwege",
+    ]
+    assert "Nb1 (-0,06, 0,49 Bauerneinheiten hinter Platz 1)" in sections[2]["text"]
+
+
+def test_question_uses_the_first_of_multiple_named_legal_moves() -> None:
+    coach = service()
+    board = chess.Board("3r1rk1/ppp2ppp/3q1n2/1B2p3/2Pn4/3P3P/P1P2PP1/R1BQR1K1 w - - 3 14")
+
+    first = coach._mentioned_legal_move(board, "Warum ist c3 schlechter als Ba4?")
+    reversed_order = coach._mentioned_legal_move(board, "Warum ist Ba4 besser als c3?")
+
+    assert first == chess.Move.from_uci("c2c3")
+    assert reversed_order == chess.Move.from_uci("b5a4")
 
 
 def test_question_about_suggestion_is_grounded_without_playing_the_move() -> None:

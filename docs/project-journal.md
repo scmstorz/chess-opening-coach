@@ -877,6 +877,52 @@ The regression suite now contains the exact FEN and forbids the word
 and web lint, the production build, rendered-shell test, and whitespace checks
 are clean.
 
+### Explanation-quality sprint: from verdict to comparison
+
+The learner approved a focused quality sprint before further feature work. The
+goal was not longer prose but a repeatable answer to three different questions:
+what the move changes, why a plausible alternative differs, and which concrete
+lines support the comparison.
+
+Stockfish now has two time budgets. Normal move feedback retains the fast
+0.12-second check. Questions use a cached 0.8-second, depth-18 MultiPV search for
+three candidates. When the questioned move is outside that top group, it is
+analyzed separately as a forced root move at the same depth. This mattered in
+the original `c3` case: a short analysis sometimes returned only the move name,
+whereas the focused line reliably continued `c3 Nxb5 cxb5 Qxd3`.
+
+The comparison layer does not ask an LLM to infer differences from two scores.
+It computes them from both resulting boards: which attacked piece each move
+saves, which own piece stays attacked, approximate material priority, new
+counterattacks, direct central control, and captures in the first reply. It also
+detects checks and lines newly opened for bishops, rooks, and queens. Any
+strategic synthesis is labeled as explaining a plausible part of the engine
+gap, never its single proven cause.
+
+For `Na2` the real output now compares it to `Nb1`: both save the attacked
+knight, but only `Na2` attacks the bishop on `b4`; the lines then show `...Bc5`
+and the knight's continuation to `c1`. For the other real failure, the parser
+first needed a correction: “Warum ist c3 schlechter als Ba4?” had selected
+whichever legal move appeared first internally rather than the first move named
+in the question. It now respects textual order. The comparison then shows that
+`c3` answers the attack on the pawn at `c2` and counterattacks the knight, but
+leaves the three-point bishop on `b5` attacked; `Ba4` saves that bishop while
+leaving only the one-point pawn exposed. The forced line confirms `...Nxb5`.
+
+The browser expander now has three visible sections: concrete effects,
+alternative comparison, and Stockfish lines with the White-positive score
+convention repeated in context. Qwen still chooses the concise top-level facts,
+while required causal facts and all three evidence sections remain
+deterministic. A complete local run with Stockfish and Qwen succeeded in 13.05
+seconds with no unsupported model-authored chess text.
+
+The two learner-discovered failures are now stored in
+`backend/tests/fixtures/explanation_cases.json`. The machine-readable corpus
+contains FEN, question, focus move, engine lines, required phrases, and forbidden
+claims so future explanation changes can add cases without inventing a new test
+shape. The suite has 25 passing Python tests, plus clean Python/web lint,
+production build, rendered-shell test, and whitespace checks.
+
 ### First-slice verification evidence
 
 At the time of this journal entry:

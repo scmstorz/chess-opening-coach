@@ -163,3 +163,11 @@ Qwen select only the verified fact IDs. Required causal facts are added when a
 model does not select them. The final isolated run used Qwen successfully and
 contained the direct attack, the counterattack on `b4`, the lack of central
 control, and the temporary `a2-c1` route without any model-authored chess claim.
+
+The subsequent explanation-quality sprint added a depth-18 MultiPV comparison
+and structured evidence sections. In a full isolated production run Qwen made a
+valid fact selection in 13.05 seconds. The deterministic evidence explained
+`Na2` versus `Nb1` through the shared escape from the `d4` attack and `Na2`'s
+additional tempo on the bishop at `b4`; separate lines showed both engine
+calculations. This is a better use of the model than free explanation: it ranks
+relevance while the application owns every displayed chess claim.

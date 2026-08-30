@@ -36,6 +36,10 @@
     is too broad. Geometry derived from the live board reveals the real
     double-purpose move, while free Qwen and Ornith explanations demonstrate
     why LLM fluency still needs claim-level grounding.
+15. A focused explanation-quality sprint turns isolated fixes into a reusable
+    comparison pipeline: deeper MultiPV, forced analysis of the questioned
+    move, board-effect deltas, structured evidence sections, and a growing
+    regression corpus built from actual learner objections.
 
 ## Evidence already captured
 
@@ -48,6 +52,7 @@
 - A concrete course correction from unsafe generation to verified paraphrasing
 - A concrete example where richer verified inputs mattered more than adding more models
 - A position-level regression from a real learner challenge (`Na2` versus the rim heuristic)
+- A machine-readable explanation-quality corpus seeded from two real failures
 - Comparable local chess benchmarks for Qwen, Glimmer, Ornith, and GPT-OSS
 
 ## Questions for later evaluation

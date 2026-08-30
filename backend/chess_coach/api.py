@@ -36,6 +36,7 @@ def build_service(settings: Settings | None = None) -> CoachService:
     engine = StockfishService(
         settings.stockfish_path,
         time_seconds=settings.stockfish_time_seconds,
+        explanation_time_seconds=settings.stockfish_explanation_time_seconds,
         multipv=settings.stockfish_multipv,
         cache=store,
     )

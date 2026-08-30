@@ -30,6 +30,8 @@ separate sources of information.
 - Non-playing `Zug vorschlagen` hint from opening theory or Stockfish, with source/target highlighting
 - Grounded follow-up questions about the current position or suggested move
 - Board-derived explanations of direct threats, controlled squares, and concrete engine lines
+- Deeper three-candidate comparisons for `why?` questions, including the named move
+- Expandable explanation sections for concrete effects, alternatives, and engine lines
 - Visible engine evaluation using the standard White-positive convention
 - German feedback after every learner and coach move
 - Expandable explanation detail
@@ -89,6 +91,7 @@ CHESS_COACH_BACKEND_PORT=53686
 CHESS_COACH_FRONTEND_PORT=53687
 STOCKFISH_PATH=/absolute/path/to/stockfish
 STOCKFISH_TIME=0.12
+STOCKFISH_EXPLANATION_TIME=0.8
 STOCKFISH_MULTIPV=3
 CHESS_COACH_DATABASE=/absolute/path/to/coach.db
 CHESS_COACH_OPENINGS=/absolute/path/to/opening-tsv-directory

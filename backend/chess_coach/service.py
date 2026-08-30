@@ -22,6 +22,17 @@ class TurnSnapshot:
     move_history_length: int
     message_history_length: int
     interaction_id: int | None
+    phase: str
+    opening_end: OpeningEndEvidence | None
+
+
+@dataclass(frozen=True, slots=True)
+class OpeningEndEvidence:
+    likely: bool
+    headline: str
+    explanation: str
+    signals: tuple[dict[str, Any], ...]
+    can_continue: bool
 
 
 @dataclass(slots=True)
@@ -34,6 +45,9 @@ class GameSession:
     message_history: list[dict[str, Any]] = field(default_factory=list)
     undo_stack: list[TurnSnapshot] = field(default_factory=list)
     attempts_at_position: int = 0
+    phase: str = "opening"
+    opening_end: OpeningEndEvidence | None = None
+    opening_summary: dict[str, Any] | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -76,6 +90,13 @@ class CoachService:
     ) -> dict[str, Any]:
         session = self._session(session_id)
         with session.lock:
+            if session.phase == "transition":
+                raise ValueError(
+                    "Bitte entscheide zuerst, ob du weiterspielen oder die Eröffnung "
+                    "auswerten möchtest"
+                )
+            if session.phase == "complete":
+                raise ValueError("Diese Eröffnungseinheit ist bereits abgeschlossen")
             if session.board.turn != session.learner_color:
                 raise ValueError("Der Coach ist am Zug")
             fen_before = session.board.fen()
@@ -93,7 +114,9 @@ class CoachService:
                 )
 
             san = session.board.san(move)
-            theory_moves = self.openings.theory_moves(session.board)
+            theory_moves = (
+                () if session.phase == "middlegame" else self.openings.theory_moves(session.board)
+            )
             theory_match = move.uci() in {candidate.uci for candidate in theory_moves}
             analysis = self.engine.analyze_move(session.board, move)
             needs_correction = bool(
@@ -179,6 +202,8 @@ class CoachService:
     def undo_last_turn(self, session_id: str) -> dict[str, Any]:
         session = self._session(session_id)
         with session.lock:
+            if session.phase == "complete":
+                raise ValueError("Die abgeschlossene Auswertung kann nicht zurückgenommen werden")
             if not session.undo_stack:
                 raise ValueError("Es gibt noch keinen vollständigen Zug zum Zurücknehmen")
             snapshot = session.undo_stack.pop()
@@ -186,6 +211,9 @@ class CoachService:
             removed_messages = len(session.message_history) - snapshot.message_history_length
             session.board = chess.Board(snapshot.fen)
             session.opening = snapshot.opening
+            session.phase = snapshot.phase
+            session.opening_end = snapshot.opening_end
+            session.opening_summary = None
             del session.move_history[snapshot.move_history_length :]
             del session.message_history[snapshot.message_history_length :]
             session.attempts_at_position = 0
@@ -197,14 +225,88 @@ class CoachService:
             }
             return response
 
+    def continue_after_opening(self, session_id: str) -> dict[str, Any]:
+        session = self._session(session_id)
+        with session.lock:
+            if session.phase != "transition":
+                raise ValueError("Für diese Sitzung steht keine Eröffnungsentscheidung an")
+            if session.board.is_game_over():
+                raise ValueError("Die Partie ist beendet und kann nur noch ausgewertet werden")
+            session.phase = "middlegame"
+            message = {
+                "kind": "phase",
+                "actor": "coach",
+                "move": None,
+                "summary": (
+                    "Wir spielen weiter. Ab jetzt behandle ich die Stellung als Mittelspiel."
+                ),
+                "details": (
+                    "Zuglegalität und Stockfish-Prüfung bleiben unverändert. Die lokale "
+                    "Eröffnungstheorie ist ab jetzt nur noch Kontext und keine erwartete Zugfolge."
+                ),
+                "source": "verified-phase-heuristic",
+                "model": None,
+                "attempt": None,
+                "engine": None,
+            }
+            return self._response(session, messages=[message])
+
+    def finish_opening(self, session_id: str) -> dict[str, Any]:
+        session = self._session(session_id)
+        with session.lock:
+            if session.phase == "complete" and session.opening_summary:
+                return self._response(session, messages=[])
+            if session.phase not in {"transition", "middlegame"}:
+                raise ValueError("Die Eröffnungsphase ist für diese Sitzung noch nicht beendet")
+
+            summary = self._build_opening_summary(session)
+            session.opening_summary = self.store.record_session_summary(
+                session_id=session.session_id,
+                opening_eco=session.opening.eco if session.opening else None,
+                opening_name=session.opening.name if session.opening else None,
+                final_fen=session.board.fen(),
+                move_count=len(session.move_history),
+                summary=summary,
+            )
+            session.phase = "complete"
+            message = {
+                "kind": "summary",
+                "actor": "coach",
+                "move": None,
+                "summary": "Die Eröffnung ist ausgewertet. Dein wichtigster Merksatz steht unten.",
+                "details": session.opening_summary["takeaway"],
+                "source": "verified-session-data",
+                "model": None,
+                "attempt": None,
+                "engine": None,
+            }
+            return self._response(session, messages=[message])
+
     def suggest_move(self, session_id: str) -> dict[str, Any]:
         """Return a theory-first, engine-checked hint without changing the game."""
         session = self._session(session_id)
         with session.lock:
+            if session.phase == "transition":
+                raise ValueError(
+                    "Bitte entscheide zuerst, ob du weiterspielen oder die Eröffnung "
+                    "auswerten möchtest"
+                )
+            if session.phase == "complete":
+                raise ValueError("Diese Eröffnungseinheit ist bereits abgeschlossen")
             if session.board.turn != session.learner_color:
                 raise ValueError("Der Coach ist am Zug")
 
-            move, analysis, basis, theory_move = self._select_suggestion(session.board)
+            if session.phase == "middlegame":
+                move, analysis = self.engine.get_best_move(session.board)
+                if move is None or not analysis.available:
+                    raise ValueError(
+                        "Im Mittelspiel wird Stockfish für einen verlässlichen Zugvorschlag "
+                        "benötigt"
+                    )
+                basis = "engine"
+                theory_move = None
+            else:
+                move, analysis, basis, theory_move = self._select_suggestion(session.board)
             san = theory_move.san if theory_move else session.board.san(move)
             projected = session.board.copy(stack=False)
             projected.push(move)
@@ -224,13 +326,23 @@ class CoachService:
                 summary = f"{san} ist ein bewährter Zug in {opening_name}. {quality}"
                 source_detail = "Der Vorschlag stammt aus den lokalen Eröffnungslinien."
             else:
-                summary = (
-                    f"Stockfish bevorzugt {san} in dieser Stellung. "
-                    "Die lokale Eröffnungstheorie enthält hier keine Fortsetzung mehr."
-                )
-                source_detail = (
-                    "Der Vorschlag stammt deshalb direkt aus der aktuellen Engine-Analyse."
-                )
+                if session.phase == "middlegame":
+                    summary = (
+                        f"Stockfish bevorzugt {san} in dieser Mittelspielstellung. "
+                        "Du hast dich entschieden, die Partie weiterzuspielen."
+                    )
+                    source_detail = (
+                        "Der Vorschlag stammt direkt aus der aktuellen Engine-Analyse; "
+                        "Eröffnungstheorie wird hier nicht als Zugvorgabe verwendet."
+                    )
+                else:
+                    summary = (
+                        f"Stockfish bevorzugt {san} in dieser Stellung. "
+                        "Die lokale Eröffnungstheorie enthält hier keine Fortsetzung mehr."
+                    )
+                    source_detail = (
+                        "Der Vorschlag stammt deshalb direkt aus der aktuellen Engine-Analyse."
+                    )
 
             return {
                 "move_uci": move.uci(),
@@ -274,7 +386,10 @@ class CoachService:
             precomputed_analysis: MoveAnalysis | None = None
             if move is None:
                 try:
-                    move, precomputed_analysis, _, _ = self._select_suggestion(board)
+                    if session.phase == "middlegame":
+                        move, precomputed_analysis = self.engine.get_best_move(board)
+                    else:
+                        move, precomputed_analysis, _, _ = self._select_suggestion(board)
                 except ValueError:
                     move = None
 
@@ -299,7 +414,9 @@ class CoachService:
                 explanation_sections: list[dict[str, str]] = []
             else:
                 san = board.san(move)
-                theory_moves = self.openings.theory_moves(board)
+                theory_moves = (
+                    () if session.phase == "middlegame" else self.openings.theory_moves(board)
+                )
                 theory_match = move.uci() in {candidate.uci for candidate in theory_moves}
                 analysis = precomputed_analysis or self.engine.analyze_move(board, move)
                 comparison = self.engine.compare_moves(board, count=3, focus_move=move)
@@ -520,12 +637,16 @@ class CoachService:
     def _play_coach_move(self, session: GameSession) -> dict[str, Any]:
         board = session.board
         fen_before = board.fen()
-        theory_moves = self.openings.theory_moves(board)
-        move = self._weighted_theory_move(theory_moves)
+        theory_moves = () if session.phase == "middlegame" else self.openings.theory_moves(board)
+        analysis: MoveAnalysis | None = None
+        if session.phase == "middlegame":
+            move, analysis = self.engine.get_best_move(board)
+        else:
+            move = self._weighted_theory_move(theory_moves)
         if move is None:
             legal = list(board.legal_moves)
             move = self.rng.choice(legal)
-        analysis = self.engine.analyze_move(board, move)
+        analysis = analysis or self.engine.analyze_move(board, move)
         if (
             analysis.available
             and analysis.loss_pawns is not None
@@ -597,8 +718,16 @@ class CoachService:
         opening_after: OpeningIdentity | None,
     ) -> dict[str, Any]:
         opening = opening_after.name if opening_after else "der aktuellen Stellung"
+        if session.phase == "middlegame":
+            summary = (
+                f"Ich spiele {san}. Stockfish bevorzugt diesen Zug in der Mittelspielstellung."
+                if analysis.available
+                else f"Ich spiele {san}. Wir setzen die Stellung als Mittelspiel fort."
+            )
+        else:
+            summary = f"Ich spiele {san}. Der Zug führt {opening} solide weiter."
         fallback = TutorText(
-            summary=f"Ich spiele {san}. Der Zug führt {opening} solide weiter.",
+            summary=summary,
             details=self._move_details(session.board, move, analysis),
             source="deterministic",
             model=None,
@@ -690,7 +819,11 @@ class CoachService:
         opening: OpeningIdentity | None,
     ) -> dict[str, Any]:
         return {
-            "task": "Erkläre den gerade gespielten Eröffnungszug.",
+            "task": (
+                "Erkläre den gerade gespielten Mittelspielzug."
+                if session.phase == "middlegame"
+                else "Erkläre den gerade gespielten Eröffnungszug."
+            ),
             "fen": session.board.fen(),
             "move": san,
             "actor": actor,
@@ -795,6 +928,8 @@ class CoachService:
                 move_history_length=len(session.move_history),
                 message_history_length=len(session.message_history),
                 interaction_id=self.store.latest_interaction_id(session.session_id),
+                phase=session.phase,
+                opening_end=session.opening_end,
             )
         )
 
@@ -805,6 +940,18 @@ class CoachService:
         messages: list[dict[str, Any]],
         correction: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        completed_turn = any(
+            message.get("actor") == "coach" and message.get("move_uci") for message in messages
+        )
+        should_check_phase = completed_turn or (
+            session.board.is_game_over() and any(message.get("move_uci") for message in messages)
+        )
+        if session.phase == "opening" and correction is None and should_check_phase:
+            evidence = self._opening_end_evidence(session)
+            if evidence.likely:
+                session.phase = "transition"
+                session.opening_end = evidence
+                messages.append(self._opening_end_message(evidence))
         session.message_history.extend(messages)
         opening = asdict(session.opening) if session.opening else None
         legal_moves = [move.uci() for move in session.board.legal_moves]
@@ -821,6 +968,249 @@ class CoachService:
             "can_undo": bool(session.undo_stack),
             "correction": correction,
             "game_over": session.board.is_game_over(),
+            "phase": session.phase,
+            "opening_end": asdict(session.opening_end)
+            if session.phase == "transition" and session.opening_end
+            else None,
+            "opening_summary": session.opening_summary,
+        }
+
+    def _opening_end_evidence(self, session: GameSession) -> OpeningEndEvidence:
+        board = session.board
+        plies = len(session.move_history)
+        theory_exhausted = not self.openings.theory_moves(board)
+        developed_minors = _minor_pieces_off_starting_squares(board)
+        castled = any(move["san"].startswith("O-O") for move in session.move_history)
+        center_pawns_moved = _center_pawns_off_starting_squares(board)
+        enough_history = plies >= 12
+        extended_history = plies >= 20
+
+        signals = (
+            {
+                "id": "theory",
+                "label": (
+                    "Die lokale Eröffnungstheorie enthält hier keine Fortsetzung mehr."
+                    if theory_exhausted
+                    else "Die Stellung liegt noch in einer bekannten lokalen Eröffnungslinie."
+                ),
+                "met": theory_exhausted,
+            },
+            {
+                "id": "development",
+                "label": (
+                    f"{developed_minors} von 8 leichten Figuren stehen nicht mehr auf ihrem "
+                    "Ausgangsfeld."
+                ),
+                "met": developed_minors >= 5,
+            },
+            {
+                "id": "king_safety",
+                "label": (
+                    "Mindestens eine Seite hat rochiert."
+                    if castled
+                    else "Noch keine Seite hat rochiert."
+                ),
+                "met": castled,
+            },
+            {
+                "id": "center",
+                "label": (
+                    f"{center_pawns_moved} von 4 d- und e-Bauern haben ihr Ausgangsfeld verlassen."
+                ),
+                "met": center_pawns_moved >= 3,
+            },
+            {
+                "id": "move_count",
+                "label": f"Die Partie umfasst inzwischen {plies} Halbzüge.",
+                "met": enough_history,
+            },
+        )
+        score = (
+            (2 if theory_exhausted else 0)
+            + (1 if developed_minors >= 5 else 0)
+            + (1 if castled else 0)
+            + (1 if center_pawns_moved >= 3 else 0)
+            + (1 if plies >= 18 else 0)
+        )
+        game_over = board.is_game_over()
+        likely = (
+            game_over or (enough_history and score >= 4) or (extended_history and theory_exhausted)
+        )
+        if game_over:
+            headline = "Die Partie ist beendet – Zeit für die Eröffnungsauswertung."
+            explanation = (
+                "Unabhängig von der üblichen Phasengrenze können wir jetzt festhalten, was du "
+                "aus den ersten Zügen mitnehmen solltest."
+            )
+        elif likely:
+            headline = "Die Eröffnungsphase ist wahrscheinlich vorbei."
+            met_labels = [signal["label"] for signal in signals if signal["met"]][:3]
+            explanation = " ".join(met_labels) + (
+                " Die Grenze ist fließend; deshalb entscheidest du, ob wir weiterspielen oder "
+                "jetzt auswerten."
+            )
+        else:
+            headline = "Die Stellung befindet sich wahrscheinlich noch in der Eröffnungsphase."
+            explanation = "Für einen Phasenwechsel reichen die beobachteten Signale noch nicht."
+        return OpeningEndEvidence(
+            likely=likely,
+            headline=headline,
+            explanation=explanation,
+            signals=signals,
+            can_continue=not game_over,
+        )
+
+    @staticmethod
+    def _opening_end_message(evidence: OpeningEndEvidence) -> dict[str, Any]:
+        return {
+            "kind": "phase",
+            "actor": "coach",
+            "move": None,
+            "summary": evidence.headline,
+            "details": evidence.explanation,
+            "source": "verified-phase-heuristic",
+            "model": None,
+            "attempt": None,
+            "engine": None,
+        }
+
+    def _build_opening_summary(self, session: GameSession) -> dict[str, Any]:
+        interactions = self.store.session_interactions(session.session_id)
+        learner_rows = [row for row in interactions if row["actor"] == "learner"]
+        accepted_rows = [row for row in learner_rows if row["accepted"]]
+        correction_rows = [row for row in learner_rows if not row["accepted"]]
+        theory_rows = [row for row in accepted_rows if row["theory_match"] == 1]
+        sound_rows = [
+            row
+            for row in accepted_rows
+            if row["engine_loss"] is not None and float(row["engine_loss"]) < 0.15
+        ]
+        learner_is_white = session.learner_color == chess.WHITE
+        learner_moves = [move for move in session.move_history if move["actor"] == "learner"]
+        learner_developed = _learner_minor_development(interactions, session.learner_color)
+        learner_castled = any(move["san"].startswith("O-O") for move in learner_moves)
+        learner_center_pawns = _learner_center_pawns_off_start(session.board, session.learner_color)
+
+        concepts = [
+            (
+                "Zentrum: "
+                + (
+                    "Beide eigenen d- und e-Bauern haben ihre Ausgangsfelder verlassen."
+                    if learner_center_pawns == 2
+                    else f"{learner_center_pawns} von 2 eigenen d- und e-Bauern hat sein "
+                    "Ausgangsfeld verlassen."
+                )
+            ),
+            (
+                f"Entwicklung: {learner_developed} von 4 eigenen Springern und Läufern wurden "
+                "mindestens einmal von ihrem Ausgangsfeld gezogen."
+            ),
+            (
+                "Königssicherheit: Du hast in der Eröffnungsphase rochiert."
+                if learner_castled
+                else "Königssicherheit: Du hast in der Eröffnungsphase noch nicht rochiert."
+            ),
+        ]
+
+        strengths: list[str] = []
+        if theory_rows:
+            strengths.append(
+                f"{len(theory_rows)} von {len(accepted_rows)} übernommenen Zügen gehörten zu "
+                "den lokalen Eröffnungslinien."
+            )
+        if sound_rows:
+            strengths.append(
+                f"{len(sound_rows)} übernommene Züge lagen laut Stockfish praktisch auf "
+                "Augenhöhe mit dem besten Zug."
+            )
+        if not correction_rows:
+            strengths.append("Du brauchtest in dieser Eröffnungsphase keine Korrekturschleife.")
+        if not strengths:
+            strengths.append("Du hast die Stellung bis zur Auswertung aktiv weitergespielt.")
+
+        review_points: list[str] = []
+        seen_problem_positions: set[tuple[str, str | None]] = set()
+        for row in correction_rows:
+            key = (row["fen_before"], row["move_san"])
+            if key in seen_problem_positions:
+                continue
+            seen_problem_positions.add(key)
+            if not row["legal"]:
+                review_points.append(
+                    "Ein Zugversuch war nicht legal; prüfe vor dem Loslassen Zielfeld und "
+                    "Königssicherheit."
+                )
+            elif row["move_san"] and row["engine_loss"] is not None:
+                loss = f"{float(row['engine_loss']):.2f}".replace(".", ",")
+                review_points.append(
+                    f"{row['move_san']} musste korrigiert werden; der gemessene Abstand zum "
+                    f"besten Zug betrug etwa {loss} Bauerneinheiten."
+                )
+            elif row["move_san"]:
+                review_points.append(f"{row['move_san']} brauchte einen weiteren Versuch.")
+            if len(review_points) == 3:
+                break
+
+        if not review_points:
+            unusual_rows = [
+                row
+                for row in accepted_rows
+                if row["theory_match"] == 0
+                and row["engine_loss"] is not None
+                and float(row["engine_loss"]) >= 0.15
+            ]
+            for row in unusual_rows[:2]:
+                loss = f"{float(row['engine_loss']):.2f}".replace(".", ",")
+                review_points.append(
+                    f"{row['move_san']} wich von der lokalen Theorie ab und lag etwa {loss} "
+                    "Bauerneinheiten hinter dem besten Engine-Zug."
+                )
+
+        recommendation = None
+        if correction_rows:
+            first_problem = correction_rows[0]
+            move_label = first_problem["move_san"] or "dem problematischen Zugversuch"
+            recommendation = {
+                "title": f"Stellung vor {move_label} noch einmal üben",
+                "reason": (
+                    "Hier war mindestens ein Korrekturhinweis nötig. Die Wiederholung wird nur "
+                    "vorgeschlagen und nicht automatisch gestartet."
+                ),
+                "fen": first_problem["fen_before"],
+            }
+
+        if correction_rows:
+            takeaway = (
+                "Merksatz: Prüfe vor jedem Eröffnungszug zuerst direkte Drohungen, dann "
+                "Entwicklung, Zentrum und Königssicherheit."
+            )
+        elif not learner_castled:
+            takeaway = (
+                "Merksatz: Plane nach Zentrum und Figurenentwicklung bewusst die "
+                "Königssicherheit ein."
+            )
+        elif learner_developed < 3:
+            takeaway = (
+                "Merksatz: Aktiviere mehrere leichte Figuren, bevor du dieselbe Figur "
+                "wiederholt ziehst."
+            )
+        else:
+            takeaway = (
+                "Merksatz: Eine solide Eröffnung verbindet Zentrum, Entwicklung und "
+                "Königssicherheit – nicht nur eine auswendig gelernte Zugfolge."
+            )
+
+        return {
+            "opening": asdict(session.opening) if session.opening else None,
+            "learner_color": "white" if learner_is_white else "black",
+            "moves_played": len(session.move_history),
+            "learner_moves": len(learner_moves),
+            "concepts": concepts,
+            "strengths": strengths[:3],
+            "review_points": review_points,
+            "takeaway": takeaway,
+            "recommendation": recommendation,
+            "source": "verified-session-data",
         }
 
     def _correction(self, session: GameSession, analysis: MoveAnalysis | None) -> dict[str, Any]:
@@ -1507,4 +1897,50 @@ def _tactical_contrast(board: chess.Board, move: chess.Move, analysis: MoveAnaly
     return (
         f"Vor {played_san} ist {possessive} {piece_name} auf {attacked_square} angegriffen. "
         f"{played_san} lässt diesen Angriff bestehen; {response}"
+    )
+
+
+def _minor_pieces_off_starting_squares(board: chess.Board) -> int:
+    starting_pieces = (
+        (chess.B1, chess.Piece(chess.KNIGHT, chess.WHITE)),
+        (chess.G1, chess.Piece(chess.KNIGHT, chess.WHITE)),
+        (chess.C1, chess.Piece(chess.BISHOP, chess.WHITE)),
+        (chess.F1, chess.Piece(chess.BISHOP, chess.WHITE)),
+        (chess.B8, chess.Piece(chess.KNIGHT, chess.BLACK)),
+        (chess.G8, chess.Piece(chess.KNIGHT, chess.BLACK)),
+        (chess.C8, chess.Piece(chess.BISHOP, chess.BLACK)),
+        (chess.F8, chess.Piece(chess.BISHOP, chess.BLACK)),
+    )
+    return sum(board.piece_at(square) != piece for square, piece in starting_pieces)
+
+
+def _center_pawns_off_starting_squares(board: chess.Board) -> int:
+    starting_pawns = (
+        (chess.D2, chess.Piece(chess.PAWN, chess.WHITE)),
+        (chess.E2, chess.Piece(chess.PAWN, chess.WHITE)),
+        (chess.D7, chess.Piece(chess.PAWN, chess.BLACK)),
+        (chess.E7, chess.Piece(chess.PAWN, chess.BLACK)),
+    )
+    return sum(board.piece_at(square) != piece for square, piece in starting_pawns)
+
+
+def _learner_center_pawns_off_start(board: chess.Board, color: chess.Color) -> int:
+    squares = (chess.D2, chess.E2) if color == chess.WHITE else (chess.D7, chess.E7)
+    pawn = chess.Piece(chess.PAWN, color)
+    return sum(board.piece_at(square) != pawn for square in squares)
+
+
+def _learner_minor_development(interactions: list[dict[str, Any]], color: chess.Color) -> int:
+    starting_squares = (
+        {"b1", "g1", "c1", "f1"} if color == chess.WHITE else {"b8", "g8", "c8", "f8"}
+    )
+    return len(
+        {
+            str(row["move_uci"])[:2]
+            for row in interactions
+            if row["actor"] == "learner"
+            and row["accepted"]
+            and row["move_uci"]
+            and str(row["move_uci"])[:2] in starting_squares
+        }
     )

@@ -40,11 +40,14 @@
     comparison pipeline: deeper MultiPV, forced analysis of the questioned
     move, board-effect deltas, structured evidence sections, and a growing
     regression corpus built from actual learner objections.
+16. The first closed learning loop treats the end of an opening as a probable,
+    explainable transition rather than a fixed move count: the learner chooses
+    to continue or receives a grounded, locally persisted review.
 
 ## Evidence already captured
 
 - Complete discovery decisions and rationale in `project-journal.md`
-- Four architecture decision records
+- Five architecture decision records
 - Exact opening-data provenance and license
 - Dependency locks for Python and JavaScript
 - Automated backend, rendered-page, lint, and build checks
@@ -53,6 +56,7 @@
 - A concrete example where richer verified inputs mattered more than adding more models
 - A position-level regression from a real learner challenge (`Na2` versus the rim heuristic)
 - A machine-readable explanation-quality corpus seeded from two real failures
+- A persisted session-review schema and tested multi-signal phase heuristic
 - Comparable local chess benchmarks for Qwen, Glimmer, Ornith, and GPT-OSS
 
 ## Questions for later evaluation

@@ -18,7 +18,7 @@ type EngineInfo = {
 };
 
 type CoachMessage = {
-  kind?: "move" | "question";
+  kind?: "move" | "question" | "phase" | "summary";
   actor: "learner" | "coach";
   question?: string;
   move: string | null;
@@ -31,6 +31,34 @@ type CoachMessage = {
   engine: EngineInfo | null;
   move_uci?: string;
   fen_after?: string;
+};
+
+type OpeningEndSignal = {
+  id: string;
+  label: string;
+  met: boolean;
+};
+
+type OpeningEnd = {
+  likely: boolean;
+  headline: string;
+  explanation: string;
+  signals: OpeningEndSignal[];
+  can_continue: boolean;
+};
+
+type OpeningSummary = {
+  opening: { eco: string; name: string } | null;
+  learner_color: "white" | "black";
+  moves_played: number;
+  learner_moves: number;
+  concepts: string[];
+  strengths: string[];
+  review_points: string[];
+  takeaway: string;
+  recommendation: { title: string; reason: string; fen: string } | null;
+  source: string;
+  created_at: string;
 };
 
 type MoveAnimation = {
@@ -58,6 +86,9 @@ type SessionState = {
     recommended_move: string | null;
   } | null;
   game_over: boolean;
+  phase: "opening" | "transition" | "middlegame" | "complete";
+  opening_end: OpeningEnd | null;
+  opening_summary: OpeningSummary | null;
 };
 
 type MoveSuggestion = {
@@ -209,6 +240,9 @@ export default function Home() {
   const coachFeedRef = useRef<HTMLDivElement | null>(null);
   const initialSessionRequestedRef = useRef(false);
   const interactionLocked = loading || askingQuestion;
+  const phaseDecisionPending = session?.phase === "transition";
+  const sessionComplete = session?.phase === "complete";
+  const boardInteractionLocked = interactionLocked || phaseDecisionPending || sessionComplete;
 
   useEffect(() => {
     api<Health>("/api/health").then(setHealth).catch(() => setHealth(null));
@@ -345,7 +379,7 @@ export default function Home() {
   }
 
   async function submitMove(from: string, to: string) {
-    if (!session || interactionLocked || session.turn !== session.learner_color) return;
+    if (!session || boardInteractionLocked || session.turn !== session.learner_color) return;
     setSuggestion(null);
     const fenBefore = displayFen;
     const matchingMove = session.legal_moves.find((move) => move.startsWith(`${from}${to}`));
@@ -407,7 +441,7 @@ export default function Home() {
   }
 
   async function requestSuggestion() {
-    if (!session || interactionLocked || session.turn !== session.learner_color) return;
+    if (!session || boardInteractionLocked || session.turn !== session.learner_color) return;
     setLoading(true);
     setError(null);
     setSuggestion(null);
@@ -427,7 +461,7 @@ export default function Home() {
 
   async function askQuestion() {
     const question = questionText.trim();
-    if (!session || interactionLocked || question.length < 2) return;
+    if (!session || boardInteractionLocked || question.length < 2) return;
     setAskingQuestion(true);
     setError(null);
     try {
@@ -450,8 +484,30 @@ export default function Home() {
     }
   }
 
+  async function resolveOpeningEnd(action: "continue" | "summary") {
+    if (!session || interactionLocked || session.phase !== "transition") return;
+    setLoading(true);
+    setError(null);
+    setSuggestion(null);
+    try {
+      const next = await api<SessionState>(
+        `/api/sessions/${session.session_id}/opening/${action}`,
+        { method: "POST" },
+      );
+      setSession(next);
+      setMessages(next.message_history);
+      setDisplayFen(next.fen);
+      setSelectedSquare(null);
+      setDraggedFrom(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Die Auswahl konnte nicht gespeichert werden.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function selectOrMove(square: string) {
-    if (!session || interactionLocked) return;
+    if (!session || boardInteractionLocked) return;
     const piece = position[square];
     if (selectedSquare && legalTargets.has(square)) {
       void submitMove(selectedSquare, square);
@@ -495,7 +551,7 @@ export default function Home() {
               {(["white", "black", "random"] as PlayerColor[]).map((color) => (
                 <button
                   className={requestedColor === color ? "color-option active" : "color-option"}
-                  disabled={interactionLocked}
+                  disabled={interactionLocked || phaseDecisionPending}
                   key={color}
                   onClick={() => void startSession(color)}
                   aria-pressed={requestedColor === color}
@@ -515,14 +571,14 @@ export default function Home() {
             </div>
 
             <div className={`board-frame${loading && !animatingSequence ? " thinking" : ""}`}>
-              <div className="chessboard" aria-disabled={!session || interactionLocked} aria-label="Interaktives Schachbrett">
+              <div className="chessboard" aria-disabled={!session || boardInteractionLocked} aria-label="Interaktives Schachbrett">
                 {orientedSquares.map((square, index) => {
                   const piece = position[square];
                   const file = square[0];
                   const rank = square[1];
                   const isLight = (files.indexOf(file) + Number(rank)) % 2 === 1;
                   const canDrag = Boolean(
-                    session && !interactionLocked && piece?.color === session.learner_color && session.turn === session.learner_color,
+                    session && !boardInteractionLocked && piece?.color === session.learner_color && session.turn === session.learner_color,
                   );
                   return (
                     <button
@@ -573,7 +629,7 @@ export default function Home() {
                 {session && (
                   <button
                     className="secondary-action"
-                    disabled={interactionLocked || !session.can_undo}
+                    disabled={interactionLocked || sessionComplete || !session.can_undo}
                     onClick={() => void undoLastTurn()}
                     title="Nimmt deinen letzten Zug und die Coach-Antwort zurück"
                     type="button"
@@ -583,14 +639,14 @@ export default function Home() {
                 )}
                 <button
                   className="secondary-action suggestion-action"
-                  disabled={!session || interactionLocked || session.turn !== session.learner_color || session.game_over}
+                  disabled={!session || boardInteractionLocked || session.turn !== session.learner_color || session.game_over}
                   onClick={() => void requestSuggestion()}
                   title="Markiert einen guten Zug aus Eröffnungstheorie oder Stockfish-Analyse"
                   type="button"
                 >
                   <span aria-hidden="true">✦</span>Zug vorschlagen
                 </button>
-                <button className="primary-action" onClick={() => void startSession()} disabled={interactionLocked} type="button">
+                <button className="primary-action" onClick={() => void startSession()} disabled={interactionLocked || phaseDecisionPending} type="button">
                   Neue Partie<span aria-hidden="true">→</span>
                 </button>
               </div>
@@ -605,6 +661,76 @@ export default function Home() {
                   <details><summary>Warum dieser Zug?</summary><p>{suggestion.details}</p></details>
                 </div>
               </div>
+            )}
+
+            {session?.opening_end && (
+              <section className="opening-end-banner" aria-labelledby="opening-end-title" role="status">
+                <div className="opening-end-icon" aria-hidden="true">◎</div>
+                <div className="opening-end-content">
+                  <p className="eyebrow">Phasenwechsel</p>
+                  <h3 id="opening-end-title">{session.opening_end.headline}</h3>
+                  <p>{session.opening_end.explanation}</p>
+                  <details>
+                    <summary>Woran erkennt der Coach das?</summary>
+                    <ul className="phase-signals">
+                      {session.opening_end.signals.map((signal) => (
+                        <li className={signal.met ? "met" : ""} key={signal.id}>
+                          <span aria-hidden="true">{signal.met ? "✓" : "·"}</span>{signal.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                  <div className="opening-end-actions">
+                    {session.opening_end.can_continue && (
+                      <button className="secondary-action" disabled={interactionLocked} onClick={() => void resolveOpeningEnd("continue")} type="button">
+                        Partie weiterspielen
+                      </button>
+                    )}
+                    <button className="primary-action" disabled={interactionLocked} onClick={() => void resolveOpeningEnd("summary")} type="button">
+                      Eröffnung auswerten<span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {session?.opening_summary && (
+              <section className="opening-summary" aria-labelledby="opening-summary-title">
+                <header>
+                  <div>
+                    <p className="eyebrow">Deine Auswertung</p>
+                    <h3 id="opening-summary-title">{session.opening_summary.opening?.name ?? "Freies Eröffnungsspiel"}</h3>
+                  </div>
+                  <span>{session.opening_summary.learner_moves} eigene Züge</span>
+                </header>
+
+                <div className="summary-section summary-concepts">
+                  <h4>Was in der Stellung wichtig war</h4>
+                  <ul>{session.opening_summary.concepts.map((item) => <li key={item}>{item}</li>)}</ul>
+                </div>
+
+                <div className="summary-columns">
+                  <div className="summary-section">
+                    <h4>Das lief gut</h4>
+                    <ul>{session.opening_summary.strengths.map((item) => <li key={item}>{item}</li>)}</ul>
+                  </div>
+                  <div className="summary-section">
+                    <h4>Noch einmal anschauen</h4>
+                    {session.opening_summary.review_points.length ? (
+                      <ul>{session.opening_summary.review_points.map((item) => <li key={item}>{item}</li>)}</ul>
+                    ) : <p>Kein konkreter Korrekturpunkt in dieser Eröffnungsphase.</p>}
+                  </div>
+                </div>
+
+                <blockquote className="summary-takeaway">{session.opening_summary.takeaway}</blockquote>
+
+                {session.opening_summary.recommendation && (
+                  <div className="review-recommendation">
+                    <span aria-hidden="true">↻</span>
+                    <div><strong>{session.opening_summary.recommendation.title}</strong><p>{session.opening_summary.recommendation.reason}</p></div>
+                  </div>
+                )}
+              </section>
             )}
 
             {session?.correction && (
@@ -629,7 +755,10 @@ export default function Home() {
         <aside className="coach-panel">
           <div className="coach-heading">
             <div className="coach-avatar" aria-hidden="true">♟</div>
-            <div><p className="eyebrow">Dein Coach</p><h2>{session ? "Wir sind in der Partie" : "Bereit für den ersten Zug"}</h2></div>
+            <div>
+              <p className="eyebrow">Dein Coach</p>
+              <h2>{sessionComplete ? "Eröffnung ausgewertet" : phaseDecisionPending ? "Zeit für eine Entscheidung" : session?.phase === "middlegame" ? "Wir sind im Mittelspiel" : session ? "Wir sind in der Partie" : "Bereit für den ersten Zug"}</h2>
+            </div>
           </div>
 
           <div className="coach-feed" aria-live="polite" ref={coachFeedRef}>
@@ -646,7 +775,7 @@ export default function Home() {
                 <article className={`coach-message ${message.actor}${message.kind === "question" ? " question-answer" : ""}`} key={`${index}-${message.move}-${message.question ?? message.summary}`}>
                   <span className="message-index">{String(index + 1).padStart(2, "0")}</span>
                   <div>
-                    <small className="message-author">{message.kind === "question" ? "Antwort zur Frage" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
+                    <small className="message-author">{message.kind === "question" ? "Antwort zur Frage" : message.kind === "phase" ? "Phasenwechsel" : message.kind === "summary" ? "Lernbilanz" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
                     {message.question && <blockquote className="question-quote">„{message.question}“</blockquote>}
                     <p>{message.summary}</p>
                     <details>
@@ -682,14 +811,14 @@ export default function Home() {
                 onChange={(event) => setQuestionText(event.target.value)}
                 placeholder={suggestion ? `Warum ist ${suggestion.move_san} hier gut?` : "Warum ist e4 hier sinnvoll?"}
                 value={questionText}
-                disabled={!session || interactionLocked}
+                disabled={!session || boardInteractionLocked}
                 maxLength={600}
               />
-              <button type="submit" disabled={!session || interactionLocked || questionText.trim().length < 2} aria-label="Frage senden">
+              <button type="submit" disabled={!session || boardInteractionLocked || questionText.trim().length < 2} aria-label="Frage senden">
                 {askingQuestion ? "…" : "↑"}
               </button>
             </form>
-            <small>{askingQuestion ? "Der lokale Tutor wählt die relevantesten geprüften Fakten …" : `Geerdet mit Stellung, Eröffnungstheorie und Stockfish${health?.ollama.model ? ` · ${health.ollama.model}` : ""}`}</small>
+            <small>{sessionComplete ? "Die Eröffnungslektion ist abgeschlossen. Starte eine neue Partie, wenn du weiterüben möchtest." : phaseDecisionPending ? "Entscheide zuerst, ob du weiterspielen oder auswerten möchtest." : askingQuestion ? "Der lokale Tutor wählt die relevantesten geprüften Fakten …" : `Geerdet mit Stellung, Eröffnungstheorie und Stockfish${health?.ollama.model ? ` · ${health.ollama.model}` : ""}`}</small>
           </div>
         </aside>
       </section>

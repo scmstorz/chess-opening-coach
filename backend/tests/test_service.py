@@ -2,7 +2,7 @@ import random
 
 import chess
 from chess_coach.engine import CandidateAnalysis, MoveAnalysis, MoveComparison
-from chess_coach.openings import OpeningBook
+from chess_coach.openings import OpeningBook, OpeningIdentity
 from chess_coach.service import CoachService
 from chess_coach.storage import SQLiteStore
 from chess_coach.tutor import OllamaTutor
@@ -75,6 +75,44 @@ def service() -> CoachService:
         SQLiteStore(":memory:"),
         rng=random.Random(4),
     )
+
+
+def opening_end_session(coach: CoachService) -> tuple[str, chess.Board]:
+    response = coach.create_session("white")
+    session_id = response["session_id"]
+    active = coach.sessions[session_id]
+    board = chess.Board()
+    moves = ("e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "O-O", "Nf6", "d3", "O-O", "c3", "d6")
+    active.move_history = []
+    for index, san in enumerate(moves):
+        fen_before = board.fen()
+        move = board.parse_san(san)
+        actor = "learner" if index % 2 == 0 else "coach"
+        coach.store.record(
+            {
+                "session_id": session_id,
+                "fen_before": fen_before,
+                "actor": actor,
+                "move_uci": move.uci(),
+                "move_san": san,
+                "legal": 1,
+                "accepted": 1,
+                "theory_match": 1 if index < 6 else 0,
+                "opening_eco": "C50",
+                "opening_name": "Italian Game",
+                "engine_evaluation": 0.2,
+                "engine_loss": 0.0,
+                "engine_classification": "practically_equal",
+                "attempt_number": 0,
+                "feedback_summary": "Test feedback",
+                "llm_model": None,
+            }
+        )
+        board.push(move)
+        active.move_history.append({"actor": actor, "san": san})
+    active.board = board
+    active.opening = OpeningIdentity("C50", "Italian Game")
+    return session_id, board
 
 
 def test_complete_white_turn_keeps_truth_layers_separate() -> None:
@@ -339,3 +377,138 @@ def test_question_about_suggestion_is_grounded_without_playing_the_move() -> Non
     )
 
     assert alternative["message"]["move"] == "d4"
+
+
+def test_opening_end_combines_theory_development_castling_and_history() -> None:
+    coach = service()
+    session_id, _ = opening_end_session(coach)
+    active = coach.sessions[session_id]
+
+    evidence = coach._opening_end_evidence(active)
+
+    assert evidence.likely is True
+    assert evidence.can_continue is True
+    assert "wahrscheinlich vorbei" in evidence.headline
+    assert {signal["id"] for signal in evidence.signals if signal["met"]} >= {
+        "theory",
+        "development",
+        "king_safety",
+        "move_count",
+    }
+
+
+def test_early_theory_departure_does_not_end_opening_by_itself() -> None:
+    coach = service()
+    response = coach.create_session("white")
+    active = coach.sessions[response["session_id"]]
+    active.board.push_san("e4")
+    active.board.push_san("a6")
+    active.move_history = [
+        {"actor": "learner", "san": "e4"},
+        {"actor": "coach", "san": "a6"},
+    ]
+
+    evidence = coach._opening_end_evidence(active)
+
+    assert evidence.likely is False
+    assert next(signal for signal in evidence.signals if signal["id"] == "theory")["met"]
+    assert not next(signal for signal in evidence.signals if signal["id"] == "move_count")["met"]
+
+
+def test_opening_transition_pauses_until_learner_continues() -> None:
+    coach = service()
+    session_id, _ = opening_end_session(coach)
+    active = coach.sessions[session_id]
+    active.phase = "transition"
+    active.opening_end = coach._opening_end_evidence(active)
+
+    continued = coach.continue_after_opening(session_id)
+
+    assert continued["phase"] == "middlegame"
+    assert continued["opening_end"] is None
+    assert continued["messages"][0]["kind"] == "phase"
+    assert "Mittelspiel" in continued["messages"][0]["summary"]
+
+    learner_move = next(iter(active.board.legal_moves))
+    next_turn = coach.play_learner_move(
+        session_id,
+        chess.square_name(learner_move.from_square),
+        chess.square_name(learner_move.to_square),
+    )
+
+    assert "Stockfish bevorzugt" in next_turn["messages"][1]["summary"]
+    assert coach.store.session_interactions(session_id)[-1]["theory_match"] == 0
+
+
+def test_completed_turn_adds_opening_end_notice_to_response() -> None:
+    coach = service()
+    session_id, board = opening_end_session(coach)
+    active = coach.sessions[session_id]
+    last_move = chess.Move.from_uci("d7d6")
+    coach_message = {
+        "actor": "coach",
+        "move": "d6",
+        "move_uci": last_move.uci(),
+        "fen_after": board.fen(),
+        "summary": "Der Coach hat d6 gespielt.",
+        "details": "Test.",
+        "source": "deterministic",
+        "model": None,
+        "attempt": None,
+        "engine": None,
+    }
+
+    response = coach._response(active, messages=[coach_message])
+
+    assert response["phase"] == "transition"
+    assert response["opening_end"]["likely"] is True
+    assert response["messages"][-1]["kind"] == "phase"
+    assert response["message_history"][-1]["kind"] == "phase"
+
+
+def test_opening_summary_is_grounded_and_persisted() -> None:
+    coach = service()
+    session_id, board = opening_end_session(coach)
+    active = coach.sessions[session_id]
+    coach.store.record(
+        {
+            "session_id": session_id,
+            "fen_before": chess.Board().fen(),
+            "actor": "learner",
+            "move_uci": "f2f3",
+            "move_san": "f3",
+            "legal": 1,
+            "accepted": 0,
+            "theory_match": 0,
+            "opening_eco": None,
+            "opening_name": None,
+            "engine_evaluation": -1.0,
+            "engine_loss": 1.2,
+            "engine_classification": "mistake",
+            "attempt_number": 1,
+            "feedback_summary": "Noch ein Versuch",
+            "llm_model": None,
+        }
+    )
+    active.phase = "transition"
+    active.opening_end = coach._opening_end_evidence(active)
+
+    response = coach.finish_opening(session_id)
+    summary = response["opening_summary"]
+
+    assert response["phase"] == "complete"
+    assert response["fen"] == board.fen()
+    assert summary["opening"] == {"eco": "C50", "name": "Italian Game"}
+    assert summary["source"] == "verified-session-data"
+    assert summary["concepts"] == [
+        "Zentrum: Beide eigenen d- und e-Bauern haben ihre Ausgangsfelder verlassen.",
+        (
+            "Entwicklung: 2 von 4 eigenen Springern und Läufern wurden mindestens einmal von "
+            "ihrem Ausgangsfeld gezogen."
+        ),
+        "Königssicherheit: Du hast in der Eröffnungsphase rochiert.",
+    ]
+    assert any("f3" in point and "1,20" in point for point in summary["review_points"])
+    assert summary["recommendation"]["title"] == "Stellung vor f3 noch einmal üben"
+    assert coach.store.get_session_summary(session_id) == summary
+    assert coach.store.summary()["sessions_reviewed"] == 1

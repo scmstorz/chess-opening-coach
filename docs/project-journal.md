@@ -930,6 +930,43 @@ Plan.” with the direct product-area label “Eröffnungen”. The eyebrow stil
 identifies the current mode as free opening play, so the shorter heading avoids
 repeating the same context and leaves room for future training modes.
 
+### Closing the first learning loop
+
+After the explanation-quality work, the next product step was chosen by asking
+what the free-play experience still lacked rather than adding another mode. The
+answer was closure: the coach could explain an unlimited sequence of moves but
+did not yet say when the opening was probably over, extract a lesson, or retain
+a reviewable result. The learner approved this as the next vertical slice before
+targeted opening practice.
+
+The phase boundary deliberately does not use either a universal move number or
+the local opening graph alone. The implemented heuristic combines remaining
+theory moves, elapsed half-moves, minor pieces no longer on starting squares,
+castling history, and movement of the four d/e pawns. An early deviation can
+therefore exhaust local theory without ending the opening. The UI exposes every
+signal and calls the boundary “wahrscheinlich”, preserving the learner's final
+decision.
+
+At the transition the board pauses. The learner can continue into a middlegame
+mode, where Stockfish rather than opening theory supplies coach moves and hints,
+or request an opening review. The review contains the most specific opening
+identity reached, exact center/development/king-safety observations, counts of
+theory and near-best moves, correction points, one takeaway, and—only when the
+evidence supports it—a suggested position to revisit. The recommendation is
+stored but never starts an exercise automatically.
+
+Completed reviews live in a new local SQLite `session_summaries` table; active
+games remain intentionally in memory. This respects the local-only architecture
+and keeps learning data out of browser storage. The summary path is
+deterministic because the current knowledge sources do not support reliable
+opening-specific strategic prose for every detected line. The LLM is not used
+to fill that gap with plausible-sounding claims.
+
+The regression suite now covers early theory departure, multi-signal phase
+detection, the explicit continue path, automatic transition notices, persisted
+grounded summaries, and the API round trip. The suite contains 31 passing Python
+tests before final browser-build verification.
+
 ### First-slice verification evidence
 
 At the time of this journal entry:

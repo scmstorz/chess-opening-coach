@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from datetime import UTC, datetime
@@ -45,6 +46,16 @@ class SQLiteStore:
                     cache_key TEXT PRIMARY KEY,
                     payload TEXT NOT NULL,
                     created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS session_summaries (
+                    id INTEGER PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    session_id TEXT NOT NULL UNIQUE,
+                    opening_eco TEXT,
+                    opening_name TEXT,
+                    final_fen TEXT NOT NULL,
+                    move_count INTEGER NOT NULL,
+                    payload TEXT NOT NULL
                 );
                 """
             )
@@ -101,6 +112,60 @@ class SQLiteStore:
                 )
             self.connection.commit()
 
+    def session_interactions(self, session_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT * FROM interactions WHERE session_id = ? ORDER BY id", (session_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_session_summary(
+        self,
+        *,
+        session_id: str,
+        opening_eco: str | None,
+        opening_name: str | None,
+        final_fen: str,
+        move_count: int,
+        summary: dict[str, Any],
+    ) -> dict[str, Any]:
+        created_at = datetime.now(UTC).isoformat()
+        stored_summary = {**summary, "created_at": created_at}
+        with self._lock:
+            self.connection.execute(
+                """
+                INSERT INTO session_summaries (
+                    created_at, session_id, opening_eco, opening_name,
+                    final_fen, move_count, payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    created_at = excluded.created_at,
+                    opening_eco = excluded.opening_eco,
+                    opening_name = excluded.opening_name,
+                    final_fen = excluded.final_fen,
+                    move_count = excluded.move_count,
+                    payload = excluded.payload
+                """,
+                (
+                    created_at,
+                    session_id,
+                    opening_eco,
+                    opening_name,
+                    final_fen,
+                    move_count,
+                    json.dumps(stored_summary, ensure_ascii=False),
+                ),
+            )
+            self.connection.commit()
+        return stored_summary
+
+    def get_session_summary(self, session_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT payload FROM session_summaries WHERE session_id = ?", (session_id,)
+            ).fetchone()
+        return json.loads(row["payload"]) if row else None
+
     def get_analysis(self, cache_key: str) -> str | None:
         with self._lock:
             row = self.connection.execute(
@@ -122,7 +187,8 @@ class SQLiteStore:
                 """
                 SELECT COUNT(*) AS attempts,
                        COALESCE(SUM(actor = 'learner' AND accepted = 1), 0) AS accepted,
-                       COALESCE(SUM(actor = 'learner' AND accepted = 0), 0) AS corrections
+                       COALESCE(SUM(actor = 'learner' AND accepted = 0), 0) AS corrections,
+                       (SELECT COUNT(*) FROM session_summaries) AS sessions_reviewed
                 FROM interactions
                 """
             ).fetchone()

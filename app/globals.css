@@ -121,6 +121,37 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .suggestion-banner details p { color: #6d5b2a; }
 .correction-banner { background: #f7e7db; border: 1px solid #e9bba9; color: #713a2b; }
 .error-banner { background: #f5dddd; border: 1px solid #e4abab; color: #812f2f; }
+.opening-end-banner { align-items: flex-start; background: var(--green); border-radius: 14px; color: #fff; display: flex; gap: 15px; margin-top: 16px; padding: 18px; }
+.opening-end-icon { align-items: center; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.22); border-radius: 50%; display: flex; flex: 0 0 auto; font-size: 22px; height: 42px; justify-content: center; width: 42px; }
+.opening-end-content { flex: 1; min-width: 0; }
+.opening-end-content .eyebrow { color: #f0ac96; margin-bottom: 5px; }
+.opening-end-content h3 { font-family: Georgia, serif; font-size: 21px; font-weight: 500; margin: 0; }
+.opening-end-content > p:not(.eyebrow) { color: rgba(255,255,255,.78); font-size: 12px; line-height: 1.55; margin: 7px 0 0; }
+.opening-end-content details { border-color: rgba(255,255,255,.18); margin-top: 13px; padding-top: 11px; }
+.opening-end-content summary { color: #fff; }
+.phase-signals { display: grid; gap: 7px; list-style: none; margin: 12px 0 0; padding: 0; }
+.phase-signals li { align-items: flex-start; color: rgba(255,255,255,.58); display: flex; font-size: 11px; gap: 7px; line-height: 1.45; }
+.phase-signals li.met { color: rgba(255,255,255,.9); }
+.phase-signals li span { font-weight: 900; min-width: 12px; }
+.opening-end-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+.opening-end-actions .secondary-action { border-color: rgba(255,255,255,.42); color: #fff; }
+.opening-end-actions .secondary-action:hover:not(:disabled) { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.7); }
+.opening-end-actions .primary-action { box-shadow: none; }
+
+.opening-summary { background: #fbf7ee; border: 1px solid #d7cdbd; border-radius: 14px; margin-top: 16px; padding: clamp(18px, 3vw, 28px); }
+.opening-summary > header { align-items: flex-start; border-bottom: 1px solid var(--line); display: flex; gap: 20px; justify-content: space-between; padding-bottom: 17px; }
+.opening-summary h3 { font-family: Georgia, serif; font-size: 25px; font-weight: 500; margin: 0; }
+.opening-summary > header > span { background: var(--green-soft); border-radius: 999px; color: var(--green); flex: 0 0 auto; font-size: 10px; font-weight: 800; padding: 7px 10px; text-transform: uppercase; }
+.summary-section { padding-top: 18px; }
+.summary-section h4 { color: var(--green); font-size: 10px; letter-spacing: .08em; margin: 0 0 10px; text-transform: uppercase; }
+.summary-section ul { display: grid; gap: 8px; margin: 0; padding-left: 18px; }
+.summary-section li, .summary-section p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0; }
+.summary-columns { display: grid; gap: 24px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.summary-takeaway { background: var(--green); border: 0; border-radius: 10px; color: #fff; font-family: Georgia, serif; font-size: 17px; line-height: 1.5; margin: 22px 0 0; padding: 16px 18px; }
+.review-recommendation { align-items: flex-start; background: #f7f0db; border: 1px solid #e2cf96; border-radius: 9px; color: #594715; display: flex; gap: 11px; margin-top: 13px; padding: 13px; }
+.review-recommendation > span { font-size: 20px; }
+.review-recommendation strong { display: block; font-size: 12px; }
+.review-recommendation p { font-size: 11px; line-height: 1.5; margin: 4px 0 0; }
 .move-strip { align-items: baseline; color: var(--muted); display: flex; flex-wrap: wrap; font-size: 12px; gap: 8px; padding: 14px 5px 0; }
 .move-strip > span { font-size: 9px; font-weight: 800; letter-spacing: .09em; margin-right: 5px; text-transform: uppercase; }
 .move-strip strong { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 650; }
@@ -187,6 +218,12 @@ details p { color: var(--muted); font-family: inherit !important; font-size: 13p
   .board-footer { align-items: flex-start; gap: 12px; }
   .board-actions { align-items: stretch; flex-direction: column-reverse; }
   .primary-action { gap: 8px; padding: 12px; }
+  .opening-end-banner { padding: 15px; }
+  .opening-end-icon { display: none; }
+  .opening-end-actions { align-items: stretch; flex-direction: column; }
+  .opening-end-actions button { justify-content: center; width: 100%; }
+  .opening-summary > header { align-items: flex-start; flex-direction: column; gap: 9px; }
+  .summary-columns { grid-template-columns: 1fr; gap: 0; }
   .coach-panel { margin: 0 8px; }
 }
 

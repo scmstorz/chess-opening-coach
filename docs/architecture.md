@@ -53,12 +53,30 @@ drag or click move
   -> validate generated output or use deterministic fallback
   -> persist interaction
   -> choose and verify coach move
+  -> evaluate opening-phase signals after the completed turn
   -> repeat feedback flow
 ```
 
 Materially bad moves currently use a 0.75-pawn correction threshold. The
 threshold is deliberately more forgiving than a raw engine annotation system
 and is expected to change with real learner feedback.
+
+## Opening-phase transition
+
+The opening does not end at one fixed move number, and exhausting the local
+opening graph is not sufficient on its own. After a completed turn, the service
+combines five observable signals: remaining theory edges, the number of minor
+pieces no longer on their starting squares, castling history, movement of the
+four central d/e pawns, and elapsed half-moves. An early unusual move can exhaust
+the graph without triggering the transition. A sufficiently mature position or
+a completed game does.
+
+The result is deliberately worded as probable. The session pauses in a
+`transition` phase and the learner explicitly chooses either `middlegame` or
+`complete`. Continuing switches theory membership from an expected signal to
+historical context; Stockfish supplies coach moves and suggestions. Completing
+the opening creates a deterministic review from stored interactions and current
+board facts.
 
 ## Opening recognition and move selection
 
@@ -199,10 +217,15 @@ emphasis while making novel chess prose structurally impossible in this path.
 
 ## Persistence
 
-SQLite stores interactions and cached Stockfish results. Games are held in
-memory because interrupted games are intentionally not resumable. Learner events
-survive sessions and can support later review recommendations without automatic
-scheduling.
+SQLite stores interactions, cached Stockfish results, and completed opening
+summaries. A summary records the final position, identified opening, observed
+center/development/king-safety facts, strong moves, correction points, one
+takeaway, and an optional review recommendation. The recommendation is data,
+not an automatic scheduler action: the learner remains in control.
+
+Active games are held in memory because interrupted games are intentionally not
+resumable. The local Python SQLite database remains the source of truth for
+learning data; browser storage is not used for it.
 
 ## Current boundaries
 

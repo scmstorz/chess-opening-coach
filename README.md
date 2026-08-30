@@ -38,12 +38,15 @@ separate sources of information.
 - Ollama explanations with deterministic grounding fallback
 - Three-attempt correction loop for materially bad moves
 - Full-turn undo that removes both learner and coach responses
+- Multi-signal detection of the probable opening-to-middlegame transition
+- Learner-controlled choice to continue or create a grounded opening review
+- Persistent opening summaries with optional, non-automatic review recommendations
 - Local SQLite interaction history and Stockfish cache
 - Responsive layout and keyboard-focusable board squares
 
 The first milestone intentionally does not yet include deliberate opponent
-inaccuracies, opening summaries, PGN export, review recommendations, or timed
-10+0 simulation.
+inaccuracies, PGN export, cross-session review prompts, targeted repertoire
+training, or timed 10+0 simulation.
 
 ## Prerequisites
 

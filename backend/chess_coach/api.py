@@ -108,6 +108,24 @@ def create_app(service: CoachService | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @app.post("/api/sessions/{session_id}/opening/continue")
+    def continue_after_opening(session_id: Annotated[str, Path(min_length=1)]) -> dict[str, Any]:
+        try:
+            return coach.continue_after_opening(session_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/sessions/{session_id}/opening/summary")
+    def finish_opening(session_id: Annotated[str, Path(min_length=1)]) -> dict[str, Any]:
+        try:
+            return coach.finish_opening(session_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.post("/api/sessions/{session_id}/suggestion")
     def suggest_move(session_id: Annotated[str, Path(min_length=1)]) -> dict[str, Any]:
         try:

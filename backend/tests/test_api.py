@@ -6,7 +6,7 @@ from chess_coach.service import CoachService
 from chess_coach.storage import SQLiteStore
 from chess_coach.tutor import OllamaTutor
 from fastapi.testclient import TestClient
-from test_service import FakeEngine
+from test_service import FakeEngine, opening_end_session
 
 
 def test_api_session_and_move_round_trip() -> None:
@@ -54,3 +54,29 @@ def test_api_session_and_move_round_trip() -> None:
         assert undone.json()["move_history"] == []
         assert undone.json()["message_history"] == answered.json()["message_history"]
         assert undone.json()["can_undo"] is False
+
+
+def test_api_finishes_and_persists_opening_summary() -> None:
+    service = CoachService(
+        OpeningBook(),
+        FakeEngine(),
+        OllamaTutor("http://127.0.0.1:1", timeout=0.01),
+        SQLiteStore(":memory:"),
+        rng=random.Random(3),
+    )
+    session_id, _ = opening_end_session(service)
+    active = service.sessions[session_id]
+    active.phase = "transition"
+    active.opening_end = service._opening_end_evidence(active)
+
+    with TestClient(create_app(service)) as client:
+        reviewed = client.post(f"/api/sessions/{session_id}/opening/summary")
+
+        assert reviewed.status_code == 200
+        assert reviewed.json()["phase"] == "complete"
+        assert reviewed.json()["opening_summary"]["opening"]["name"] == "Italian Game"
+
+        repeated = client.post(f"/api/sessions/{session_id}/opening/summary")
+
+        assert repeated.status_code == 200
+        assert repeated.json()["opening_summary"] == reviewed.json()["opening_summary"]

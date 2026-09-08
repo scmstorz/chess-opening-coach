@@ -43,6 +43,13 @@
 16. The first closed learning loop treats the end of an opening as a probable,
     explainable transition rather than a fixed move count: the learner chooses
     to continue or receives a grounded, locally persisted review.
+17. Longer real play exposes a new failure mode: mechanically true square lists
+    still do not answer a learner's long-term “why?”. A separate deep mode now
+    compares future plans, while stable move selection prevents shallow engine
+    choices from becoming bad teaching premises.
+18. Kimi K3 and DeepSeek V4 Pro produce more fluent strategic prose, but both
+    add unsupported or false positional claims. The benchmark rejects direct
+    cloud prose as ground truth and preserves claim-level grounding.
 
 ## Evidence already captured
 
@@ -58,6 +65,8 @@
 - A machine-readable explanation-quality corpus seeded from two real failures
 - A persisted session-review schema and tested multi-signal phase heuristic
 - Comparable local chess benchmarks for Qwen, Glimmer, Ornith, and GPT-OSS
+- Reproducible cloud comparison of Kimi K3 and DeepSeek V4 Pro on three failures
+- Measured countdown inputs for standard, deep, local, and cloud operations
 
 ## Questions for later evaluation
 

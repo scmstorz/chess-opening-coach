@@ -987,3 +987,47 @@ One third-party warning remains in Python tests: Starlette reports that its
 current `httpx`-based `TestClient` compatibility path is deprecated in favor of
 the future `httpx2` package. It does not fail the tests and is outside application
 code.
+
+### From square lists to plan explanations
+
+Continued real play found that mechanically correct detail was still not
+necessarily educational. The coach introduced the first identifying move as if
+it continued an already established opening, repeated the trivial fact that
+pawns cannot move backwards, missed that a knight moving to `d5` occupies a
+central square, and justified `Ra6` only by its destination and evaluation.
+
+The first repair is semantic. Opening feedback now distinguishes the first
+identification (“beginnt die Eröffnung”), a transition to a more specific named
+variation, and continuation of the same identity. Piece templates no longer say
+that a non-central move fails to control the center, and pawn comments no longer
+compare old attack squares or state generic irreversibility. A knight's occupied
+square is considered separately from the squares it attacks.
+
+The deeper issue was unstable and impoverished evidence. Middlegame coach moves
+now use a two-second selection budget instead of the shorter explanation search.
+Normal questions build evaluation and line data from one comparison snapshot.
+The new optional `Tief erklären` action discovers four candidates and then
+rechecks the common root set with a five-second, depth-24 budget. It searches the
+resulting lines for restrained pawn breaks, stable central posts, clarifying
+exchanges, flexible move orders, own-side follow-up moves, and motifs recurring
+across candidates. The wording calls these model plans rather than claiming that
+Stockfish supplied a human reason.
+
+The browser shows the deep option beside a highlighted suggestion and beneath
+the free-question field. A lightly shaded board overlay reports the current
+operation and an estimated seconds countdown. Each operation type learns a
+rolling duration from previous runs on that browser. When work outlasts the
+estimate, the UI says “noch einen Moment” rather than pretending to know an
+exact completion time.
+
+The authorized cloud experiment used Kimi K3 and DeepSeek V4 Pro on the exact
+`a4`, `Nd5`, and `Ra6` cases. Non-thinking responses took 6.48–14.57 seconds for
+Kimi and 6.96–11.02 seconds for DeepSeek, excluding Stockfish. Both were more
+fluent, but both added unsupported positional claims; DeepSeek made especially
+clear FEN-level errors in the `Nd5` and `Ra6` explanations. The experiment is
+therefore retained as negative design evidence: stronger prose does not remove
+the grounding problem. Full method and findings are recorded in
+`docs/evaluations/2026-09-08-cloud-chess-explanations.md`.
+
+After this increment, 33 Python tests pass, Python and web lint are clean, the
+production browser build succeeds, and whitespace validation is clean.

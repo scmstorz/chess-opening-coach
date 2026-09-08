@@ -28,6 +28,7 @@ class MoveRequest(BaseModel):
 class QuestionRequest(BaseModel):
     question: str = Field(min_length=2, max_length=600)
     focus_move_uci: str | None = Field(default=None, pattern="^[a-h][1-8][a-h][1-8][qrbn]?$")
+    deep: bool = False
 
 
 def build_service(settings: Settings | None = None) -> CoachService:
@@ -37,6 +38,8 @@ def build_service(settings: Settings | None = None) -> CoachService:
         settings.stockfish_path,
         time_seconds=settings.stockfish_time_seconds,
         explanation_time_seconds=settings.stockfish_explanation_time_seconds,
+        selection_time_seconds=settings.stockfish_selection_time_seconds,
+        deep_time_seconds=settings.stockfish_deep_time_seconds,
         multipv=settings.stockfish_multipv,
         cache=store,
     )
@@ -140,7 +143,12 @@ def create_app(service: CoachService | None = None) -> FastAPI:
         session_id: Annotated[str, Path(min_length=1)], request: QuestionRequest
     ) -> dict[str, Any]:
         try:
-            return coach.answer_question(session_id, request.question, request.focus_move_uci)
+            return coach.answer_question(
+                session_id,
+                request.question,
+                request.focus_move_uci,
+                deep=request.deep,
+            )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:

@@ -4,6 +4,7 @@ import random
 import re
 import threading
 import uuid
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -363,7 +364,12 @@ class CoachService:
             }
 
     def answer_question(
-        self, session_id: str, question: str, focus_move_uci: str | None = None
+        self,
+        session_id: str,
+        question: str,
+        focus_move_uci: str | None = None,
+        *,
+        deep: bool = False,
     ) -> dict[str, Any]:
         """Answer a position question from verified theory and engine facts."""
         session = self._session(session_id)
@@ -418,16 +424,34 @@ class CoachService:
                     () if session.phase == "middlegame" else self.openings.theory_moves(board)
                 )
                 theory_match = move.uci() in {candidate.uci for candidate in theory_moves}
-                analysis = precomputed_analysis or self.engine.analyze_move(board, move)
-                comparison = self.engine.compare_moves(board, count=3, focus_move=move)
+                comparison = (
+                    self.engine.compare_moves(board, count=4, focus_move=move, deep=True)
+                    if deep
+                    else self.engine.compare_moves(board, count=3, focus_move=move)
+                )
+                analysis = StockfishService.analysis_from_comparison(board, move, comparison)
+                if not analysis.available:
+                    analysis = precomputed_analysis or self.engine.analyze_move(board, move)
                 projected = board.copy(stack=False)
                 projected.push(move)
                 opening = self.openings.identify(projected, session.opening)
                 fallback, answer_facts, explanation_sections = self._question_fallback(
-                    board, san, move, theory_match, analysis, comparison, opening
+                    board,
+                    san,
+                    move,
+                    theory_match,
+                    analysis,
+                    comparison,
+                    opening,
+                    deep=deep,
                 )
                 facts = {
-                    "task": "Beantworte die Rückfrage zur aktuellen Stellung.",
+                    "task": (
+                        "Erkläre den mittel- und langfristigen Nutzen des Zuges anhand einer "
+                        "vertieften Analyse."
+                        if deep
+                        else "Beantworte die Rückfrage zur aktuellen Stellung."
+                    ),
                     "user_question": clean_question,
                     "fen": board.fen(),
                     "side_to_move": "white" if board.turn == chess.WHITE else "black",
@@ -438,6 +462,7 @@ class CoachService:
                     "engine": asdict(analysis),
                     "engine_comparison": asdict(comparison),
                     "answer_facts": answer_facts,
+                    "analysis_mode": "deep" if deep else "standard",
                 }
                 text = self.tutor.answer_question(facts, fallback)
 
@@ -453,6 +478,7 @@ class CoachService:
                 "attempt": None,
                 "engine": asdict(analysis) if analysis else None,
                 "explanation_sections": explanation_sections,
+                "analysis_mode": "deep" if deep else "standard",
             }
             session.message_history.append(message)
             return {"message": message, "message_history": session.message_history}
@@ -521,6 +547,8 @@ class CoachService:
         analysis: MoveAnalysis,
         comparison: MoveComparison,
         opening: OpeningIdentity | None,
+        *,
+        deep: bool = False,
     ) -> tuple[TutorText, list[dict[str, Any]], list[dict[str, str]]]:
         if theory_match:
             theory_text = "Der Zug ist in den lokalen Eröffnungslinien enthalten."
@@ -549,6 +577,8 @@ class CoachService:
         board_changes_text = _concrete_board_changes(board, move)
         continuation_text = _continuation_context(board, move, analysis)
         contrast_text = _tactical_contrast(board, move, analysis)
+        plan_text = _strategic_plan_text(board, move, comparison)
+        recurring_text = _recurring_plan_text(board, comparison)
         comparison_text = _candidate_comparison_text(board, move, analysis, comparison)
         engine_lines_text = _candidate_lines_text(move, analysis, comparison)
         pv_moves = " ".join(analysis.played_pv_san[:4])
@@ -570,7 +600,9 @@ class CoachService:
         fact_values = (
             ("focus", f"Ich beziehe deine Frage auf {san}.", False),
             ("verdict", verdict_text, False),
-            ("concept", concept_text, True),
+            ("plan", plan_text, True),
+            ("recurring_plan", recurring_text, deep),
+            ("concept", concept_text, not plan_text),
             ("direct_threat", response_text, True),
             ("heuristic", heuristic_text, True),
             ("board_changes", board_changes_text, True),
@@ -594,6 +626,8 @@ class CoachService:
                 for part in (
                     response_text,
                     heuristic_text,
+                    plan_text,
+                    recurring_text,
                     concept_text,
                     board_changes_text,
                     continuation_text,
@@ -621,7 +655,25 @@ class CoachService:
             if part
         )
         explanation_sections = [
-            {"title": "Was verändert der Zug konkret?", "text": concrete_text},
+            {
+                "title": "Mittel- und langfristiger Plan",
+                "text": plan_text
+                or "Die berechneten Varianten zeigen keinen einzelnen stabilen Langzeitplan; "
+                "der Nutzen ist in dieser Stellung eher konkret und kurzfristig.",
+            },
+            *(
+                [
+                    {
+                        "title": "Was mehrere Varianten gemeinsam zeigen",
+                        "text": recurring_text
+                        or "Die Kandidaten führen zu unterschiedlichen Aufbauten; es gibt kein "
+                        "wiederkehrendes Motiv, das Stockfish allein als Begründung ausweist.",
+                    }
+                ]
+                if deep
+                else []
+            ),
+            {"title": "Konkrete Wirkung in der Stellung", "text": concrete_text},
             {
                 "title": "Warum nicht die naheliegende Alternative?",
                 "text": comparison_text
@@ -717,7 +769,7 @@ class CoachService:
         analysis: MoveAnalysis,
         opening_after: OpeningIdentity | None,
     ) -> dict[str, Any]:
-        opening = opening_after.name if opening_after else "der aktuellen Stellung"
+        opening = opening_after.name if opening_after else None
         if session.phase == "middlegame":
             summary = (
                 f"Ich spiele {san}. Stockfish bevorzugt diesen Zug in der Mittelspielstellung."
@@ -725,7 +777,17 @@ class CoachService:
                 else f"Ich spiele {san}. Wir setzen die Stellung als Mittelspiel fort."
             )
         else:
-            summary = f"Ich spiele {san}. Der Zug führt {opening} solide weiter."
+            opening_changed = bool(
+                opening and (session.opening is None or opening != session.opening.name)
+            )
+            if opening_changed and len(session.move_history) <= 1:
+                summary = f"Ich spiele {san}. Mit diesem Zug beginnt die Eröffnung „{opening}“."
+            elif opening_changed:
+                summary = f"Ich spiele {san}. Damit geht die Partie in „{opening}“ über."
+            elif opening:
+                summary = f"Ich spiele {san}. Der Zug führt die Eröffnung „{opening}“ weiter."
+            else:
+                summary = f"Ich spiele {san}. Das ist ein solider Eröffnungszug."
         fallback = TutorText(
             summary=summary,
             details=self._move_details(session.board, move, analysis),
@@ -871,6 +933,7 @@ class CoachService:
             for part in (
                 _move_response_context(board, move),
                 _heuristic_context(board, move),
+                _single_line_plan_context(board, move, analysis),
                 _move_concept(board, move),
                 _concrete_board_changes(board, move),
                 _continuation_context(board, move, analysis),
@@ -1260,32 +1323,29 @@ def _move_concept(board: chess.Board, move: chess.Move) -> str:
     if board.is_castling(move):
         return "Die Rochade bringt den König in Sicherheit und verbindet die Türme."
     if piece.piece_type == chess.PAWN:
-        before = _square_list(board.attacks(move.from_square))
         projected = board.copy(stack=False)
         projected.push(move)
         after = _square_list(projected.attacks(move.to_square))
-        explanation = (
-            f"Mit {board.san(move)} kontrolliert der Bauer nun {after}; von "
-            f"{chess.square_name(move.from_square)} aus kontrollierte er {before}. "
-            "Weil Bauern nicht rückwärts ziehen können, ist diese Änderung nicht einfach "
-            "rückgängig zu machen."
+        center = (
+            " und besetzt selbst ein Zentrumsfeld"
+            if move.to_square in chess.SquareSet(chess.BB_CENTER)
+            else ""
         )
-        if any(
-            move.to_square in chess.SquareSet(chess.BB_KNIGHT_ATTACKS[square])
-            for square in board.pieces(chess.KNIGHT, board.turn)
-        ):
-            explanation += " Außerdem kann ein eigener Springer dieses Feld nun nicht benutzen."
-        return explanation
+        return f"Mit {board.san(move)} kontrolliert der Bauer nun {after}{center}."
     if piece.piece_type == chess.KNIGHT:
         projected = board.copy(stack=False)
         projected.push(move)
         controlled = projected.attacks(move.to_square)
         central = controlled & chess.SquareSet(chess.BB_CENTER)
+        occupies_center = move.to_square in chess.SquareSet(chess.BB_CENTER)
         center_text = (
+            f" Er steht damit selbst auf dem Zentrumsfeld {target}."
+            if occupies_center
+            else
             f" Davon {'ist' if len(central) == 1 else 'sind'} {_square_list(central)} "
             f"{'ein Zentrumsfeld' if len(central) == 1 else 'Zentrumsfelder'}."
             if central
-            else " Keines davon ist eines der vier Zentrumsfelder d4, e4, d5 und e5."
+            else ""
         )
         attacked_pieces = _attacked_piece_list(projected, move.to_square, board.turn)
         attack_text = f" Dabei greift er {attacked_pieces} an." if attacked_pieces else ""
@@ -1304,16 +1364,14 @@ def _move_concept(board: chess.Board, move: chess.Move) -> str:
     projected.push(move)
     controlled = projected.attacks(move.to_square)
     central = controlled & chess.SquareSet(chess.BB_CENTER)
-    if central:
-        center_text = f"Von dort kontrolliert {pronoun} direkt {_square_list(central)} im Zentrum."
-    else:
-        center_text = (
-            f"Von dort kontrolliert {pronoun} keines der vier Zentrumsfelder "
-            "d4, e4, d5 und e5 direkt."
-        )
+    center_text = (
+        f" Von dort kontrolliert {pronoun} direkt {_square_list(central)} im Zentrum."
+        if central
+        else ""
+    )
     attacked_pieces = _attacked_piece_list(projected, move.to_square, board.turn)
     attack_text = f" Außerdem greift {pronoun} {attacked_pieces} an." if attacked_pieces else ""
-    return f"Der {piece_name} zieht nach {target}. {center_text}{attack_text}"
+    return f"Der {piece_name} zieht nach {target}.{center_text}{attack_text}"
 
 
 def _square_list(squares: chess.SquareSet) -> str:
@@ -1485,11 +1543,15 @@ def _concrete_board_changes(board: chess.Board, move: chess.Move) -> str:
         for square in board.pieces(piece_type, board.turn):
             if square == move.from_square:
                 continue
-            before = board.attacks(square)
+            moving_color = board.turn
+            before = board.attacks(square) - chess.SquareSet(board.occupied_co[moving_color])
             same_piece = projected.piece_at(square)
             if same_piece != chess.Piece(piece_type, board.turn):
                 continue
-            newly_reached = projected.attacks(square) - before
+            after = projected.attacks(square) - chess.SquareSet(
+                projected.occupied_co[moving_color]
+            )
+            newly_reached = after - before
             if newly_reached:
                 opened_lines.append(
                     f"{label} auf {chess.square_name(square)} bis "
@@ -1530,6 +1592,192 @@ def _attacked_piece_list(
     if len(targets) <= 1:
         return "" if not targets else targets[0]
     return f"{', '.join(targets[:-1])} und {targets[-1]}"
+
+
+def _strategic_plan_text(
+    board: chess.Board, focus_move: chess.Move, comparison: MoveComparison
+) -> str:
+    """Turn verified board and PV patterns into a cautious plan-level explanation."""
+    if not comparison.available:
+        return ""
+    focus = next(
+        (
+            candidate
+            for candidate in comparison.candidates
+            if candidate.move_uci == focus_move.uci()
+        ),
+        None,
+    )
+    if focus is None:
+        return ""
+
+    san = board.san(focus_move)
+    piece = board.piece_at(focus_move.from_square)
+    if piece is None:
+        return ""
+    projected = board.copy(stack=False)
+    projected.push(focus_move)
+    reasons: list[str] = []
+
+    if piece.piece_type == chess.PAWN:
+        controlled = projected.attacks(focus_move.to_square)
+        restrained_pushes: list[str] = []
+        for reply in projected.legal_moves:
+            reply_piece = projected.piece_at(reply.from_square)
+            if (
+                reply_piece
+                and reply_piece.piece_type == chess.PAWN
+                and reply.to_square in controlled
+                and not projected.is_capture(reply)
+            ):
+                restrained_pushes.append(projected.san(reply))
+        if restrained_pushes:
+            pushes = _join_descriptions(restrained_pushes[:2])
+            reasons.append(
+                f"{san} erschwert den gegnerischen Bauernvorstoß {pushes}: Nach diesem "
+                "Vorstoß könnte dein Bauer den vorgerückten Bauern schlagen."
+            )
+        if focus_move.to_square in chess.SquareSet(chess.BB_CENTER):
+            reasons.append(
+                f"Der Bauer besetzt mit {san} selbst das Zentrum und kann dort Raum für die "
+                "Figuren hinter ihm sichern."
+            )
+
+    if piece.piece_type == chess.KNIGHT and focus_move.to_square in chess.SquareSet(
+        chess.BB_CENTER
+    ):
+        target = chess.square_name(focus_move.to_square)
+        pawn_attackers = [
+            square
+            for square in projected.attackers(not piece.color, focus_move.to_square)
+            if (attacker := projected.piece_at(square))
+            and attacker.piece_type == chess.PAWN
+        ]
+        stability = (
+            "Kein gegnerischer Bauer kann ihn dort unmittelbar vertreiben."
+            if not pawn_attackers
+            else "Der Gegner kann diesen Posten mit einem Bauern infrage stellen."
+        )
+        reasons.append(
+            f"{san} stellt den Springer auf den zentralen Posten {target}. {stability}"
+        )
+
+    parsed = _parsed_candidate_line(board, focus)
+    if len(parsed) >= 3:
+        first_move = parsed[0][1]
+        reply_board, reply_move = parsed[1][0], parsed[1][1]
+        continuation_board, continuation_move = parsed[2][0], parsed[2][1]
+        if (
+            reply_board.is_capture(reply_move)
+            and reply_move.to_square == first_move.to_square
+            and continuation_board.is_capture(continuation_move)
+            and continuation_move.to_square == first_move.to_square
+        ):
+            reasons.append(
+                f"Stockfish rechnet mit dem klärenden Abtausch {focus.pv_san[1]} "
+                f"{focus.pv_san[2]}; danach übernimmt eine andere eigene Figur den Posten "
+                f"{chess.square_name(first_move.to_square)}."
+            )
+
+    all_focus_followups = list(dict.fromkeys(focus.pv_san[2::2]))
+    focus_followups = list(
+        dict.fromkeys(
+            focus.pv_san[index]
+            for index, (position, pv_move) in enumerate(parsed)
+            if index >= 2 and index % 2 == 0 and not position.is_capture(pv_move)
+        )
+    )
+    for alternative in comparison.candidates:
+        if alternative.move_uci == focus.move_uci:
+            continue
+        alternative_followups = list(dict.fromkeys(alternative.pv_san[2::2]))
+        if (
+            alternative.move_san in all_focus_followups
+            and focus.move_san in alternative_followups
+        ):
+            reasons.append(
+                f"Die Varianten behandeln {focus.move_san} und {alternative.move_san} als "
+                "flexible Zugreihenfolge: Jeder der beiden Züge folgt in der Berechnung auf "
+                "den anderen. Es geht daher eher um den gemeinsamen Aufbau als um einen "
+                "einzigen zwingenden Moment."
+            )
+            break
+
+    if focus_followups:
+        followups = _join_descriptions(focus_followups[:3])
+        side = "Weiß" if board.turn == chess.WHITE else "Schwarz"
+        reasons.append(
+            f"In der geprüften Fortsetzung baut {side} danach mit {followups} weiter auf. "
+            "Das ist ein Modellplan und keine erzwungene Zugfolge."
+        )
+    return " ".join(reasons)
+
+
+def _single_line_plan_context(
+    board: chess.Board, move: chess.Move, analysis: MoveAnalysis
+) -> str:
+    if not analysis.available or not analysis.played_pv_san:
+        return ""
+    candidate = CandidateAnalysis(
+        move_uci=move.uci(),
+        move_san=board.san(move),
+        evaluation=analysis.evaluation_played or 0.0,
+        mate=analysis.mate_played,
+        loss_pawns=analysis.loss_pawns or 0.0,
+        pv_san=analysis.played_pv_san,
+    )
+    comparison = MoveComparison(
+        available=True,
+        engine_name=analysis.engine_name,
+        candidates=(candidate,),
+    )
+    return _strategic_plan_text(board, move, comparison)
+
+
+def _recurring_plan_text(board: chess.Board, comparison: MoveComparison) -> str:
+    """Report future moves recurring across independent candidate lines."""
+    if not comparison.available or len(comparison.candidates) < 2:
+        return ""
+    candidates = comparison.candidates
+    occurrences: Counter[str] = Counter()
+    for candidate in candidates:
+        occurrences.update(set(candidate.pv_san[2::2]))
+    recurring = [
+        (move, count)
+        for move, count in occurrences.most_common()
+        if count >= 2 and "x" not in move and "+" not in move
+    ][:3]
+    if not recurring:
+        return ""
+    side = "Weiß" if board.turn == chess.WHITE else "Schwarz"
+    motifs = _join_descriptions(
+        [f"{move} in {count} von {len(candidates)} Varianten" for move, count in recurring]
+    )
+    return (
+        f"Mehrere unabhängig berechnete Kandidaten führen für {side} später zu {motifs}. "
+        "Solche Wiederholungen sind ein belastbareres Indiz für den geplanten Aufbau als "
+        "eine einzelne lange Engine-Variante."
+    )
+
+
+def _parsed_candidate_line(
+    board: chess.Board, candidate: CandidateAnalysis
+) -> list[tuple[chess.Board, chess.Move]]:
+    replay = board.copy(stack=False)
+    parsed: list[tuple[chess.Board, chess.Move]] = []
+    for san in candidate.pv_san:
+        try:
+            move = replay.parse_san(san)
+        except (
+            chess.IllegalMoveError,
+            chess.InvalidMoveError,
+            chess.AmbiguousMoveError,
+            ValueError,
+        ):
+            break
+        parsed.append((replay.copy(stack=False), move))
+        replay.push(move)
+    return parsed
 
 
 def _candidate_comparison_text(

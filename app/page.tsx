@@ -31,6 +31,15 @@ type CoachMessage = {
   engine: EngineInfo | null;
   move_uci?: string;
   fen_after?: string;
+  analysis_mode?: "standard" | "deep";
+};
+
+type ProgressKind = "move" | "suggestion" | "question" | "deep";
+
+type BusyProgress = {
+  kind: ProgressKind;
+  startedAt: number;
+  estimateSeconds: number;
 };
 
 type OpeningEndSignal = {
@@ -136,6 +145,24 @@ const fenPieces: Record<Piece["kind"], string> = {
   pawn: "p",
 };
 
+const defaultProgressEstimates: Record<ProgressKind, number> = {
+  move: 18,
+  suggestion: 3,
+  question: 12,
+  deep: 22,
+};
+
+const progressLabels: Record<ProgressKind, string> = {
+  move: "Coach prüft den Zug",
+  suggestion: "Stockfish sucht einen stabilen Zug",
+  question: "Coach ordnet die geprüften Fakten",
+  deep: "Stockfish vergleicht mehrere Zukunftspläne",
+};
+
+function currentTimeMs(): number {
+  return Date.now();
+}
+
 function parseFen(fen: string): Record<string, Piece> {
   const result: Record<string, Piece> = {};
   fen.split(" ")[0].split("/").forEach((rankData, rankIndex) => {
@@ -236,6 +263,9 @@ export default function Home() {
   const [askingQuestion, setAskingQuestion] = useState(false);
   const [animatingSequence, setAnimatingSequence] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState<BusyProgress | null>(null);
+  const [progressClock, setProgressClock] = useState(0);
+  const [durationEstimates, setDurationEstimates] = useState(defaultProgressEstimates);
   const [error, setError] = useState<string | null>(null);
   const coachFeedRef = useRef<HTMLDivElement | null>(null);
   const initialSessionRequestedRef = useRef(false);
@@ -270,6 +300,12 @@ export default function Home() {
       feed.scrollTo({ top: feed.scrollHeight, behavior: "smooth" });
     });
   }, [messages.length]);
+
+  useEffect(() => {
+    if (!progress) return;
+    const timer = window.setInterval(() => setProgressClock(currentTimeMs()), 250);
+    return () => window.clearInterval(timer);
+  }, [progress]);
 
   const orientation = session?.learner_color ?? (requestedColor === "black" ? "black" : "white");
   const position = parseFen(displayFen);
@@ -313,6 +349,41 @@ export default function Home() {
   const latestEngine = [...messages].reverse().find((message) => message.engine?.available)?.engine;
   const evaluation = latestEngine?.evaluation_played ?? 0;
   const evaluationWidth = Math.max(6, Math.min(94, 50 + evaluation * 8));
+  const elapsedSeconds = progress ? Math.max(0, (progressClock - progress.startedAt) / 1000) : 0;
+  const remainingSeconds = progress
+    ? Math.max(0, Math.ceil(progress.estimateSeconds - elapsedSeconds))
+    : 0;
+  const progressPercent = progress
+    ? Math.min(96, Math.max(4, (elapsedSeconds / progress.estimateSeconds) * 100))
+    : 0;
+  const activeProgressLabel = progress?.kind === "deep" && elapsedSeconds >= 10
+    ? "Tutor formuliert die geprüften Pläne"
+    : progress
+    ? progressLabels[progress.kind]
+    : "Coach denkt nach";
+
+  function beginProgress(kind: ProgressKind): number {
+    const startedAt = currentTimeMs();
+    const stored = Number(window.localStorage.getItem(`coach-duration-${kind}`));
+    const estimateSeconds = Number.isFinite(stored) && stored > 0
+      ? Math.max(1, Math.round(stored))
+      : durationEstimates[kind];
+    setDurationEstimates((current) => ({ ...current, [kind]: estimateSeconds }));
+    setProgressClock(startedAt);
+    setProgress({ kind, startedAt, estimateSeconds });
+    return startedAt;
+  }
+
+  function finishProgress(kind: ProgressKind, startedAt: number) {
+    const measured = Math.max(0.5, (currentTimeMs() - startedAt) / 1000);
+    const previous = Number(window.localStorage.getItem(`coach-duration-${kind}`));
+    const smoothed = Number.isFinite(previous) && previous > 0
+      ? previous * 0.65 + measured * 0.35
+      : measured;
+    window.localStorage.setItem(`coach-duration-${kind}`, smoothed.toFixed(1));
+    setDurationEstimates((current) => ({ ...current, [kind]: Math.round(smoothed) }));
+    setProgress(null);
+  }
 
   async function animateMoves(
     startFen: string,
@@ -386,6 +457,7 @@ export default function Home() {
     const optimisticFen = matchingMove ? visualFenAfterMove(fenBefore, matchingMove) : fenBefore;
     if (matchingMove) setDisplayFen(optimisticFen);
     setLoading(true);
+    const progressStartedAt = beginProgress("move");
     setError(null);
     try {
       const next = await api<SessionState>(`/api/sessions/${session.session_id}/moves`, {
@@ -415,6 +487,7 @@ export default function Home() {
       setSelectedSquare(null);
       setDraggedFrom(null);
       setLoading(false);
+      finishProgress("move", progressStartedAt);
     }
   }
 
@@ -443,6 +516,7 @@ export default function Home() {
   async function requestSuggestion() {
     if (!session || boardInteractionLocked || session.turn !== session.learner_color) return;
     setLoading(true);
+    const progressStartedAt = beginProgress("suggestion");
     setError(null);
     setSuggestion(null);
     setSelectedSquare(null);
@@ -456,13 +530,16 @@ export default function Home() {
       setError(caught instanceof Error ? caught.message : "Es konnte kein Zug vorgeschlagen werden.");
     } finally {
       setLoading(false);
+      finishProgress("suggestion", progressStartedAt);
     }
   }
 
-  async function askQuestion() {
-    const question = questionText.trim();
+  async function askQuestion(deep = false, suggestedQuestion?: string) {
+    const question = questionText.trim() || suggestedQuestion?.trim() || "";
     if (!session || boardInteractionLocked || question.length < 2) return;
     setAskingQuestion(true);
+    const progressKind: ProgressKind = deep ? "deep" : "question";
+    const progressStartedAt = beginProgress(progressKind);
     setError(null);
     try {
       const response = await api<QuestionResponse>(
@@ -472,6 +549,7 @@ export default function Home() {
           body: JSON.stringify({
             question,
             focus_move_uci: suggestion?.move_uci,
+            deep,
           }),
         },
       );
@@ -481,6 +559,7 @@ export default function Home() {
       setError(caught instanceof Error ? caught.message : "Die Frage konnte nicht beantwortet werden.");
     } finally {
       setAskingQuestion(false);
+      finishProgress(progressKind, progressStartedAt);
     }
   }
 
@@ -570,7 +649,7 @@ export default function Home() {
               <p className="evaluation-help">+ bedeutet Vorteil für Weiß · − bedeutet Vorteil für Schwarz</p>
             </div>
 
-            <div className={`board-frame${loading && !animatingSequence ? " thinking" : ""}`}>
+            <div className={`board-frame${interactionLocked && !animatingSequence ? " thinking" : ""}`}>
               <div className="chessboard" aria-disabled={!session || boardInteractionLocked} aria-label="Interaktives Schachbrett">
                 {orientedSquares.map((square, index) => {
                   const piece = position[square];
@@ -614,7 +693,15 @@ export default function Home() {
                   </span>
                 )}
               </div>
-              {loading && !animatingSequence && <div className="board-loader">Coach denkt nach …</div>}
+              {interactionLocked && !animatingSequence && (
+                <div className="board-loader" role="status">
+                  <div className="thinking-card">
+                    <strong>{activeProgressLabel}</strong>
+                    <span>{remainingSeconds > 0 ? `noch etwa ${remainingSeconds} s` : "noch einen Moment …"}</span>
+                    <i aria-hidden="true"><b style={{ width: `${progressPercent}%` }} /></i>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="board-footer">
@@ -659,6 +746,14 @@ export default function Home() {
                   <strong>{suggestion.basis === "engine" ? "Engine-Vorschlag" : "Eröffnungsvorschlag"} · {suggestion.move_san}</strong>
                   <p>{suggestion.summary}</p>
                   <details><summary>Warum dieser Zug?</summary><p>{suggestion.details}</p></details>
+                  <button
+                    className="deep-explain-action"
+                    disabled={boardInteractionLocked}
+                    onClick={() => void askQuestion(true, `Warum ist ${suggestion.move_san} mittel- und langfristig gut?`)}
+                    type="button"
+                  >
+                    Tief erklären <span>· ca. {durationEstimates.deep} s</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -805,7 +900,7 @@ export default function Home() {
 
           <div className="question-box">
             <label htmlFor="coach-question">Frage zur Stellung</label>
-            <form onSubmit={(event) => { event.preventDefault(); void askQuestion(); }}>
+            <form onSubmit={(event) => { event.preventDefault(); void askQuestion(false); }}>
               <input
                 id="coach-question"
                 onChange={(event) => setQuestionText(event.target.value)}
@@ -818,7 +913,15 @@ export default function Home() {
                 {askingQuestion ? "…" : "↑"}
               </button>
             </form>
-            <small>{sessionComplete ? "Die Eröffnungslektion ist abgeschlossen. Starte eine neue Partie, wenn du weiterüben möchtest." : phaseDecisionPending ? "Entscheide zuerst, ob du weiterspielen oder auswerten möchtest." : askingQuestion ? "Der lokale Tutor wählt die relevantesten geprüften Fakten …" : `Geerdet mit Stellung, Eröffnungstheorie und Stockfish${health?.ollama.model ? ` · ${health.ollama.model}` : ""}`}</small>
+            <button
+              className="deep-question-action"
+              disabled={!session || boardInteractionLocked || questionText.trim().length < 2}
+              onClick={() => void askQuestion(true)}
+              type="button"
+            >
+              Tief erklären <span>mehrere Varianten · ca. {durationEstimates.deep} s</span>
+            </button>
+            <small>{sessionComplete ? "Die Eröffnungslektion ist abgeschlossen. Starte eine neue Partie, wenn du weiterüben möchtest." : phaseDecisionPending ? "Entscheide zuerst, ob du weiterspielen oder auswerten möchtest." : askingQuestion && progress ? `${activeProgressLabel} · ${remainingSeconds > 0 ? `noch etwa ${remainingSeconds} Sekunden` : "noch einen Moment"}` : `Geerdet mit Stellung, Eröffnungstheorie und Stockfish${health?.ollama.model ? ` · ${health.ollama.model}` : ""}`}</small>
           </div>
         </aside>
       </section>

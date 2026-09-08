@@ -30,8 +30,10 @@ separate sources of information.
 - Non-playing `Zug vorschlagen` hint from opening theory or Stockfish, with source/target highlighting
 - Grounded follow-up questions about the current position or suggested move
 - Board-derived explanations of direct threats, controlled squares, and concrete engine lines
-- Deeper three-candidate comparisons for `why?` questions, including the named move
-- Expandable explanation sections for concrete effects, alternatives, and engine lines
+- Optional `Tief erklären` analysis with four consistently rechecked candidates
+- Plan-oriented explanations that look for recurring follow-up ideas across engine lines
+- Expandable sections for long-term plan, concrete effects, alternatives, and engine lines
+- Learned countdown estimates for normal and deep coach operations
 - Visible engine evaluation using the standard White-positive convention
 - German feedback after every learner and coach move
 - Expandable explanation detail
@@ -95,6 +97,8 @@ CHESS_COACH_FRONTEND_PORT=53687
 STOCKFISH_PATH=/absolute/path/to/stockfish
 STOCKFISH_TIME=0.12
 STOCKFISH_EXPLANATION_TIME=0.8
+STOCKFISH_SELECTION_TIME=2.0
+STOCKFISH_DEEP_TIME=5.0
 STOCKFISH_MULTIPV=3
 CHESS_COACH_DATABASE=/absolute/path/to/coach.db
 CHESS_COACH_OPENINGS=/absolute/path/to/opening-tsv-directory
@@ -140,3 +144,4 @@ license are retained in `data/openings/`.
 - [Case study outline](docs/case-study-outline.md)
 - [Architecture decisions](docs/decisions/)
 - [Local Ollama chess-model comparison](docs/evaluations/2026-08-29-ollama-chess-models.md)
+- [Kimi and DeepSeek explanation comparison](docs/evaluations/2026-09-08-cloud-chess-explanations.md)

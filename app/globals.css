@@ -71,8 +71,13 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 
 .board-frame { background: #384b40; border-radius: 8px; box-shadow: 0 12px 30px rgba(23, 33, 28, 0.2); overflow: hidden; padding: 8px; }
 .board-frame { position: relative; }
-.board-frame.thinking .chessboard { filter: saturate(.9); opacity: .9; }
-.board-loader { align-items: center; background: rgba(23, 33, 28, .24); color: #fff; display: flex; font-size: 13px; font-weight: 750; inset: 0; justify-content: center; letter-spacing: .02em; position: absolute; text-shadow: 0 1px 5px rgba(23, 33, 28, .95); z-index: 6; }
+.board-frame.thinking .chessboard { filter: saturate(.96); opacity: .96; }
+.board-loader { align-items: center; background: rgba(23, 33, 28, .08); color: #fff; display: flex; font-size: 13px; font-weight: 750; inset: 0; justify-content: center; letter-spacing: .02em; position: absolute; z-index: 6; }
+.thinking-card { background: rgba(23, 33, 28, .9); border: 1px solid rgba(255,255,255,.2); border-radius: 10px; box-shadow: 0 8px 28px rgba(23,33,28,.28); display: grid; gap: 5px; min-width: min(280px, 70%); padding: 12px 15px; }
+.thinking-card strong { font-size: 12px; }
+.thinking-card span { color: rgba(255,255,255,.75); font-size: 10px; font-weight: 600; }
+.thinking-card i { background: rgba(255,255,255,.16); border-radius: 999px; display: block; height: 4px; margin-top: 3px; overflow: hidden; }
+.thinking-card b { background: #f0ac96; border-radius: inherit; display: block; height: 100%; transition: width 250ms linear; }
 .chessboard { display: grid; grid-template-columns: repeat(8, 1fr); width: 100%; }
 .chessboard { position: relative; }
 .square { align-items: center; aspect-ratio: 1; border: 0; cursor: default; display: flex; justify-content: center; min-width: 0; padding: 0; position: relative; }
@@ -119,6 +124,9 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .suggestion-banner p { line-height: 1.5; margin: 4px 0 0; }
 .suggestion-banner details { border-color: rgba(101, 78, 22, .2); margin-top: 9px; padding-top: 8px; }
 .suggestion-banner details p { color: #6d5b2a; }
+.deep-explain-action { background: var(--green); border: 0; border-radius: 7px; color: #fff; cursor: pointer; font-size: 10px; font-weight: 800; margin-top: 10px; padding: 8px 10px; }
+.deep-explain-action span { color: rgba(255,255,255,.68); font-weight: 650; }
+.deep-explain-action:disabled { cursor: wait; opacity: .55; }
 .correction-banner { background: #f7e7db; border: 1px solid #e9bba9; color: #713a2b; }
 .error-banner { background: #f5dddd; border: 1px solid #e4abab; color: #812f2f; }
 .opening-end-banner { align-items: flex-start; background: var(--green); border-radius: 14px; color: #fff; display: flex; gap: 15px; margin-top: 16px; padding: 18px; }
@@ -197,6 +205,9 @@ details p { color: var(--muted); font-family: inherit !important; font-size: 13p
 .question-box button { background: var(--green); border: 0; border-radius: 0 8px 8px 0; color: #fff; cursor: pointer; min-width: 48px; padding: 0 16px; }
 .question-box button:disabled { cursor: not-allowed; opacity: .55; }
 .question-box small { color: var(--muted); display: block; font-size: 10px; margin-top: 7px; }
+.deep-question-action { align-items: center; background: transparent; border: 0; color: var(--green); cursor: pointer; display: flex; font-size: 10px; font-weight: 800; gap: 6px; margin-top: 8px; padding: 0; }
+.deep-question-action span { color: var(--muted); font-weight: 600; }
+.deep-question-action:disabled { cursor: not-allowed; opacity: .45; }
 
 @media (max-width: 980px) {
   .workspace { grid-template-columns: minmax(0, 720px); }

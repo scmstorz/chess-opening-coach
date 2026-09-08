@@ -131,13 +131,24 @@ Move loss is normalized to the side that moved. Analysis keys include the
 position, candidate, engine identity, time budget, and MultiPV setting and are
 cached in SQLite.
 
-Normal move feedback uses the short engine budget. A `why?` question uses a
-separate explanation budget and a depth-18, three-candidate MultiPV search. If
+Normal move feedback uses the short engine budget. Coach move selection outside
+the opening graph uses a separate two-second stability budget, so a transient
+shallow candidate is less likely to be presented as the best move. A standard
+`why?` question uses a depth-18, three-candidate MultiPV search. If
 the questioned move is not among the leading candidates, Stockfish analyzes it
 again as a forced root move and adds it to the comparison. Cache keys include
 the FEN, engine, explanation time, depth, candidate count, and optional focus
 move. This gives weak moves a real continuation instead of comparing a deep
 best line with a one-ply placeholder.
+
+`Tief erklären` uses a five-second, depth-24 budget. A first pass discovers four
+candidates. A second pass then analyzes that common root set—including the
+focused move—under the same limit. Scores and lines shown in one explanation
+therefore come from one internally consistent snapshot. The service looks for
+recurring own-side follow-ups across the candidate lines, flexible move orders,
+central posts that cannot immediately be challenged by a pawn, restrained pawn
+breaks, and verified exchanges. These are labeled as model plans, not forced
+continuations or reasons stated by Stockfish.
 
 ## LLM grounding boundary
 
@@ -190,17 +201,23 @@ the same theory-first, Stockfish-after-theory selection as the visible hint.
 user question + current FEN + optional highlighted move
   -> resolve and validate one legal move with python-chess
   -> check local theory membership and resulting opening identity
-  -> run depth-18 MultiPV plus a forced line for the focus move when needed
+  -> run standard MultiPV, or a two-pass depth-24 comparison in deep mode
   -> compare concrete board effects and principal variations
-  -> build atomic, deterministic German answer facts and three UI sections
+  -> derive cautious plan patterns and atomic deterministic German answer facts
   -> let Ollama select only the fact IDs most relevant to the question
   -> render the selected verified text or use the deterministic fallback
 ```
 
-The browser renders the short selected answer first. Its expander then keeps
-three deterministic layers separate: `Was verändert der Zug konkret?`, `Warum
-nicht die naheliegende Alternative?`, and `Stockfish-Rechenwege`. This prevents
-a fluent summary from hiding the evidence needed to learn from the position.
+The browser renders the short selected answer first. Its expander separates the
+medium-term plan, recurring patterns across lines, concrete effects, alternative
+comparison, and raw Stockfish calculation. Standard answers omit the recurring-
+patterns section. This prevents a fluent summary from hiding the evidence needed
+to learn from the position.
+
+The UI estimates remaining time from an operation-specific rolling average kept
+in browser storage. It counts down only as an estimate and changes to “noch einen
+Moment” instead of showing a false negative countdown. This preference-like
+telemetry is device-local and is not learner-state data.
 
 The user question itself is treated as untrusted context, not as evidence. The
 answer is added to the in-memory conversation feed but not recorded as a move or
@@ -235,4 +252,5 @@ learning data; browser storage is not used for it.
 - No authentication or cloud persistence
 - No imported PGN analysis
 - No automatic network refresh
+- No cloud-generated tutor prose in the product runtime
 - No resumable interrupted games

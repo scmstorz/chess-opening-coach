@@ -39,7 +39,13 @@ class FakeEngine:
         return move, self.analyze_move(board, move)
 
     def compare_moves(
-        self, board: chess.Board, *, count: int = 3, focus_move: chess.Move | None = None
+        self,
+        board: chess.Board,
+        *,
+        count: int = 3,
+        focus_move: chess.Move | None = None,
+        stable: bool = False,
+        deep: bool = False,
     ) -> MoveComparison:
         candidates = []
         for index, move in enumerate(list(board.legal_moves)[:count]):
@@ -58,9 +64,9 @@ class FakeEngine:
                 CandidateAnalysis(
                     move_uci=focus_move.uci(),
                     move_san=board.san(focus_move),
-                    evaluation=-0.5,
+                    evaluation=0.1,
                     mate=None,
-                    loss_pawns=0.7,
+                    loss_pawns=0.1,
                     pv_san=(board.san(focus_move),),
                 )
             )
@@ -194,7 +200,7 @@ def test_suggestion_falls_back_to_stockfish_after_local_theory_ends() -> None:
     assert coach.store.summary()["attempts"] == 0
 
 
-def test_pawn_feedback_explains_irreversible_square_changes_concretely() -> None:
+def test_pawn_feedback_omits_trivial_irreversibility_template() -> None:
     coach = service()
     session = coach.create_session("white")
 
@@ -202,9 +208,8 @@ def test_pawn_feedback_explains_irreversible_square_changes_concretely() -> None
     feedback = response["messages"][0]
 
     assert "b4 und d4" in feedback["details"]
-    assert "b3 und d3" in feedback["details"]
-    assert "nicht rückwärts" in feedback["details"]
-    assert "Springer" in feedback["details"]
+    assert "b3 und d3" not in feedback["details"]
+    assert "nicht rückwärts" not in feedback["details"]
     assert feedback["details"] != feedback["summary"]
 
 
@@ -318,7 +323,7 @@ def test_na2_question_corrects_the_generic_center_development_template() -> None
     assert "Bauern auf d4 angegriffen" in details
     assert "Na2 bringt den Springer aus diesem Angriff" in details
     assert "kontrolliert von dort c1, c3 und b4" in details
-    assert "Keines davon ist eines der vier Zentrumsfelder" in details
+    assert "Keines davon ist eines der vier Zentrumsfelder" not in details
     assert "greift er den gegnerischen Läufer auf b4 an" in details
     assert "Dein Einwand zur Faustregel „Springer am Rand“ ist richtig" in details
     assert "kein aktiver Zentrumszug" in details
@@ -330,11 +335,12 @@ def test_na2_question_corrects_the_generic_center_development_template() -> None
     assert "entwickelt" not in details
     sections = response["message"]["explanation_sections"]
     assert [section["title"] for section in sections] == [
-        "Was verändert der Zug konkret?",
+        "Mittel- und langfristiger Plan",
+        "Konkrete Wirkung in der Stellung",
         "Warum nicht die naheliegende Alternative?",
         "Stockfish-Rechenwege",
     ]
-    assert "Nb1 (-0,06, 0,49 Bauerneinheiten hinter Platz 1)" in sections[2]["text"]
+    assert "Nb1 (-0,06, 0,49 Bauerneinheiten hinter Platz 1)" in sections[3]["text"]
 
 
 def test_question_uses_the_first_of_multiple_named_legal_moves() -> None:
@@ -377,6 +383,53 @@ def test_question_about_suggestion_is_grounded_without_playing_the_move() -> Non
     )
 
     assert alternative["message"]["move"] == "d4"
+
+
+def test_deep_question_marks_mode_and_adds_cross_line_plan_section() -> None:
+    coach = service()
+    session = coach.create_session("white")
+
+    response = coach.answer_question(
+        session["session_id"],
+        "Warum ist e4 mittel- und langfristig gut?",
+        "e2e4",
+        deep=True,
+    )
+
+    message = response["message"]
+    assert message["analysis_mode"] == "deep"
+    assert [section["title"] for section in message["explanation_sections"]] == [
+        "Mittel- und langfristiger Plan",
+        "Was mehrere Varianten gemeinsam zeigen",
+        "Konkrete Wirkung in der Stellung",
+        "Warum nicht die naheliegende Alternative?",
+        "Stockfish-Rechenwege",
+    ]
+
+
+def test_first_identified_opening_is_introduced_instead_of_continued() -> None:
+    coach = service()
+    response = coach.create_session("white")
+    session = coach.sessions[response["session_id"]]
+    session.board.push_san("e4")
+    session.move_history.append({"actor": "learner", "san": "e4"})
+    session.opening = OpeningIdentity("B00", "King's Pawn Game")
+    move = session.board.parse_san("c5")
+    analysis = coach.engine.analyze_move(session.board, move)
+
+    message = coach._coach_message(
+        session,
+        move,
+        "c5",
+        True,
+        analysis,
+        OpeningIdentity("B20", "Sicilian Defense"),
+    )
+
+    assert message["summary"] == (
+        "Ich spiele c5. Mit diesem Zug beginnt die Eröffnung „Sicilian Defense“."
+    )
+    assert "weiter" not in message["summary"]
 
 
 def test_opening_end_combines_theory_development_castling_and_history() -> None:

@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 import threading
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -62,12 +62,16 @@ class StockfishService:
         *,
         time_seconds: float = 0.12,
         explanation_time_seconds: float = 0.8,
+        selection_time_seconds: float = 2.0,
+        deep_time_seconds: float = 5.0,
         multipv: int = 3,
         cache: Cache | None = None,
     ) -> None:
         self.executable = executable or self.locate()
         self.time_seconds = time_seconds
         self.explanation_time_seconds = explanation_time_seconds
+        self.selection_time_seconds = selection_time_seconds
+        self.deep_time_seconds = deep_time_seconds
         self.multipv = multipv
         self.cache = cache
         self._engine: chess.engine.SimpleEngine | None = None
@@ -160,8 +164,8 @@ class StockfishService:
                 return unavailable_analysis(str(exc))
 
     def get_best_move(self, board: chess.Board) -> tuple[chess.Move | None, MoveAnalysis]:
-        """Return Stockfish's preferred move and its verified move analysis."""
-        comparison = self.compare_moves(board)
+        """Return a move selected with the more stable coach-move budget."""
+        comparison = self.compare_moves(board, stable=True)
         if not comparison.available or not comparison.candidates:
             return None, unavailable_analysis(
                 comparison.reason or "Stockfish lieferte keinen Zugvorschlag"
@@ -173,27 +177,18 @@ class StockfishService:
             return None, unavailable_analysis("Stockfish lieferte keinen gültigen besten Zug")
         if best_move not in board.legal_moves:
             return None, unavailable_analysis("Stockfish lieferte einen illegalen besten Zug")
-        analysis = self.analyze_move(board, best_move)
-        if not analysis.available:
-            return None, analysis
-        return best_move, replace(
-            analysis,
-            best_move_uci=candidate.move_uci,
-            best_move_san=candidate.move_san,
-            evaluation_before=candidate.evaluation,
-            evaluation_played=candidate.evaluation,
-            mate_before=candidate.mate,
-            mate_played=candidate.mate,
-            loss_pawns=0.0,
-            classification="practically_equal",
-            best_pv_san=candidate.pv_san,
-            played_pv_san=candidate.pv_san,
-        )
+        return best_move, self.analysis_from_comparison(board, best_move, comparison)
 
     def compare_moves(
-        self, board: chess.Board, *, count: int = 3, focus_move: chess.Move | None = None
+        self,
+        board: chess.Board,
+        *,
+        count: int = 3,
+        focus_move: chess.Move | None = None,
+        stable: bool = False,
+        deep: bool = False,
     ) -> MoveComparison:
-        """Analyze several leading moves with a larger explanation budget."""
+        """Analyze candidates; deep mode rechecks one common root set consistently."""
         with self._lock:
             if not self.executable:
                 return unavailable_comparison("Stockfish wurde nicht gefunden")
@@ -203,13 +198,23 @@ class StockfishService:
             requested_count = max(1, min(count, legal_count))
             try:
                 engine = self._start()
+                mode = "deep" if deep else "stable" if stable else "explanation"
+                time_seconds = (
+                    self.deep_time_seconds
+                    if deep
+                    else self.selection_time_seconds
+                    if stable
+                    else self.explanation_time_seconds
+                )
+                depth = 24 if deep else 20 if stable else 18
                 cache_key = json.dumps(
                     {
                         "kind": "move_comparison",
+                        "mode": mode,
                         "fen": position_key(board),
                         "engine": self._name,
-                        "time": self.explanation_time_seconds,
-                        "depth": 18,
+                        "time": time_seconds,
+                        "depth": depth,
                         "multipv": requested_count,
                         "focus_move": focus_move.uci() if focus_move else None,
                     },
@@ -218,14 +223,26 @@ class StockfishService:
                 if self.cache and (cached := self.cache.get_analysis(cache_key)):
                     return comparison_from_json(cached)
 
-                raw_infos = engine.analyse(
-                    board,
-                    chess.engine.Limit(time=self.explanation_time_seconds, depth=18),
-                    multipv=requested_count,
-                )
+                limit = chess.engine.Limit(time=time_seconds, depth=depth)
+                raw_infos = engine.analyse(board, limit, multipv=requested_count)
                 infos = raw_infos if isinstance(raw_infos, list) else [raw_infos]
                 if not infos or not infos[0].get("pv"):
                     return unavailable_comparison("Stockfish lieferte keine Kandidaten")
+
+                if deep:
+                    root_moves = [info["pv"][0] for info in infos if info.get("pv")]
+                    if focus_move and focus_move not in root_moves:
+                        root_moves.append(focus_move)
+                    raw_infos = engine.analyse(
+                        board,
+                        limit,
+                        multipv=len(root_moves),
+                        root_moves=root_moves,
+                    )
+                    infos = raw_infos if isinstance(raw_infos, list) else [raw_infos]
+                    if not infos or not infos[0].get("pv"):
+                        return unavailable_comparison("Stockfish lieferte keine vertiefte Analyse")
+
                 best_evaluation, _ = _white_score(infos[0])
                 candidates: list[CandidateAnalysis] = []
                 for info in infos:
@@ -244,12 +261,12 @@ class StockfishService:
                             pv_san=_pv_san(board, pv),
                         )
                     )
-                if focus_move and all(
+                if not deep and focus_move and all(
                     candidate.move_uci != focus_move.uci() for candidate in candidates
                 ):
                     focus_info = engine.analyse(
                         board,
-                        chess.engine.Limit(time=self.explanation_time_seconds, depth=18),
+                        limit,
                         root_moves=[focus_move],
                     )
                     focus_evaluation, focus_mate = _white_score(focus_info)
@@ -276,6 +293,35 @@ class StockfishService:
                 return comparison
             except (OSError, chess.engine.EngineError, KeyError) as exc:
                 return unavailable_comparison(str(exc))
+
+    @staticmethod
+    def analysis_from_comparison(
+        board: chess.Board, move: chess.Move, comparison: MoveComparison
+    ) -> MoveAnalysis:
+        """Build move feedback from one internally consistent MultiPV snapshot."""
+        if not comparison.available or not comparison.candidates:
+            return unavailable_analysis(comparison.reason or "Stockfish lieferte keine Analyse")
+        best = comparison.candidates[0]
+        played = next(
+            (candidate for candidate in comparison.candidates if candidate.move_uci == move.uci()),
+            None,
+        )
+        if played is None:
+            return unavailable_analysis("Der untersuchte Zug fehlt in der Engine-Analyse")
+        return MoveAnalysis(
+            available=True,
+            engine_name=comparison.engine_name,
+            best_move_uci=best.move_uci,
+            best_move_san=best.move_san,
+            evaluation_before=best.evaluation,
+            evaluation_played=played.evaluation,
+            mate_before=best.mate,
+            mate_played=played.mate,
+            loss_pawns=played.loss_pawns,
+            classification=classify_loss(played.loss_pawns),
+            best_pv_san=best.pv_san,
+            played_pv_san=played.pv_san,
+        )
 
     def close(self) -> None:
         with self._lock:

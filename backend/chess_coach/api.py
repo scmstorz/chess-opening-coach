@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from chess_coach.book_knowledge import BookKnowledgeBase, NullBookKnowledgeBase
 from chess_coach.config import Settings
 from chess_coach.engine import StockfishService
 from chess_coach.openings import OpeningBook
@@ -43,11 +44,17 @@ def build_service(settings: Settings | None = None) -> CoachService:
         multipv=settings.stockfish_multipv,
         cache=store,
     )
+    book_knowledge = (
+        BookKnowledgeBase(settings.book_database_path)
+        if settings.books_enabled
+        else NullBookKnowledgeBase("Buchwissen ist in der Konfiguration deaktiviert.")
+    )
     return CoachService(
         OpeningBook(settings.opening_data_path),
         engine,
         OllamaTutor(settings.ollama_url, settings.ollama_model),
         store,
+        book_knowledge=book_knowledge,
     )
 
 
@@ -83,6 +90,7 @@ def create_app(service: CoachService | None = None) -> FastAPI:
                 "name": coach.engine.name,
             },
             "ollama": coach.tutor.status(),
+            "books": coach.book_knowledge.status(),
         }
 
     @app.post("/api/sessions")

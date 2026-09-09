@@ -1031,3 +1031,187 @@ the grounding problem. Full method and findings are recorded in
 
 After this increment, 33 Python tests pass, Python and web lint are clean, the
 production browser build succeeds, and whitespace validation is clean.
+
+### Choosing both a knowledge compiler and a better teaching outcome
+
+The cloud-model experiment led to a new source strategy: instead of asking a
+more fluent model to invent the strategic reason for an engine move, compile
+human-authored chess explanations into a local, citable evidence layer. A
+detailed agent briefing proposed a complete offline compiler for a 2021
+beginner-opening book, with page- and bounding-box provenance, FTS5 retrieval,
+conservative chess parsing, and strict separation from the existing opening
+graph and Stockfish.
+
+Review exposed an important product distinction. One possible milestone was a
+technically complete, searchable book database. Another was a visibly better
+answer to an actual learner question such as “Why is Bb5 useful?”. The former
+does not automatically produce the latter: the initial briefing intentionally
+kept book passages outside the tutor's verified answer facts and would first
+have displayed them only as references. The learner rejected the implied
+choice and required both outcomes.
+
+The chosen path keeps the whole-book compiler but stages it toward grounded
+synthesis. First, existing failures become a before-state evaluation set. The
+complete PDF is then imported with stable provenance and searchable chunks.
+Position-, opening-, move-, and question-aware retrieval is connected to the
+coach before a final synthesis layer combines four explicitly labelled evidence
+classes: board facts, opening data, Stockfish results, and attributed book
+passages. Extraction, retrieval, and explanation can thus fail—and be measured—
+independently.
+
+The learner explicitly authorized automatic processing of the short retrieved
+passages by the local Ollama model. The whole book is never placed in a prompt,
+and no network permission is involved. Book prose remains untrusted source
+material: “the author recommends X” is valid provenance, but it does not become
+engine or repertoire truth through paraphrasing. Cloud transmission of book
+text remains outside this decision and would require a separate, explicit
+confirmation.
+
+This planning step also changed the definition of done. The knowledge work is
+not complete when rows exist in SQLite. It must both make the full book locally
+searchable and show measurable educational improvement on the captured real
+questions. OCR, embeddings, diagram-to-FEN, and multi-book consensus remain
+deliberately deferred until those two outcomes are evaluated.
+
+The next UI question exposed another division of responsibility. Showing the
+English source excerpt next to its German explanation would make provenance
+visible, but it would also ask the learner to read everything twice and verify
+the model personally. The learner explicitly rejected that burden. The normal
+feed will show a single German explanation plus compact source metadata, while
+the original passage stays in the compiler for diagnostics, tests, and later
+editorial review.
+
+This raises the grounding bar for the implementation. Every synthesized
+sentence must cite internal evidence IDs; moves, numbers, names, variants, and
+board effects can be checked deterministically. A second local model can serve
+as an extra entailment critic, but agreement between probabilistic models is not
+proof. If a strategic paraphrase cannot be tied back confidently enough, the
+safe behavior is a conservative fallback rather than fluent unsupported prose.
+
+The learner strongly confirmed that refusal is the desired product behavior,
+not an unfortunate technical edge case. The coach may retain facts it can prove
+but must say when it lacks a sufficiently supported explanation of the
+long-term purpose. Generic principles must not be used to disguise that gap.
+The implementation will expose a structured fallback reason so that these cases
+can be counted, inspected, and turned into retrieval or knowledge-base work.
+
+### Implementing the first local knowledge compiler
+
+The owned reference PDF was copied into `data/books/` as a durable local source.
+That directory is the standard location for later books as well. PDFs and the
+derived knowledge database are ignored by Git so a future public repository
+does not redistribute copyrighted material. A tracked registry records title,
+checksum, and import date, making the private source reproducible without
+publishing its contents.
+
+The compiler uses Poppler's existing text and geometry tools rather than
+starting with OCR. It stores book metadata, pages, positioned spans, sections,
+chunks, FTS rows, claims, concepts, candidate lines, exact position evidence,
+diagram metadata, aliases, and issues in a separate versioned SQLite database.
+Runtime opens this database read-only. Exact chess positions use the coach's
+existing canonical FEN key; the compiler does not introduce a parallel hashed
+identity. Only numbered lines beginning at `1.` for White are reconstructed.
+Natural-language move prose and fragments without a known start position are
+retained for inspection but not promoted to position evidence.
+
+The real import yielded 122 pages, 962 spans, 67 sections, 100 synchronized FTS
+chunks, 399 claims, one valid numbered line with three position-evidence rows,
+38 images, 31 likely board diagrams, and 70 explicit issues. SQLite integrity,
+foreign keys, FTS synchronization, orphan checks, and index-use checks all
+passed. A German “Spanische Partie” query resolves through aliases to the Ruy
+Lopez section on PDF pages 18–20.
+
+Visual inspection changed the meaning of “source of truth”. The PDF is the
+source of truth for what its author says and where it appears, but not for chess
+correctness. It contains, among other problems, probability arithmetic in which
+38% plus 25% becomes a claimed 75%, and malformed move prose such as “King's
+pawn to e2”. The compiler therefore splits usable prefixes from unsafe sentence
+tails, quarantines statistics and natural-language move claims, and labels the
+remaining prose `source_only` rather than silently calling it verified.
+
+The first `Bb5` synthesis produced a useful implementation failure sequence.
+Qwen first exhausted a too-small structured-output budget, then cited only the
+book for a concrete move anchor, and finally converted the book's general Ruy
+Lopez purpose into the stronger statement that `Bb5` directly disrupts the pawn
+structure. A second local LLM critic accepted the overstatement. This confirms
+the earlier decision that probabilistic agreement is an extra check, not proof.
+
+The accepted path now gives each generated sentence evidence IDs, repairs a
+missing concrete-anchor link only when exactly one verified fact contains that
+anchor, requires explicit attribution of every `source_only` sentence, and
+forbids an opening-level source claim from sharing a sentence with concrete move
+notation. Repeated source paraphrases are dropped instead of making the learner
+read the same idea twice. For `Bb5`, the book's attributed general plan is kept
+separate from the board-derived fact that the bishop attacks the `c6` knight,
+which also defends `e5`. The browser receives only this German synthesis and
+compact source metadata; the English passage and local path remain internal.
+
+A final integration run found one more structural trap: Qwen placed a valid
+translation and an unsupported “destabilize the opponent” expansion into one
+JSON `summary.text` value. The critic rejected the combined value, correctly,
+but the product had promised sentence-level rather than field-level evidence.
+The parser now splits every generated field into actual sentences, applies the
+grounding rules to each, and retains only supported non-redundant sentences.
+Retrieval was tightened at the same time to return atomic claims instead of
+concatenating unrelated plan, definition, and history claims from a chunk.
+After those changes, the real end-to-end `Bb5` request returned `grounded`, used
+the page-20 plan claim, and serialized only safe source metadata to the browser.
+
+The result and remaining limits are recorded in
+`docs/evaluations/2026-09-09-book-knowledge-baseline.md`. The other real learner
+failures (`c3`, `Na2`, `a4`, `Nd5`, and `Ra6`) remain evaluation cases rather
+than being declared fixed merely because a book database now exists.
+
+### A stronger second book challenges the layout assumptions
+
+The learner selected Paul van der Sterren's *Fundamental Chess Openings* as the
+second permanent local source and expected it to be good. The 14 MB PDF was
+copied unchanged into `data/books/`; its SHA-256 is recorded in the local-source
+registry and the file remains Git-ignored. The publisher note explicitly dates
+the book to 2009, while unrelated conversion timestamps also occur in the front
+matter. Metadata inference was therefore extended to accept only explicit
+publication wording instead of guessing from arbitrary dates.
+
+The expectation about content survived visual review. Ruy Lopez pages 642-647
+and Queen's Gambit Declined pages 17-18 show clean diagrams, side-to-move labels,
+and precise strategic prose. But the 1,252-page Kindle layout exposes a compiler
+assumption: move numbers and moves are separate visual table columns, producing
+text like `1 e4 e5 2 Nf3 Nc6 3 Bb5` rather than dotted PGN.
+
+The parser now normalizes this typeset form before `python-chess` validation. It
+finds 213 complete legal lines. Treating all intermediate positions of those
+lines as evidence anchors immediately produced a dangerous false retrieval: a
+Panov Attack paragraph containing an embedded comparison to `1 d4 d5 2 c4`
+appeared as an exact source for the early Queen's Gambit position. This was legal
+chess and wrong evidence.
+
+The repaired rule anchors commentary only to the final position of a displayed
+line beginning near the start of its chunk. Legal embedded comparisons remain
+searchable but do not bind the surrounding prose to a position. Retrieval checks
+the position after the questioned move first and stops at exact facts instead of
+padding the answer with broad opening matches. The second import consequently
+retains 213 complete lines but promotes only 55 high-confidence final-position
+anchors. Concrete SAN in prose is quarantined until a unique start position can
+be reconstructed.
+
+The high issue count—5,508—is an observability result rather than a verdict on
+the book: 3,516 fragments need earlier context, 1,548 claims contain unpositioned
+SAN, 263 natural-language move descriptions need context, and 158 legal embedded
+lines are deliberately not anchors. Fourteen assumed-start lines are genuinely
+invalid. The database remains structurally sound with 1,399 synchronized FTS
+chunks across both books.
+
+The first positive product result uses the exact position after `1 d4 d5 2 c4
+e6`. Van der Sterren describes Black as holding the centre while preparing
+natural development. A real local Stockfish/Qwen run returned a grounded German
+answer that connected this attributed plan to the verified squares `d5` and
+`f5`, the freed bishop on `f8`, and a model development sequence. Only the book,
+author, year, and PDF pages 17-18 reach the browser.
+
+The Ruy Lopez result is intentionally less gratifying. The table ending in
+`3 Bb5` is reconstructed correctly, but the nearby introduction mainly covers
+history and Black's alternatives. It does not directly establish a safe
+long-term purpose for `Bb5`. The coach retains the earlier board-derived
+defender explanation rather than laundering the prestige of a good book into an
+irrelevant answer. The next high-value increment is therefore contextual
+reconstruction of variation fragments, not a third book.

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <body>
+    <doc>
+      <page width="612" height="792">
+        <flow>
+          <block xMin="72" yMin="80" xMax="240" yMax="100">
+            <line><word>Ruy</word><word>Lopez</word></line>
+          </block>
+          <block xMin="72" yMin="120" xMax="540" yMax="160">
+            <line><word>Control</word><word>the</word><word>cen-</word></line>
+            <line><word>ter</word><word>with</word><word>development.</word></line>
+          </block>
+        </flow>
+      </page>
+    </doc>
+  </body>
+</html>

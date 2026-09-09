@@ -17,6 +17,27 @@ type EngineInfo = {
   classification: string;
 };
 
+type BookReference = {
+  kind: "book";
+  book_id: string;
+  title: string;
+  author: string | null;
+  year: number | null;
+  pdf_page_start: number;
+  pdf_page_end: number;
+  source_ref: string;
+  status: "source_only" | "legality_checked" | "engine_checked";
+  warnings: string[];
+  match_kind: string;
+};
+
+type KnowledgeInfo = {
+  status: "grounded" | "no_evidence" | "insufficient_evidence" | "model_unavailable" | "rejected";
+  reason: string | null;
+  evidence_count: number;
+  used_evidence_ids: string[];
+};
+
 type CoachMessage = {
   kind?: "move" | "question" | "phase" | "summary";
   actor: "learner" | "coach";
@@ -32,6 +53,8 @@ type CoachMessage = {
   move_uci?: string;
   fen_after?: string;
   analysis_mode?: "standard" | "deep";
+  references?: BookReference[];
+  knowledge?: KnowledgeInfo;
 };
 
 type ProgressKind = "move" | "suggestion" | "question" | "deep";
@@ -120,7 +143,14 @@ type Health = {
   openings: { source: string; entries: number };
   stockfish: { available: boolean; name: string | null };
   ollama: { available: boolean; model: string | null; reason: string | null };
+  books?: { available: boolean; book_count: number; chunk_count: number; reason: string | null };
 };
+
+function pdfPageLabel(reference: BookReference): string {
+  return reference.pdf_page_start === reference.pdf_page_end
+    ? `PDF-Seite ${reference.pdf_page_start}`
+    : `PDF-Seiten ${reference.pdf_page_start}–${reference.pdf_page_end}`;
+}
 
 const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const initialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -885,6 +915,28 @@ export default function Home() {
                           ))}
                         </div>
                       ) : <p>{message.details}</p>}
+                      {message.references && message.references.length > 0 && (
+                        <div className="book-references" aria-label="Verwendete Buchquellen">
+                          <h4>Buchquelle</h4>
+                          {message.references.map((reference) => (
+                            <div className="book-reference" key={reference.source_ref}>
+                              <strong>{reference.title}</strong>
+                              <span>
+                                {[reference.author, reference.year, pdfPageLabel(reference)]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                              <small>
+                                {reference.status === "engine_checked"
+                                  ? "Buchaussage und Stellung mit Stockfish geprüft"
+                                  : reference.status === "legality_checked"
+                                  ? "Buchzug auf Legalität geprüft"
+                                  : "Buchaussage · nicht unabhängig verifiziert"}
+                              </small>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </details>
                   </div>
                 </article>

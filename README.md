@@ -17,6 +17,7 @@ separate sources of information.
 - The local Lichess opening dataset owns ECO codes, names, and theory coverage.
 - Stockfish owns objective move analysis.
 - Ollama rewrites an already verified feedback draft into learner-friendly German.
+- Locally compiled chess books contribute attributed strategic source claims.
 - SQLite stores interactions and cached engine analysis locally.
 
 ## What works now
@@ -33,6 +34,8 @@ separate sources of information.
 - Optional `Tief erklären` analysis with four consistently rechecked candidates
 - Plan-oriented explanations that look for recurring follow-up ideas across engine lines
 - Expandable sections for long-term plan, concrete effects, alternatives, and engine lines
+- A local PDF knowledge compiler with page-level provenance, FTS retrieval, and explicit issue quarantine
+- Grounded German book synthesis with compact source metadata and an honest evidence fallback
 - Learned countdown estimates for normal and deep coach operations
 - Visible engine evaluation using the standard White-positive convention
 - German feedback after every learner and coach move
@@ -94,6 +97,8 @@ CHESS_COACH_OLLAMA_MODEL=qwen3.8:27b-mlx
 CHESS_COACH_OLLAMA_URL=http://127.0.0.1:11434
 CHESS_COACH_BACKEND_PORT=53686
 CHESS_COACH_FRONTEND_PORT=53687
+CHESS_COACH_BOOKS_ENABLED=true
+CHESS_COACH_BOOK_DATABASE=/absolute/path/to/book_knowledge.db
 STOCKFISH_PATH=/absolute/path/to/stockfish
 STOCKFISH_TIME=0.12
 STOCKFISH_EXPLANATION_TIME=0.8
@@ -103,6 +108,34 @@ STOCKFISH_MULTIPV=3
 CHESS_COACH_DATABASE=/absolute/path/to/coach.db
 CHESS_COACH_OPENINGS=/absolute/path/to/opening-tsv-directory
 ```
+
+## Local chess books
+
+Owned PDF sources live in `data/books/`. PDFs and the derived
+`data/book_knowledge.db` are deliberately ignored by Git and must not be
+deployed. Import or refresh a book with:
+
+```bash
+.venv/bin/python -m chess_coach.book_knowledge.cli ingest \
+  "data/books/Stewart, Clyde - Chess Openings For Beginners (2021).pdf"
+.venv/bin/python -m chess_coach.book_knowledge.cli ingest \
+  "data/books/Fundamental Chess Openings - Paul van der Sterren.pdf"
+.venv/bin/python -m chess_coach.book_knowledge.cli verify
+```
+
+The compiler stores the complete searchable text locally with book, page,
+section, chunk, and claim provenance. A book is treated as an attributed source,
+not as automatic chess truth: questionable statistics and unsafe move prose are
+quarantined. Only short retrieved excerpts may be sent automatically to the
+local Ollama process. The browser shows the resulting German explanation and
+source metadata, never the original English excerpt. If the evidence or its
+grounding is insufficient, the coach says so instead of inventing a plan.
+
+Typeset move tables such as `1 e4 e5 2 Nf3 Nc6 3 Bb5` are normalized and
+validated with `python-chess`. Only the final position of a displayed leading
+line anchors the following commentary. Embedded comparison lines remain
+searchable but do not attach their whole paragraph to every position they pass
+through.
 
 ## Verification
 
@@ -121,6 +154,7 @@ app/                         React browser interface
 backend/chess_coach/         verified chess and tutor services
 backend/tests/               backend unit and API tests
 data/openings/               local CC0 opening source data
+data/books/                  local, Git-ignored owned PDF sources
 docs/                        journal, architecture, ADRs, case-study material
 scripts/start_local.py       stable-port local launcher
 tests/                       rendered web-shell test

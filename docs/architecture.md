@@ -10,14 +10,18 @@ Browser / React UI
         | /api through local development proxy
         v
 Python / FastAPI
-  |        |          |             |
-  v        v          v             v
-python-  opening    Stockfish      Ollama
-chess    TSV graph   UCI process    local API
+  |        |          |             |              |
+  v        v          v             v              v
+python-  opening    Stockfish      Ollama         book knowledge
+chess    TSV graph   UCI process    local API      read-only SQLite
   |
   v
 SQLite learner log and engine cache
 ```
+
+The book-knowledge database is separate from the learner log. Its compiler is
+an offline authoring process; runtime opens it read-only. Owned PDFs, extracted
+text, and the derived database remain local and are ignored by Git.
 
 `scripts/start_local.py` uses stable loopback ports (`53687` for the browser and
 `53686` for FastAPI) and checks that they are available before starting. Both
@@ -232,6 +236,47 @@ was therefore tightened before release: the model can now select only IDs from
 an allowlisted set of already written facts. This preserves adaptive
 emphasis while making novel chess prose structurally impossible in this path.
 
+## Local book knowledge
+
+The knowledge compiler imports an owned PDF through Poppler into a separate,
+versioned SQLite schema:
+
+```text
+PDF
+  -> metadata + page geometry + positioned text blocks + image inventory
+  -> repeated-header removal + section and chunk reconstruction
+  -> claims, concepts, conservative PGN candidates, and extraction issues
+  -> FTS5 index + exact position evidence using the existing FEN position key
+```
+
+Every claim retains book, PDF page, span, section, and chunk provenance. Dotted
+PGN and typeset leading tables such as `1 e4 e5 2 Nf3` are normalized, but only
+lines starting from the standard initial position are reconstructed. One leading
+displayed line anchors its final position, not every prefix position. Legal
+embedded comparisons remain searchable without becoming position anchors.
+Natural-language move descriptions, contextual fragments, statistics, and
+unpositioned SAN claims are retained as issues and excluded from runtime
+evidence until separately verified.
+
+Question retrieval tries the position after the focused move, then the current
+position, the exact opening section, a focused move, and finally full-text
+question matches. Exact-position facts stop the broadening step. Section-wide
+opening matches may contribute general plans but not local recommendations or
+warnings. The runtime returns at most a few short safe claims. It never sends the
+entire book to a model and never exposes a local filesystem path to the browser.
+
+Grounded synthesis is intentionally asymmetric. A `source_only` book statement
+is always attributed as something the book or author describes. An
+opening-level source statement cannot be rewritten as the direct effect of a
+specific move. Concrete moves and squares require matching deterministic board
+facts; missing evidence links are reconstructed only when an anchor has one
+unambiguous verified source. A second local LLM reviews entailment, but its
+agreement is not considered proof. Deterministic rules still reject new anchors,
+unattributed source claims, excessive certainty, and move-level overstatement.
+The UI receives only a German explanation and compact source metadata. Failed
+generation, weak evidence, or rejected grounding produces a structured status
+and an explicit learner-facing knowledge boundary.
+
 ## Persistence
 
 SQLite stores interactions, cached Stockfish results, and completed opening
@@ -253,4 +298,5 @@ learning data; browser storage is not used for it.
 - No imported PGN analysis
 - No automatic network refresh
 - No cloud-generated tutor prose in the product runtime
+- No cloud transmission of owned book text
 - No resumable interrupted games

@@ -7,6 +7,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     database_path: Path = Path(
@@ -15,6 +22,12 @@ class Settings:
     opening_data_path: Path = Path(
         os.environ.get("CHESS_COACH_OPENINGS", PROJECT_ROOT / "data" / "openings")
     )
+    book_database_path: Path = Path(
+        os.environ.get(
+            "CHESS_COACH_BOOK_DATABASE", PROJECT_ROOT / "data" / "book_knowledge.db"
+        )
+    )
+    books_enabled: bool = _env_bool("CHESS_COACH_BOOKS_ENABLED", True)
     stockfish_path: str | None = os.environ.get("STOCKFISH_PATH")
     stockfish_time_seconds: float = float(os.environ.get("STOCKFISH_TIME", "0.12"))
     stockfish_explanation_time_seconds: float = float(

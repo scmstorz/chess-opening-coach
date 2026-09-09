@@ -50,11 +50,35 @@
 18. Kimi K3 and DeepSeek V4 Pro produce more fluent strategic prose, but both
     add unsupported or false positional claims. The benchmark rejects direct
     cloud prose as ground truth and preserves claim-level grounding.
+19. The response to weak model explanations is not another model ensemble but a
+    local knowledge compiler. Planning distinguishes a searchable, citable book
+    corpus from the separate product outcome of better teaching, then makes both
+    part of one staged and measurable capability.
+20. The learner rejects side-by-side English evidence as a hidden verification
+    chore. The product must show one grounded German explanation while retaining
+    the original passage internally for automated checks and diagnostics.
+21. An explicit refusal becomes a first-class quality feature: verified facts
+    may survive, but the coach must admit when the long-term purpose is not
+    sufficiently supported instead of hiding the gap behind chess platitudes.
+22. The first real book import reveals that “source of truth” needs a qualifier:
+    the PDF is authoritative for authorial provenance, but its arithmetic and
+    chess prose contain errors, so truth must be assigned claim by claim.
+23. A second LLM critic accepts an over-generalized `Bb5` explanation. A
+    deterministic rule—not model consensus—finally separates the book's general
+    opening plan from the move's verified board effect.
+24. A respected second book validates the knowledge strategy but breaks the
+    first parser assumption: its move tables are visual columns rather than PGN.
+25. Normalizing those tables initially creates a subtler false positive when an
+    embedded Panov comparison is attached to an early Queen's Gambit position.
+    Final-position-only anchors turn the failure into a tested retrieval rule.
+26. The second book produces both a positive result (`2...e6` gains a grounded
+    centre-and-development explanation) and an honest negative result (its Ruy
+    Lopez introduction still does not directly explain the purpose of `Bb5`).
 
 ## Evidence already captured
 
 - Complete discovery decisions and rationale in `project-journal.md`
-- Five architecture decision records
+- Six architecture decision records
 - Exact opening-data provenance and license
 - Dependency locks for Python and JavaScript
 - Automated backend, rendered-page, lint, and build checks
@@ -67,6 +91,24 @@
 - Comparable local chess benchmarks for Qwen, Glimmer, Ornith, and GPT-OSS
 - Reproducible cloud comparison of Kimi K3 and DeepSeek V4 Pro on three failures
 - Measured countdown inputs for standard, deep, local, and cloud operations
+- A whole-book versus explanation-value design trade-off, including the
+  learner's decision to require both
+- Explicit consent and privacy boundary for automatic local processing of short
+  retrieved book passages
+- A learner-facing decision against duplicate source text and the resulting
+  stronger requirement for sentence-level evidence attribution and fallback
+- Explicit learner confirmation that an honest, measurable refusal is preferable
+  to an unsupported strategic explanation
+- A reproducible first whole-book import with 122 pages, 100 FTS chunks, 399
+  claims, 70 quarantined issues, and integrity/index verification
+- A documented three-step grounding failure sequence culminating in an accepted
+  attributed `Bb5` explanation
+- A second 1,252-page source with 13,102 positioned spans, 1,299 FTS chunks,
+  213 legal complete lines, and 55 conservative position anchors
+- A real cross-opening retrieval false positive and the final-position-only rule
+  that removed it
+- A successful grounded answer sourced from the exact `2...e6` Queen's Gambit
+  position, plus a documented negative Ruy Lopez result
 
 ## Questions for later evaluation
 
@@ -78,3 +120,7 @@
 - How often does the grounding validator fall back, and does that harm perceived
   quality?
 - Does opening understanding transfer to fewer early errors in real games?
+- Does cited book evidence improve the learner's explanation rating compared
+  with deeper Stockfish evidence alone?
+- Which failures originate in extraction, retrieval, or synthesis, and how can
+  they be distinguished in evaluation?

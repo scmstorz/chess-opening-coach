@@ -200,6 +200,25 @@ def test_suggestion_falls_back_to_stockfish_after_local_theory_ends() -> None:
     assert coach.store.summary()["attempts"] == 0
 
 
+def test_bb5_question_explains_pressure_on_the_e5_defender() -> None:
+    coach = service()
+    response = coach.create_session("white")
+    active = coach.sessions[response["session_id"]]
+    board = chess.Board()
+    for san in ("e4", "e5", "Nf3", "Nc6"):
+        board.push_san(san)
+    active.board = board
+    active.opening = OpeningIdentity("C60", "Ruy Lopez")
+
+    message = coach.answer_question(
+        response["session_id"], "Warum ist Bb5 gut?", "f1b5"
+    )["message"]
+
+    assert "Springer auf c6" in message["details"]
+    assert "Bauern auf e5" in message["details"]
+    assert "gewinnt ihn aber nicht automatisch" in message["details"]
+
+
 def test_pawn_feedback_omits_trivial_irreversibility_template() -> None:
     coach = service()
     session = coach.create_session("white")

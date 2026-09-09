@@ -29,6 +29,7 @@ __pycache__/
 .venv/
 data/*.db
 data/*.db-*
+data/books/*.pdf
 
 # debug
 npm-debug.log*

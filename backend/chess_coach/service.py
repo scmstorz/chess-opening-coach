@@ -10,6 +10,8 @@ from typing import Any
 
 import chess
 
+from chess_coach.book_knowledge import BookKnowledgeBase, NullBookKnowledgeBase
+from chess_coach.book_knowledge.models import BookEvidence
 from chess_coach.engine import CandidateAnalysis, MoveAnalysis, MoveComparison, StockfishService
 from chess_coach.openings import OpeningBook, OpeningIdentity, TheoryMove
 from chess_coach.storage import SQLiteStore
@@ -63,11 +65,13 @@ class CoachService:
         store: SQLiteStore,
         *,
         rng: random.Random | None = None,
+        book_knowledge: BookKnowledgeBase | NullBookKnowledgeBase | None = None,
     ) -> None:
         self.openings = opening_book
         self.engine = engine
         self.tutor = tutor
         self.store = store
+        self.book_knowledge = book_knowledge or NullBookKnowledgeBase()
         self.rng = rng or random.Random()
         self.sessions: dict[str, GameSession] = {}
 
@@ -354,6 +358,7 @@ class CoachService:
                 "details": (
                     f"{_move_concept(session.board, move)} "
                     f"{_move_response_context(session.board, move)} "
+                    f"{_defender_pressure_context(session.board, move)} "
                     f"{_heuristic_context(session.board, move)} "
                     f"{_concrete_board_changes(session.board, move)} "
                     f"{_continuation_context(session.board, move, analysis)} "
@@ -379,6 +384,12 @@ class CoachService:
                 raise ValueError("Bitte gib eine Frage ein")
 
             board = session.board
+            book_evidence = BookEvidence((), "none", False)
+            knowledge_status = "no_evidence"
+            knowledge_reason: str | None = None
+            used_evidence_ids: tuple[str, ...] = ()
+            answer_facts: list[dict[str, Any]] = []
+            selection_facts: dict[str, Any] | None = None
             move = self._mentioned_legal_move(board, clean_question)
             if move is None and focus_move_uci:
                 try:
@@ -445,7 +456,7 @@ class CoachService:
                     opening,
                     deep=deep,
                 )
-                facts = {
+                selection_facts = {
                     "task": (
                         "Erkläre den mittel- und langfristigen Nutzen des Zuges anhand einer "
                         "vertieften Analyse."
@@ -464,7 +475,79 @@ class CoachService:
                     "answer_facts": answer_facts,
                     "analysis_mode": "deep" if deep else "standard",
                 }
-                text = self.tutor.answer_question(facts, fallback)
+                text = fallback
+
+            book_evidence = self.book_knowledge.retrieve(
+                question=clean_question,
+                board=board,
+                opening=opening,
+                focus_move=move,
+            )
+            synthesis = self.tutor.synthesize_book_explanation(
+                question=clean_question,
+                verified_facts=_book_synthesis_facts(answer_facts),
+                book_facts=[
+                    {
+                        "id": fact.id,
+                        "text": fact.text,
+                        "claim_type": fact.claim_type,
+                        "validation_status": fact.validation_status,
+                        "match_kind": fact.match_kind,
+                    }
+                    for fact in book_evidence.facts
+                ],
+            )
+            knowledge_status = synthesis.status
+            knowledge_reason = synthesis.reason or book_evidence.reason
+            used_evidence_ids = synthesis.evidence_ids
+            if synthesis.text:
+                book_text = synthesis.text
+                text = TutorText(
+                    summary=book_text.summary,
+                    details=" ".join(
+                        part for part in (book_text.details, text.details) if part
+                    ),
+                    source=book_text.source,
+                    model=book_text.model,
+                )
+                explanation_sections.insert(
+                    0,
+                    {
+                        "title": "Buchgestützter Plan",
+                        "text": " ".join(
+                            part for part in (book_text.summary, book_text.details) if part
+                        ),
+                    },
+                )
+            else:
+                if selection_facts is not None:
+                    text = self.tutor.answer_question(selection_facts, text)
+                if not _has_supported_explanation(answer_facts, explanation_sections):
+                    limitation = (
+                        "Ich kann den Zug schachlich bewerten, habe aber noch keine ausreichend "
+                        "belegte Erklärung für seinen langfristigen Zweck."
+                    )
+                    text = TutorText(
+                        summary=f"{text.summary} {limitation}",
+                        details=text.details,
+                        source=text.source,
+                        model=text.model,
+                    )
+                    explanation_sections.insert(
+                        0,
+                        {"title": "Wissensgrenze", "text": limitation},
+                    )
+
+            used_facts = [
+                fact for fact in book_evidence.facts if fact.id in set(used_evidence_ids)
+            ]
+            references: list[dict[str, Any]] = []
+            seen_references: set[str] = set()
+            for fact in used_facts:
+                if fact.citation.source_ref in seen_references:
+                    continue
+                seen_references.add(fact.citation.source_ref)
+                references.append(fact.public_reference())
 
             message = {
                 "kind": "question",
@@ -479,6 +562,13 @@ class CoachService:
                 "engine": asdict(analysis) if analysis else None,
                 "explanation_sections": explanation_sections,
                 "analysis_mode": "deep" if deep else "standard",
+                "references": references,
+                "knowledge": {
+                    "status": knowledge_status,
+                    "reason": knowledge_reason,
+                    "evidence_count": len(book_evidence.facts),
+                    "used_evidence_ids": list(used_evidence_ids),
+                },
             }
             session.message_history.append(message)
             return {"message": message, "message_history": session.message_history}
@@ -573,6 +663,7 @@ class CoachService:
         )
         concept_text = _move_concept(board, move)
         response_text = _move_response_context(board, move)
+        defender_pressure_text = _defender_pressure_context(board, move)
         heuristic_text = _heuristic_context(board, move)
         board_changes_text = _concrete_board_changes(board, move)
         continuation_text = _continuation_context(board, move, analysis)
@@ -604,6 +695,7 @@ class CoachService:
             ("recurring_plan", recurring_text, deep),
             ("concept", concept_text, not plan_text),
             ("direct_threat", response_text, True),
+            ("defender_pressure", defender_pressure_text, True),
             ("heuristic", heuristic_text, True),
             ("board_changes", board_changes_text, True),
             ("continuation", continuation_text, True),
@@ -625,6 +717,7 @@ class CoachService:
                 part
                 for part in (
                     response_text,
+                    defender_pressure_text,
                     heuristic_text,
                     plan_text,
                     recurring_text,
@@ -646,6 +739,7 @@ class CoachService:
             part
             for part in (
                 response_text,
+                defender_pressure_text,
                 heuristic_text,
                 concept_text,
                 board_changes_text,
@@ -932,6 +1026,7 @@ class CoachService:
             part
             for part in (
                 _move_response_context(board, move),
+                _defender_pressure_context(board, move),
                 _heuristic_context(board, move),
                 _single_line_plan_context(board, move, analysis),
                 _move_concept(board, move),
@@ -2099,6 +2194,83 @@ def _join_descriptions(items: list[str]) -> str:
 
 def _format_pawns(value: float) -> str:
     return f"{value:.2f}".replace(".", ",")
+
+
+def _has_supported_explanation(
+    answer_facts: list[dict[str, Any]], sections: list[dict[str, str]]
+) -> bool:
+    has_plan = any(
+        section.get("title") in {"Mittel- und langfristiger Plan", "Buchgestützter Plan"}
+        and bool(section.get("text"))
+        and not section["text"].startswith(
+            "Die berechneten Varianten zeigen keinen einzelnen stabilen Langzeitplan"
+        )
+        for section in sections
+    )
+    if has_plan:
+        return True
+    causal_ids = {
+        "direct_threat",
+        "defender_pressure",
+        "heuristic",
+        "continuation",
+        "contrast",
+    }
+    return any(fact.get("id") in causal_ids and fact.get("text") for fact in answer_facts)
+
+
+def _book_synthesis_facts(answer_facts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep the source synthesizer focused on causal, board-grounded evidence."""
+    useful_ids = {
+        "plan",
+        "recurring_plan",
+        "concept",
+        "direct_threat",
+        "defender_pressure",
+        "heuristic",
+        "board_changes",
+        "continuation",
+        "contrast",
+    }
+    return [fact for fact in answer_facts if fact.get("id") in useful_ids]
+
+
+def _defender_pressure_context(board: chess.Board, move: chess.Move) -> str:
+    """Explain when a move attacks the defender of a central pawn."""
+    moving_piece = board.piece_at(move.from_square)
+    if moving_piece is None:
+        return ""
+    projected = board.copy(stack=False)
+    projected.push(move)
+    for target_square in projected.attacks(move.to_square):
+        target_piece = projected.piece_at(target_square)
+        if target_piece is None or target_piece.color == moving_piece.color:
+            continue
+        defended_pawns = [
+            square
+            for square in projected.attacks(target_square)
+            if square in chess.SquareSet(chess.BB_CENTER)
+            and projected.piece_at(square) == chess.Piece(chess.PAWN, target_piece.color)
+        ]
+        if not defended_pawns:
+            continue
+        pawn_square = defended_pawns[0]
+        target_name = {
+            chess.PAWN: "den gegnerischen Bauern",
+            chess.KNIGHT: "den gegnerischen Springer",
+            chess.BISHOP: "den gegnerischen Läufer",
+            chess.ROOK: "den gegnerischen Turm",
+            chess.QUEEN: "die gegnerische Dame",
+            chess.KING: "den gegnerischen König",
+        }[target_piece.piece_type]
+        san = board.san(move)
+        return (
+            f"{san} greift {target_name} auf "
+            f"{chess.square_name(target_square)} an. Diese Figur deckt zugleich den Bauern auf "
+            f"{chess.square_name(pawn_square)}. Der Zug stellt damit einen Verteidiger dieses "
+            "zentralen Bauern infrage, gewinnt ihn aber nicht automatisch."
+        )
+    return ""
 
 
 def _tactical_contrast(board: chess.Board, move: chess.Move, analysis: MoveAnalysis) -> str:

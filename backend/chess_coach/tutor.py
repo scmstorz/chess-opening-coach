@@ -220,6 +220,8 @@ class OllamaTutor:
         _retry_once: bool = True,
     ) -> SourceSynthesis:
         """Translate and synthesize attributed book claims with strict evidence IDs."""
+        self.last_synthesis_claims = ()
+        self.last_critic_result = None
         usable_books = {
             str(item["id"]): item
             for item in book_facts
@@ -337,8 +339,8 @@ class OllamaTutor:
                 for sentence in _generated_sentences(str(item["text"]))
             ]
             allowed_ids = set(usable_books) | set(verified)
-            used_ids: list[str] = []
             texts: list[str] = []
+            text_evidence_ids: list[list[str]] = []
             source_only_sentence_emitted = False
             discarded_reasons: list[str] = []
             for claim in claims:
@@ -415,7 +417,7 @@ class OllamaTutor:
                     )
                     continue
                 texts.append(claim_text)
-                used_ids.extend(evidence_ids)
+                text_evidence_ids.append(evidence_ids)
                 source_only_sentence_emitted = (
                     source_only_sentence_emitted or cited_source_only
                 )
@@ -425,11 +427,29 @@ class OllamaTutor:
                     if discarded_reasons
                     else "Book sources did not support an explanation"
                 )
+            reviewed = self._critic_review(question, source_payload, verified, texts)
+            unsupported = reviewed.get("unsupported_claim_indexes")
+            if not isinstance(unsupported, list) or any(
+                not isinstance(index, int) or not 0 <= index < len(texts)
+                for index in unsupported
+            ):
+                raise ValueError("Local evidence critic returned invalid claim indexes")
+            if reviewed.get("supported") is not True:
+                if not unsupported:
+                    raise ValueError("Local evidence critic rejected the book synthesis")
+                rejected = set(unsupported)
+                texts = [text for index, text in enumerate(texts) if index not in rejected]
+                text_evidence_ids = [
+                    ids for index, ids in enumerate(text_evidence_ids) if index not in rejected
+                ]
+                if not texts:
+                    raise ValueError("Local evidence critic rejected the book synthesis")
+            elif unsupported:
+                raise ValueError("Local evidence critic returned inconsistent results")
+            used_ids = [item for ids in text_evidence_ids for item in ids]
             if not any(item.startswith("book:") for item in used_ids):
                 raise ValueError("Book synthesis did not use a book fact")
             self.last_synthesis_claims = tuple(texts)
-            if not self._critic_supports(question, source_payload, verified, texts):
-                raise ValueError("Local evidence critic rejected the book synthesis")
             result = TutorText(
                 summary=texts[0],
                 details=" ".join(texts[1:]),
@@ -457,13 +477,13 @@ class OllamaTutor:
             self.last_error = f"{type(exc).__name__}: {exc}"
             return SourceSynthesis(None, "rejected", _synthesis_failure_reason(exc), ())
 
-    def _critic_supports(
+    def _critic_review(
         self,
         question: str,
         book_facts: list[dict[str, Any]],
         verified_facts: dict[str, str],
         claims: list[str],
-    ) -> bool:
+    ) -> dict[str, Any]:
         payload = {
             "model": self.model,
             "stream": False,
@@ -509,9 +529,7 @@ class OllamaTutor:
             self._request("/api/chat", payload)["message"]["content"]
         )
         self.last_critic_result = reviewed
-        return reviewed.get("supported") is True and not reviewed.get(
-            "unsupported_claim_indexes"
-        )
+        return reviewed
 
     def _models(self) -> list[str]:
         body = self._request("/api/tags")

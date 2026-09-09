@@ -85,3 +85,8 @@ result while the relevant progressive lines lack exact position anchors. The
 run proves no regression; it does not yet prove an explanation improvement from
 the new source. Engine results were already cached, so the observed sub-second
 times are not representative cold latency.
+
+The proposed progressive increment has since been implemented and evaluated.
+Its accepted and rejected intermediate results are recorded in
+`2026-09-09-progressive-emms-and-dogfood.md`; ADR 0011 defines the final
+fail-closed reconstruction and claim-binding rules.

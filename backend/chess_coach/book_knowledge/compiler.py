@@ -14,9 +14,11 @@ from pathlib import Path
 import chess
 
 from chess_coach.book_knowledge.chess_extract import (
+    NumberedMoveMention,
     PGNCandidate,
     candidate_start_signature,
     find_natural_move_mentions,
+    find_numbered_move_mentions,
     find_pgn_candidates,
     find_san_mentions,
     validate_pgn_candidate,
@@ -30,8 +32,12 @@ from chess_coach.book_knowledge.schema import (
     initialize,
     transaction,
 )
+from chess_coach.openings import position_key
 
-EXTRACTION_VERSION = "coach-book-5/poppler-bbox-context-lines-v5"
+EXTRACTION_VERSION = "coach-book-6/poppler-bbox-progressive-lines-v6"
+PROGRESSIVE_MAX_GAP_CHARS = 1800
+PROGRESSIVE_MAX_STEPS = 24
+PROGRESSIVE_MAX_BRANCHES = 128
 
 ALIASES: tuple[tuple[str, str, str], ...] = (
     ("ruy lopez", "Ruy Lopez", "en"),
@@ -141,6 +147,20 @@ CLAIM_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "hoping",
             "idea",
             "ideas",
+            "point is",
+            "point of",
+            "positive point",
+            "plus point",
+            "plus points",
+            "main attraction",
+            "main attractions",
+            "pressure",
+            "benefit",
+            "benefits",
+            "attacks",
+            "defends",
+            "develops",
+            "prepares",
             "control",
             "occupy",
         ),
@@ -172,6 +192,18 @@ class StoredSpan:
     page_number: int
     kind: str
     text: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProgressiveStep:
+    mention: NumberedMoveMention
+    canonical_san: str
+    move_uci: str
+    start_fen: str
+    end_fen: str
+    end_position_key: str
+    absolute_start_ply: int
+    absolute_end_ply: int
 
 
 def normalize_text(text: str) -> str:
@@ -494,6 +526,7 @@ def compile_pdf(
             max_chunk_chars=max_chunk_chars,
         )
         _resolve_contextual_lines(connection, book_id)
+        _resolve_progressive_annotated_moves(connection, book_id)
     connection.execute("PRAGMA optimize")
     connection.commit()
     counts = _counts(connection, book_id)
@@ -953,6 +986,445 @@ def _nearest_context_parent(
             return parent
         break
     return None
+
+
+def _progressive_chain_from_parent(
+    start_board: chess.Board,
+    mentions: tuple[NumberedMoveMention, ...],
+    *,
+    minimum_offset: int,
+) -> tuple[tuple[ProgressiveStep, ...] | None, bool]:
+    """Return one uniquely longest legal sequence of individually numbered moves.
+
+    Prose may repeat earlier moves while explaining them, so a matching move number
+    can occur more than once. We explore every locally legal continuation and only
+    accept a chain when the longest UCI sequence is unique. A lone move is never
+    enough evidence: the following numbered move must confirm the reconstruction.
+    """
+    frontier: list[tuple[chess.Board, int, int, tuple[ProgressiveStep, ...]]] = [
+        (start_board.copy(stack=False), 0, minimum_offset, ())
+    ]
+    terminal: list[tuple[ProgressiveStep, ...]] = []
+    branch_limit_reached = False
+    for _depth in range(PROGRESSIVE_MAX_STEPS):
+        expanded: list[tuple[chess.Board, int, int, tuple[ProgressiveStep, ...]]] = []
+        for board, next_index, last_end, steps in frontier:
+            candidates: list[tuple[int, NumberedMoveMention, chess.Move]] = []
+            for index in range(next_index, len(mentions)):
+                mention = mentions[index]
+                if mention.start_offset < last_end:
+                    continue
+                if mention.start_offset - last_end > PROGRESSIVE_MAX_GAP_CHARS:
+                    break
+                if (mention.fullmove_number, mention.turn) != (
+                    board.fullmove_number,
+                    board.turn,
+                ):
+                    continue
+                try:
+                    move = board.parse_san(mention.san)
+                except ValueError:
+                    continue
+                candidates.append((index, mention, move))
+            if not candidates:
+                terminal.append(steps)
+                continue
+            for index, mention, move in candidates:
+                before = board.copy(stack=False)
+                after = board.copy(stack=False)
+                canonical_san = before.san(move)
+                after.push(move)
+                step = ProgressiveStep(
+                    mention=mention,
+                    canonical_san=canonical_san,
+                    move_uci=move.uci(),
+                    start_fen=before.fen(en_passant="legal"),
+                    end_fen=after.fen(en_passant="legal"),
+                    end_position_key=position_key(after),
+                    absolute_start_ply=before.ply(),
+                    absolute_end_ply=after.ply(),
+                )
+                expanded.append((after, index + 1, mention.end_offset, (*steps, step)))
+                if len(expanded) >= PROGRESSIVE_MAX_BRANCHES:
+                    branch_limit_reached = True
+                    break
+            if len(expanded) >= PROGRESSIVE_MAX_BRANCHES:
+                break
+        if not expanded:
+            break
+        frontier = expanded
+    if branch_limit_reached:
+        return None, True
+    terminal.extend(state[3] for state in frontier)
+    if not terminal:
+        return None, False
+    longest = max(len(path) for path in terminal)
+    if longest < 2:
+        return None, False
+    unique: dict[tuple[str, ...], tuple[ProgressiveStep, ...]] = {}
+    for path in terminal:
+        if len(path) != longest:
+            continue
+        key = tuple(step.move_uci for step in path)
+        current = unique.get(key)
+        offsets = tuple(step.mention.start_offset for step in path)
+        if current is None or offsets < tuple(
+            step.mention.start_offset for step in current
+        ):
+            unique[key] = path
+    if len(unique) != 1:
+        return None, True
+    return next(iter(unique.values())), False
+
+
+def _chunk_span_offsets(
+    connection: sqlite3.Connection, chunk_id: int
+) -> tuple[tuple[int, int, int, int, str], ...]:
+    cursor = 0
+    offsets: list[tuple[int, int, int, int, str]] = []
+    rows = connection.execute(
+        """
+        SELECT s.id, s.page_number, s.text
+        FROM chunk_spans cs
+        JOIN spans s ON s.id = cs.span_id
+        WHERE cs.chunk_id = ?
+        ORDER BY cs.ordinal
+        """,
+        (chunk_id,),
+    ).fetchall()
+    for row in rows:
+        text = str(row["text"])
+        offsets.append(
+            (int(row["id"]), cursor, cursor + len(text), int(row["page_number"]), text)
+        )
+        cursor += len(text) + 2
+    return tuple(offsets)
+
+
+def _page_for_chunk_offset(
+    spans: tuple[tuple[int, int, int, int, str], ...],
+    offset: int,
+    fallback: int,
+) -> int:
+    for _span_id, start, end, page_number, _text in spans:
+        if start <= offset <= end:
+            return page_number
+    return fallback
+
+
+def _position_progressive_claims(
+    connection: sqlite3.Connection,
+    *,
+    chunk_id: int,
+    steps: tuple[ProgressiveStep, ...],
+    parent_san_line: str | None,
+    spans: tuple[tuple[int, int, int, int, str], ...],
+    chunk_text: str,
+    mentions: tuple[NumberedMoveMention, ...],
+) -> None:
+    span_by_id = {
+        span_id: (index, start, text)
+        for index, (span_id, start, _end, _page, text) in enumerate(spans)
+    }
+    allowed_san = {
+        token.rstrip("!?")
+        for token in (parent_san_line or "").split()
+        if token
+    }
+    allowed_san.update(step.canonical_san.rstrip("!?") for step in steps)
+    claims = connection.execute(
+        """
+        SELECT id, span_id, claim_type, text, validation_status
+        FROM claims
+        WHERE chunk_id = ? AND position_key IS NULL
+        ORDER BY id
+        """,
+        (chunk_id,),
+    ).fetchall()
+    for claim in claims:
+        span = span_by_id.get(int(claim["span_id"])) if claim["span_id"] else None
+        if span is None:
+            continue
+        claim_span_index, span_start, span_text = span
+        local_offset = span_text.find(str(claim["text"]))
+        if local_offset < 0:
+            continue
+        claim_offset = span_start + local_offset
+        preceding = [step for step in steps if step.mention.end_offset <= claim_offset]
+        if not preceding:
+            continue
+        step = preceding[-1]
+        if claim_offset - step.mention.end_offset > PROGRESSIVE_MAX_GAP_CHARS:
+            continue
+        step_span_index = next(
+            (
+                index
+                for index, (_id, start, end, _page, _text) in enumerate(spans)
+                if start <= step.mention.start_offset <= end
+            ),
+            None,
+        )
+        if step_span_index is None or claim_span_index > step_span_index + 1:
+            continue
+
+        claim_text = str(claim["text"])
+        explicit_focus = step.canonical_san.rstrip("!?") in {
+            san.rstrip("!?") for san in find_san_mentions(claim_text)
+        }
+        intervening_move = any(
+            step.mention.end_offset < mention.start_offset < claim_offset
+            for mention in mentions
+        )
+        if intervening_move and not explicit_focus:
+            continue
+        step_index = steps.index(step)
+        if claim_text.rstrip().endswith("...") and step_index + 1 < len(steps):
+            reply = steps[step_index + 1]
+            claim_end = claim_offset + len(claim_text)
+            if 0 <= reply.mention.start_offset - claim_end <= 240:
+                continuation = chunk_text[reply.mention.end_offset :].lstrip(" .\n\t")
+                sentences = _split_sentences(continuation)
+                if sentences:
+                    prefix = claim_text.rstrip().rstrip(".").rstrip()
+                    claim_text = (
+                        f"{prefix} {reply.mention.raw_text}. {sentences[0]}"
+                    )
+
+        new_status = str(claim["validation_status"])
+        if new_status == "unverified" and claim["claim_type"] != "statistic":
+            natural_moves = find_natural_move_mentions(claim_text)
+            mentioned_san = {
+                san.rstrip("!?") for san in find_san_mentions(claim_text)
+            }
+            board_after_move = chess.Board(step.end_fen)
+            unresolved_san = mentioned_san - allowed_san
+            unresolved_san = {
+                token
+                for token in unresolved_san
+                if not (
+                    re.fullmatch(r"[a-h][1-8]", token)
+                    and board_after_move.piece_at(chess.parse_square(token)) is not None
+                )
+            }
+            if not natural_moves and not unresolved_san:
+                new_status = "legality_checked"
+        connection.execute(
+            """
+            UPDATE claims
+            SET position_key = ?, focus_move_uci = ?, validation_status = ?,
+                extraction_method = extraction_method || '+progressive-v1', text = ?
+            WHERE id = ?
+            """,
+            (step.end_position_key, step.move_uci, new_status, claim_text, claim["id"]),
+        )
+        if new_status == "legality_checked":
+            connection.execute(
+                """
+                UPDATE issues SET status = 'dismissed'
+                WHERE chunk_id = ? AND issue_type = 'contextual_move_claim'
+                  AND context = ?
+                """,
+                (chunk_id, claim["text"]),
+            )
+
+
+def _resolve_progressive_annotated_moves(
+    connection: sqlite3.Connection, book_id: str
+) -> None:
+    """Reconstruct ``move -> prose -> next move`` only from verified local context."""
+    chunks = connection.execute(
+        """
+        SELECT id, ordinal, section_path, page_start, text
+        FROM chunks WHERE book_id = ? ORDER BY ordinal
+        """,
+        (book_id,),
+    ).fetchall()
+    for chunk in chunks:
+        mentions = find_numbered_move_mentions(str(chunk["text"]))
+        if len(mentions) < 2:
+            continue
+        parents = connection.execute(
+            """
+            SELECT l.*, c.ordinal AS chunk_ordinal, c.section_path
+            FROM book_lines l
+            JOIN chunks c ON c.id = l.chunk_id
+            WHERE l.book_id = ?
+              AND l.validation_status IN ('valid', 'context_resolved')
+              AND l.end_fen IS NOT NULL
+              AND (
+                    l.chunk_id = ? OR
+                    (c.ordinal = ? AND c.section_path = ?)
+                  )
+            ORDER BY l.absolute_end_ply DESC, l.id DESC
+            LIMIT 24
+            """,
+            (
+                book_id,
+                chunk["id"],
+                int(chunk["ordinal"]) - 1,
+                chunk["section_path"],
+            ),
+        ).fetchall()
+        existing_transitions: set[tuple[str, str, str]] = set()
+        existing_rows = connection.execute(
+            """
+            SELECT start_fen, uci_line FROM book_lines
+            WHERE chunk_id = ?
+              AND validation_status IN ('valid', 'context_resolved')
+              AND context_method IS NOT 'progressive_annotated_move'
+              AND start_fen IS NOT NULL AND uci_line IS NOT NULL
+            """,
+            (chunk["id"],),
+        ).fetchall()
+        for existing in existing_rows:
+            boards = _line_positions(str(existing["start_fen"]), str(existing["uci_line"]))
+            moves = str(existing["uci_line"]).split()
+            existing_transitions.update(
+                (
+                    boards[index].fen(en_passant="legal"),
+                    uci,
+                    boards[index + 1].fen(en_passant="legal"),
+                )
+                for index, uci in enumerate(moves)
+                if len(boards) == len(moves) + 1
+            )
+        candidates: list[tuple[sqlite3.Row, tuple[ProgressiveStep, ...]]] = []
+        ambiguous = False
+        for parent in parents:
+            minimum_offset = (
+                int(parent["start_offset"]) if parent["chunk_id"] == chunk["id"] else 0
+            )
+            try:
+                start_board = chess.Board(str(parent["end_fen"]))
+            except ValueError:
+                continue
+            steps, parent_ambiguous = _progressive_chain_from_parent(
+                start_board,
+                mentions,
+                minimum_offset=minimum_offset,
+            )
+            ambiguous = ambiguous or parent_ambiguous
+            if steps and not all(
+                (step.start_fen, step.move_uci, step.end_fen) in existing_transitions
+                for step in steps
+            ):
+                candidates.append((parent, steps))
+        if ambiguous:
+            connection.execute(
+                """
+                INSERT INTO issues(
+                    book_id, chunk_id, page_number, issue_type,
+                    severity, message, context
+                ) VALUES(?, ?, ?, 'ambiguous_progressive_annotated_moves',
+                         'info', ?, ?)
+                """,
+                (
+                    book_id,
+                    chunk["id"],
+                    chunk["page_start"],
+                    "At least one verified parent has competing legal continuations",
+                    str(chunk["text"])[:500],
+                ),
+            )
+            continue
+        if not candidates:
+            continue
+
+        best_length = max(len(steps) for _parent, steps in candidates)
+        best = [(parent, steps) for parent, steps in candidates if len(steps) == best_length]
+        distinct = {
+            (str(parent["end_fen"]), tuple(step.move_uci for step in steps))
+            for parent, steps in best
+        }
+        if len(distinct) != 1:
+            connection.execute(
+                """
+                INSERT INTO issues(
+                    book_id, chunk_id, page_number, issue_type,
+                    severity, message, context
+                ) VALUES(?, ?, ?, 'ambiguous_progressive_annotated_moves',
+                         'info', ?, ?)
+                """,
+                (
+                    book_id,
+                    chunk["id"],
+                    chunk["page_start"],
+                    "Verified parents lead to competing equally long continuations",
+                    str(chunk["text"])[:500],
+                ),
+            )
+            continue
+        parent, steps = min(
+            best,
+            key=lambda item: (
+                0 if item[0]["chunk_id"] == chunk["id"] else 1,
+                -int(item[0]["absolute_end_ply"] or 0),
+                int(item[0]["id"]),
+            ),
+        )
+        spans = _chunk_span_offsets(connection, int(chunk["id"]))
+        parent_line_id = int(parent["id"])
+        for step in steps:
+            page_number = _page_for_chunk_offset(
+                spans, step.mention.start_offset, int(chunk["page_start"])
+            )
+            move_number = step.mention.fullmove_number
+            dots = "..." if step.mention.turn == chess.BLACK else "."
+            cursor = connection.execute(
+                """
+                INSERT INTO book_lines(
+                    book_id, chunk_id, page_number, raw_text, normalized_pgn,
+                    start_fen, end_fen, san_line, uci_line, ply_count,
+                    validation_status, error, start_offset, context_method,
+                    context_parent_line_id, absolute_start_ply, absolute_end_ply
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'context_resolved',
+                         NULL, ?, 'progressive_annotated_move', ?, ?, ?)
+                """,
+                (
+                    book_id,
+                    chunk["id"],
+                    page_number,
+                    step.mention.raw_text,
+                    f"{move_number}{dots} {step.canonical_san} *",
+                    step.start_fen,
+                    step.end_fen,
+                    step.canonical_san,
+                    step.move_uci,
+                    step.mention.start_offset,
+                    parent_line_id,
+                    step.absolute_start_ply,
+                    step.absolute_end_ply,
+                ),
+            )
+            line_id = int(cursor.lastrowid)
+            connection.execute(
+                """
+                INSERT INTO book_position_evidence(
+                    position_key, line_id, book_id, chunk_id, page_number,
+                    ply, incoming_san, incoming_uci
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    step.end_position_key,
+                    line_id,
+                    book_id,
+                    chunk["id"],
+                    page_number,
+                    step.absolute_end_ply,
+                    step.canonical_san,
+                    step.move_uci,
+                ),
+            )
+            parent_line_id = line_id
+        _position_progressive_claims(
+            connection,
+            chunk_id=int(chunk["id"]),
+            steps=steps,
+            parent_san_line=parent["san_line"],
+            spans=spans,
+            chunk_text=str(chunk["text"]),
+            mentions=mentions,
+        )
 
 
 def _counts(connection: sqlite3.Connection, book_id: str) -> dict[str, int]:

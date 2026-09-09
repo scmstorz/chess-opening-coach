@@ -152,7 +152,11 @@ through.
 Abbreviated continuations such as `3...a6 4.Ba4` are accepted only when one
 nearby, already verified parent line supplies a unique legal starting position.
 The inference method and parent are stored for audit; unresolved fragments stay
-quarantined. Without a recognized opening, bare move names never trigger a
+quarantined. The same fail-closed rule applies when numbered moves alternate
+with prose: at least two legal moves must form one unique continuation, and a
+claim is bound only within the same positioned PDF text block or the next one.
+Exact position evidence without an exact safe claim is not padded with broad
+opening prose. Without a recognized opening, bare move names never trigger a
 global book search.
 
 ## Publication safety

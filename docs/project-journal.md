@@ -1434,3 +1434,64 @@ and `a4` all passed every automated guardrail, and none displayed an Emms
 reference. This is the intended fail-closed outcome until the source gains exact
 position anchors. Cached engine data made these runs unusually fast, so their
 timings were not reused for the countdown model.
+
+### Compiling progressive annotated moves instead of guessing between prose
+
+The next increment targeted Emms' characteristic `move -> explanation -> next
+move` layout. The parser first normalizes separately typeset move numbers while
+preserving source offsets. A progressive chain then starts only from a verified
+nearby parent FEN, requires exact move number and color, validates every SAN with
+`python-chess`, and needs at least two sequential moves. Competing equally long
+legal continuations, conflicting parents, or a branch-limit hit are recorded as
+ambiguity rather than resolved by preference or by an LLM.
+
+The first pass increased Emms from seven position anchors to 110 evidence rows
+covering 100 distinct positions. This was useful enough to expose its own flaw
+during production dogfooding. After `1.e4 e5 2.Nf3 Nc6 3.Bb5 a6`, the `Ba4`
+lookup attached an Archangel-variation naming sentence from later in a large
+chunk. Legal move reconstruction had succeeded, but claim locality had not.
+
+The repaired relation is smaller than a chunk. Claims may bind only within the
+same source text block or the immediately following one; intervening numbered
+moves terminate the relation unless the claim explicitly mentions the focus
+move. Transitions already present inside a verified compact line are not
+duplicated. If an exact progressive position has no safe claim, retrieval now
+returns no book evidence instead of falling back to broad opening prose. This
+turns the final `Ba4` result into an honest gap.
+
+The conservative final Emms import contains 73 progressive half-moves, 81
+position evidence rows across 76 distinct positions, 13 positioned claims,
+nine normal-use claims, and 51 explicitly ambiguous chunks. The increase in
+flagged lines from 445 to 529 comes partly from recognizing more separately
+typeset black move fragments; recognition does not imply promotion. The final
+book has 212 valid or context-resolved lines and 953 open review issues. The
+combined database remains at 1,559 chunks and passes every structural check.
+
+The key positive case is now real rather than inferred. After `3.Bb5`, retrieval
+finds two legality-checked Emms claims on PDF pages 54-55: the attack on the
+`c6` defender of `e5` and the conditional pin following `...d6`. The local model
+may translate and combine those claims but does not decide their position.
+
+The model/critic handoff also needed refinement. Qwen first invented an
+unsupported long-term-pressure conclusion. The critic correctly identified
+only that sentence, yet the all-or-nothing handler threw away four supported
+sentences too. Critic indexes now remove only unsupported sentences and their
+evidence links. A later run reversed the actor in the conditional pin
+explanation; the critic removed that sentence while retaining the correct
+book-derived defender explanation. The learner sees one German answer, not an
+English verification task, and only evidence actually used by surviving text
+becomes a reference.
+
+The six fixed explanation cases pass again on the production service with
+Stockfish 18 and `qwen3.8:27b-mlx`; the final two-claim `Bb5` run took 25.89
+seconds in its focused run and 26.97 seconds in the final full-suite run. It
+exposed Emms pages 54-55 with no warnings. A white HTTP game covered
+suggestion, deep question, `...a6`, `Ba4`, and complete-turn undo. A second
+black-side game began with `1.Nf3`, correctly introduced the Zukertort Opening,
+accepted `...d5`, and suggested theoretical `...c5` after `2.g3`. These checks
+exercise the browser's production endpoints but do not claim a fresh visual
+drag-and-drop inspection.
+
+ADR 0011 contains the binding rules. The full metrics, failed intermediate
+`Ba4` result, critic behavior, and dogfooding transcript are summarized in
+`docs/evaluations/2026-09-09-progressive-emms-and-dogfood.md`.

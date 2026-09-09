@@ -109,6 +109,21 @@
     boundary: question-led prose is ideal for the learner, while isolated moves
     interleaved with prose yield only seven safe position anchors. Pedagogical
     quality and retrievability remain separate measurements.
+38. Deterministic progressive reconstruction turns those isolated moves into
+    candidate positions only when move number, color, legality, local parent,
+    and a confirming continuation agree; 51 ambiguous chunks remain blocked.
+39. An initially impressive jump from seven to 110 anchors fails a real `Ba4`
+    test by attaching a later variation name. Text-block locality and
+    intervening-move boundaries deliberately reduce final yield to 81 anchors.
+40. Exact position evidence without an exact explanatory claim becomes another
+    meaningful refusal: broad opening prose may no longer fill a known local
+    evidence gap.
+41. The LLM critic catches both an invented long-term conclusion and a reversed
+    actor in a conditional pin explanation. Sentence-level rejection preserves
+    supported output instead of choosing between unsafe display and total loss.
+42. A final `Bb5` run combines exact Emms evidence, deterministic board effects,
+    and reply-robust Stockfish plans, while a second-color game confirms the
+    improvement did not hard-code one opening path.
 
 ## Evidence already captured
 
@@ -164,6 +179,13 @@
   seven conservative position anchors, and a documented parser limitation
 - A three-case post-import regression in which `Bb5`, `Na2`, and `a4` remain
   correct and deliberately expose no unanchored Emms citation
+- Before-and-after progressive compiler metrics, including the rejected
+  high-recall intermediate and the lower conservative final yield
+- A production `Ba4` false-anchor example that changed both claim locality and
+  exact-position fallback behavior
+- Two exact, legality-checked Emms claims for `3.Bb5`, with source pages and an
+  accepted German synthesis after sentence-level critic filtering
+- A final six-case guardrail pass plus white- and black-side API dogfooding
 
 ## Questions for later evaluation
 

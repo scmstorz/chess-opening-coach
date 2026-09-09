@@ -164,6 +164,75 @@ def test_focused_move_can_match_the_exact_resulting_position(tmp_path: Path) -> 
     assert evidence.facts[0].match_kind == "position_after_move"
 
 
+def test_progressive_exact_position_without_claim_does_not_fall_back_to_broad_prose(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "knowledge.db"
+    _knowledge_database(database)
+    connection = connect_writable(database)
+    connection.execute(
+        "UPDATE book_lines SET context_method = 'progressive_annotated_move'"
+    )
+    connection.commit()
+    connection.close()
+    board = chess.Board()
+    for san in ("e4", "e5"):
+        board.push_san(san)
+
+    evidence = BookKnowledgeBase(database).retrieve(
+        question="Was ist hier der langfristige Plan?",
+        board=board,
+        opening=OpeningIdentity("C20", "Ruy Lopez"),
+        focus_move=None,
+    )
+
+    assert evidence.facts == ()
+
+
+def test_progressive_exact_position_can_supply_two_distinct_plan_claims(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "knowledge.db"
+    _knowledge_database(database)
+    board = chess.Board()
+    for san in ("e4", "e5"):
+        board.push_san(san)
+    key = position_key(board)
+    connection = connect_writable(database)
+    line = connection.execute("SELECT id, chunk_id FROM book_lines").fetchone()
+    connection.execute(
+        "UPDATE book_lines SET context_method = 'progressive_annotated_move' WHERE id = ?",
+        (line["id"],),
+    )
+    connection.execute(
+        "UPDATE claims SET position_key = ?, focus_move_uci = 'e7e5' WHERE chunk_id = ?",
+        (key, line["chunk_id"]),
+    )
+    connection.execute(
+        """
+        INSERT INTO claims(
+            book_id, chunk_id, page_number, claim_type, text,
+            confidence, extraction_method, validation_status,
+            position_key, focus_move_uci
+        ) VALUES('book_test', ?, 20, 'plan', 'A second exact positional plan.',
+                 0.88, 'fixture', 'legality_checked', ?, 'e7e5')
+        """,
+        (line["chunk_id"], key),
+    )
+    connection.commit()
+    connection.close()
+
+    evidence = BookKnowledgeBase(database).retrieve(
+        question="Warum ist e5 sinnvoll?",
+        board=board,
+        opening=OpeningIdentity("C20", "Ruy Lopez"),
+        focus_move=None,
+    )
+
+    assert len(evidence.facts) == 2
+    assert all(fact.match_kind == "position" for fact in evidence.facts)
+
+
 def test_missing_database_uses_an_empty_degraded_provider(tmp_path: Path) -> None:
     knowledge = BookKnowledgeBase(tmp_path / "missing.db")
 

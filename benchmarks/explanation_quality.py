@@ -102,6 +102,11 @@ def run_case(coach: CoachService, case: dict[str, Any]) -> dict[str, Any]:
         "engine": message["engine"],
         "knowledge": message["knowledge"],
         "references": message["references"],
+        "tutor_diagnostics": {
+            "error": coach.tutor.last_error,
+            "synthesis_claims": list(coach.tutor.last_synthesis_claims),
+            "critic": coach.tutor.last_critic_result,
+        },
         "opening_recognized": session.opening is not None,
         "score": _score(
             case, message, opening_recognized=session.opening is not None

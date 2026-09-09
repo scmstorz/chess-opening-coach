@@ -297,9 +297,19 @@ becoming position anchors. Natural-language move descriptions, unresolved
 contextual fragments, statistics, and unpositioned SAN claims remain issues and
 are excluded from runtime evidence until separately verified.
 
+Progressive annotated layouts such as `move -> prose -> next move` use a second,
+stricter resolver. It requires a verified local parent FEN, exact move number and
+color, legal SAN, at least one confirming subsequent move, and one unique
+longest continuation. Claims bind to the reconstructed position only in the
+same positioned PDF text block or the immediately following block; intervening
+numbered moves end the relation unless the claim itself names the focus move.
+An ambiguity or branch limit produces an issue, never a preferred guess.
+
 Question retrieval tries the position after the focused move, then the current
 position, the exact opening section, a focused move, and finally full-text
-question matches. Exact-position facts stop the broadening step. Section-wide
+question matches. Exact-position evidence stops broadening even when it has no
+safe claim, because generic prose must not fill a known position-specific gap.
+Section-wide
 opening, move-token, and question matches may contribute general plans but not
 local recommendations or warnings; those require an exact reconstructed
 position. Without a recognized opening, move-token and question broadening are
@@ -315,6 +325,9 @@ facts; missing evidence links are reconstructed only when an anchor has one
 unambiguous verified source. A second local LLM reviews entailment, but its
 agreement is not considered proof. Deterministic rules still reject new anchors,
 unattributed source claims, excessive certainty, and move-level overstatement.
+When the critic identifies individual unsupported sentences, only those
+sentences and their evidence links are removed; supported source sentences may
+survive. An empty supported remainder rejects the complete synthesis.
 The UI receives only a German explanation and compact source metadata. Failed
 generation, weak evidence, or rejected grounding produces a structured status
 and an explicit learner-facing knowledge boundary.

@@ -3,6 +3,7 @@ from chess_coach.book_knowledge.chess_extract import (
     PGNCandidate,
     candidate_start_signature,
     find_natural_move_mentions,
+    find_numbered_move_mentions,
     find_pgn_candidates,
     find_san_mentions,
     validate_pgn_candidate,
@@ -71,3 +72,19 @@ def test_context_fragment_is_validated_only_from_matching_verified_position() ->
     assert line.san_moves == ("a6", "Ba4")
     assert line.positions[0].ply == 5
     assert line.positions[-1].ply == 7
+
+
+def test_individually_numbered_moves_keep_color_number_and_text_order() -> None:
+    mentions = find_numbered_move_mentions(
+        "1 e4 e5 2 Nf3. White develops. 2 ... Nc6. Black defends. 3 Bb5."
+    )
+
+    assert [(item.fullmove_number, item.turn, item.san) for item in mentions] == [
+        (1, chess.WHITE, "e4"),
+        (2, chess.WHITE, "Nf3"),
+        (2, chess.BLACK, "Nc6"),
+        (3, chess.WHITE, "Bb5"),
+    ]
+    assert [item.start_offset for item in mentions] == sorted(
+        item.start_offset for item in mentions
+    )

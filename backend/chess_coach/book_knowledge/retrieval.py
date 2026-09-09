@@ -209,7 +209,7 @@ class BookKnowledgeBase:
             facts, truncated = self._facts(
                 connection, exact_ranked, limit=limit, max_chars=max_chars
             )
-            if not facts:
+            if not facts and not exact_ranked:
                 facts, truncated = self._facts(
                     connection, ranked, limit=limit, max_chars=max_chars
                 )
@@ -245,17 +245,21 @@ class BookKnowledgeBase:
                 dict(row)
                 for row in connection.execute(
                 """
-                SELECT DISTINCT c.id AS chunk_id, c.source_ref, c.book_id,
+                SELECT c.id AS chunk_id, c.source_ref, c.book_id,
                        b.title AS book_title, b.author, b.publication_year,
                        b.source_path, c.title, c.section_path, c.page_start,
-                       c.page_end, c.text, 0.0 AS score
+                       c.page_end, c.text, 0.0 AS score,
+                       pe.position_key AS matched_position_key,
+                       max(CASE WHEN l.context_method = 'progressive_annotated_move'
+                                THEN 1 ELSE 0 END) AS position_scoped
                 FROM book_position_evidence pe
                 JOIN book_lines l ON l.id = pe.line_id
                 JOIN chunks c ON c.id = pe.chunk_id
                 JOIN books b ON b.id = c.book_id
                 WHERE pe.position_key = ?
                   AND l.validation_status IN ('valid', 'context_resolved')
-                ORDER BY c.source_ref
+                GROUP BY c.id, pe.position_key
+                ORDER BY position_scoped DESC, c.source_ref
                 LIMIT ?
                 """,
                 (position_key(position), fetch_limit),
@@ -324,14 +328,30 @@ class BookKnowledgeBase:
             section_key = (row["book_id"], row["section_path"])
             if section_counts.get(section_key, 0) >= 2:
                 continue
+            exact_match = row["match_kind"] in {"position", "position_after_move"}
+            if exact_match and int(row.get("position_scoped", 0)):
+                position_filter = "AND position_key = ?"
+                parameters: tuple[Any, ...] = (
+                    row["chunk_id"],
+                    row.get("matched_position_key"),
+                )
+            elif exact_match:
+                position_filter = "AND (position_key IS NULL OR position_key = ?)"
+                parameters = (row["chunk_id"], row.get("matched_position_key"))
+            else:
+                # Position-bound prose must never leak into another variation
+                # merely because FTS matched an opening name or SAN token.
+                position_filter = "AND position_key IS NULL"
+                parameters = (row["chunk_id"],)
             claims = connection.execute(
-                """
+                f"""
                 SELECT id, claim_type, text, validation_status
                 FROM claims
                 WHERE chunk_id = ?
                   AND validation_status IN ('source_only', 'legality_checked', 'engine_checked')
                   AND claim_type != 'statistic'
                   AND claim_type IN ('plan', 'recommendation', 'warning')
+                  {position_filter}
                 ORDER BY CASE claim_type
                     WHEN 'plan' THEN 0
                     WHEN 'recommendation' THEN 1
@@ -341,7 +361,7 @@ class BookKnowledgeBase:
                     confidence DESC, id
                 LIMIT 3
                 """,
-                (row["chunk_id"],),
+                parameters,
             ).fetchall()
             if not claims:
                 continue
@@ -378,7 +398,11 @@ class BookKnowledgeBase:
                     # reconstructed position. Only general plans survive broad
                     # contextual matches.
                     continue
-                claim_key = (*section_key, str(claim["claim_type"]))
+                claim_key = (
+                    (*section_key, f"{claim['claim_type']}:{claim['id']}")
+                    if exact_match and int(row.get("position_scoped", 0))
+                    else (*section_key, str(claim["claim_type"]))
+                )
                 if claim_key in section_claim_types:
                     continue
                 selected_text = str(claim["text"])
@@ -397,7 +421,15 @@ class BookKnowledgeBase:
                         claim_type=str(claim["claim_type"]),
                         validation_status=str(claim["validation_status"]),
                         citation=citation,
-                        warnings=warnings,
+                        warnings=tuple(
+                            warning
+                            for warning in warnings
+                            if not (
+                                warning == "contextual_move_claim"
+                                and claim["validation_status"]
+                                in {"legality_checked", "engine_checked"}
+                            )
+                        ),
                         match_kind=row["match_kind"],
                     )
                 )

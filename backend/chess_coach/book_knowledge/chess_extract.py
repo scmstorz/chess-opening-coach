@@ -13,23 +13,43 @@ SAN_PATTERN = (
 )
 SAN_TOKEN_RE = re.compile(rf"(?<![A-Za-z0-9])(?P<san>{SAN_PATTERN})(?![A-Za-z0-9])")
 MOVE_NUMBER_RE = re.compile(r"(?<!\w)(?P<number>\d+)\.(?P<black>\.\.)?")
+SPACED_BLACK_MOVE_NUMBER_RE = re.compile(
+    rf"(?<!\w)(?P<number>\d{{1,3}})\s+\.\s*\.\s*\.\s*(?={SAN_PATTERN})"
+)
 SEQUENCE_TOKEN_RE = re.compile(
     rf"\s*(?:(?P<number>\d+)\.(?P<black>\.\.)?|(?P<san>{SAN_PATTERN})|"
     r"(?P<result>1-0|0-1|1/2-1/2|\*))"
 )
 NATURAL_MOVE_RE = re.compile(
     r"\b(?:king'?s?\s+|queen'?s?\s+|kingside\s+|queenside\s+)?"
-    r"(?:pawn|knight|bishop|rook|queen|king)\s+(?:to|on|onto)\s+[a-h][1-8]\b",
+    r"(?:pawn|knight|bishop|rook|queen|king)\s+(?:to|onto)\s+[a-h][1-8]\b",
     re.IGNORECASE,
 )
 TABLE_MOVE_NUMBER_RE = re.compile(
     rf"(?<![\w.])(?P<number>\d{{1,3}})\s+(?=(?:{SAN_PATTERN})(?![A-Za-z0-9]))"
+)
+NUMBERED_MOVE_RE = re.compile(
+    rf"(?<![\w.])(?P<number>\d{{1,3}})(?:"
+    rf"\.(?P<compact_black>\.\.)?\s*|"
+    rf"\s+(?P<spaced_black>\.\s*\.\s*\.)\s*|"
+    rf"\s+)"
+    rf"(?P<san>{SAN_PATTERN})(?![A-Za-z0-9])"
 )
 
 
 @dataclass(frozen=True, slots=True)
 class PGNCandidate:
     raw_text: str
+    start_offset: int
+    end_offset: int
+
+
+@dataclass(frozen=True, slots=True)
+class NumberedMoveMention:
+    raw_text: str
+    san: str
+    fullmove_number: int
+    turn: chess.Color
     start_offset: int
     end_offset: int
 
@@ -63,8 +83,40 @@ def _normalize_castling(text: str) -> str:
         .replace("–", "-")
         .replace("—", "-")
     )
+    normalized = SPACED_BLACK_MOVE_NUMBER_RE.sub(
+        lambda match: f"{match.group('number')}... ", normalized
+    )
     return TABLE_MOVE_NUMBER_RE.sub(
         lambda match: f"{match.group('number')}. ", normalized
+    )
+
+
+def find_numbered_move_mentions(text: str) -> tuple[NumberedMoveMention, ...]:
+    """Find individually numbered moves without assigning a board position."""
+
+    # These replacements preserve character length, so offsets still refer to
+    # the original chunk. Unlike `_normalize_castling`, this intentionally does
+    # not rewrite move-table numbers because that would shift later offsets.
+    normalized = (
+        text.replace("0-0-0", "O-O-O")
+        .replace("0-0", "O-O")
+        .replace("–", "-")
+        .replace("—", "-")
+    )
+    return tuple(
+        NumberedMoveMention(
+            raw_text=match.group(0).strip(),
+            san=match.group("san").rstrip("!?"),
+            fullmove_number=int(match.group("number")),
+            turn=(
+                chess.BLACK
+                if match.group("compact_black") or match.group("spaced_black")
+                else chess.WHITE
+            ),
+            start_offset=match.start(),
+            end_offset=match.end(),
+        )
+        for match in NUMBERED_MOVE_RE.finditer(normalized)
     )
 
 

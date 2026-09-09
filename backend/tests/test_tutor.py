@@ -313,6 +313,41 @@ def test_book_synthesis_regenerates_once_after_critic_rejection() -> None:
     assert result.text.summary.startswith("Die Buchquelle")
 
 
+def test_book_synthesis_keeps_supported_sentences_when_critic_rejects_one() -> None:
+    tutor = QueuedTutor(
+        [
+            (
+                '{"summary":{"text":"Das Buch beschreibt Druck auf das Zentrum.",'
+                '"evidence_ids":["book:1"]},"details":['
+                '{"text":"Dadurch entsteht langfristig stärkerer Druck.",'
+                '"evidence_ids":["book:1"]}]}'
+            ),
+            '{"supported":false,"unsupported_claim_indexes":[1]}',
+        ]
+    )
+
+    result = tutor.synthesize_book_explanation(
+        question="Was ist der Plan?",
+        verified_facts=[],
+        book_facts=[
+            {
+                "id": "book:1",
+                "text": "The plan is pressure on the center.",
+                "claim_type": "plan",
+                "validation_status": "legality_checked",
+            }
+        ],
+    )
+
+    assert result.status == "grounded"
+    assert result.text is not None
+    assert result.text.summary == "Das Buch beschreibt Druck auf das Zentrum."
+    assert result.text.details == ""
+    assert tutor.last_synthesis_claims == (
+        "Das Buch beschreibt Druck auf das Zentrum.",
+    )
+
+
 def test_book_synthesis_checks_and_deduplicates_sentences_inside_one_field() -> None:
     tutor = QueuedTutor(
         [

@@ -38,7 +38,35 @@ type KnowledgeInfo = {
   used_evidence_ids: string[];
 };
 
+type ExplanationRating = "helpful" | "unclear" | "wrong";
+
+type ExplanationFeedback = {
+  rating: ExplanationRating;
+  note: string;
+  updated_at: string;
+};
+
+type FeedbackReviewRecord = ExplanationFeedback & {
+  id: number;
+  message_id: string;
+  position_fen: string;
+  opening_eco: string | null;
+  opening_name: string | null;
+  message_kind: string | null;
+  actor: "learner" | "coach";
+  question: string | null;
+  move_uci: string | null;
+  move_san: string | null;
+  summary_snapshot: string;
+  details_snapshot: string;
+  explanation_sections: { title: string; text: string }[] | null;
+  source: string;
+  llm_model: string | null;
+  engine: EngineInfo | null;
+};
+
 type CoachMessage = {
+  message_id?: string;
   kind?: "move" | "question" | "phase" | "summary";
   actor: "learner" | "coach";
   question?: string;
@@ -55,6 +83,7 @@ type CoachMessage = {
   analysis_mode?: "standard" | "deep";
   references?: BookReference[];
   knowledge?: KnowledgeInfo;
+  feedback?: ExplanationFeedback | null;
 };
 
 type ProgressKind = "move" | "suggestion" | "question" | "deep";
@@ -279,6 +308,122 @@ function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
+const feedbackOptions: { rating: ExplanationRating; label: string; icon: string }[] = [
+  { rating: "helpful", label: "Hilfreich", icon: "✓" },
+  { rating: "unclear", label: "Unklar", icon: "?" },
+  { rating: "wrong", label: "Falsch", icon: "!" },
+];
+
+function ExplanationFeedbackControl({
+  sessionId,
+  message,
+  onSaved,
+}: {
+  sessionId: string;
+  message: CoachMessage;
+  onSaved: (feedback: ExplanationFeedback) => void;
+}) {
+  const [note, setNote] = useState(message.feedback?.note ?? "");
+  const [editingNote, setEditingNote] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+
+  if (!message.message_id) return null;
+
+  async function persist(rating: ExplanationRating, nextNote: string): Promise<boolean> {
+    if (!message.message_id) return false;
+    setSaving(true);
+    setFeedbackError(null);
+    try {
+      const saved = await api<ExplanationFeedback>(
+        `/api/sessions/${sessionId}/messages/${message.message_id}/feedback`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ rating, note: nextNote }),
+        },
+      );
+      setNote(saved.note);
+      onSaved(saved);
+      return true;
+    } catch (caught) {
+      setFeedbackError(
+        caught instanceof Error ? caught.message : "Das Feedback konnte nicht gespeichert werden.",
+      );
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function selectRating(rating: ExplanationRating) {
+    if (rating !== "helpful" || message.feedback?.note) setEditingNote(true);
+    void persist(rating, note);
+  }
+
+  return (
+    <section className="explanation-feedback" aria-label="Erklärung bewerten">
+      <span>Hilft dir diese Erklärung?</span>
+      <div className="feedback-actions">
+        {feedbackOptions.map((option) => (
+          <button
+            aria-pressed={message.feedback?.rating === option.rating}
+            className={message.feedback?.rating === option.rating ? `selected ${option.rating}` : ""}
+            disabled={saving}
+            key={option.rating}
+            onClick={() => selectRating(option.rating)}
+            type="button"
+          >
+            <b aria-hidden="true">{option.icon}</b>{option.label}
+          </button>
+        ))}
+      </div>
+      {message.feedback && !editingNote && (
+        <div className="feedback-saved" role="status">
+          <span>Gespeichert</span>
+          <button onClick={() => setEditingNote(true)} type="button">
+            {message.feedback.note ? "Notiz bearbeiten" : "Notiz ergänzen"}
+          </button>
+        </div>
+      )}
+      {message.feedback && editingNote && (
+        <form
+          className="feedback-note"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void persist(message.feedback!.rating, note).then((saved) => {
+              if (saved) setEditingNote(false);
+            });
+          }}
+        >
+          <label htmlFor={`feedback-note-${message.message_id}`}>Optional: Was fehlt oder stimmt nicht?</label>
+          <textarea
+            id={`feedback-note-${message.message_id}`}
+            maxLength={1000}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Zum Beispiel: Der langfristige Plan bleibt unklar."
+            rows={3}
+            value={note}
+          />
+          <div>
+            <button disabled={saving} type="submit">{saving ? "Speichert …" : "Notiz speichern"}</button>
+            <button
+              disabled={saving}
+              onClick={() => {
+                setNote(message.feedback?.note ?? "");
+                setEditingNote(false);
+              }}
+              type="button"
+            >
+              Schließen
+            </button>
+          </div>
+        </form>
+      )}
+      {feedbackError && <small className="feedback-error" role="alert">{feedbackError}</small>}
+    </section>
+  );
+}
+
 export default function Home() {
   const [requestedColor, setRequestedColor] = useState<PlayerColor>("white");
   const [session, setSession] = useState<SessionState | null>(null);
@@ -297,6 +442,10 @@ export default function Home() {
   const [progressClock, setProgressClock] = useState(0);
   const [durationEstimates, setDurationEstimates] = useState(defaultProgressEstimates);
   const [error, setError] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewItems, setReviewItems] = useState<FeedbackReviewRecord[]>([]);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const coachFeedRef = useRef<HTMLDivElement | null>(null);
   const initialSessionRequestedRef = useRef(false);
   const interactionLocked = loading || askingQuestion;
@@ -336,6 +485,15 @@ export default function Home() {
     const timer = window.setInterval(() => setProgressClock(currentTimeMs()), 250);
     return () => window.clearInterval(timer);
   }, [progress]);
+
+  useEffect(() => {
+    if (!reviewOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReviewOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [reviewOpen]);
 
   const orientation = session?.learner_color ?? (requestedColor === "black" ? "black" : "white");
   const position = parseFen(displayFen);
@@ -636,6 +794,33 @@ export default function Home() {
     return `${evaluation >= 0 ? "+" : ""}${evaluation.toFixed(2)}`.replace(".", ",");
   }
 
+  function updateMessageFeedback(messageId: string, feedback: ExplanationFeedback) {
+    setMessages((current) => current.map((message) => (
+      message.message_id === messageId ? { ...message, feedback } : message
+    )));
+    if (reviewOpen) void loadFeedbackReview();
+  }
+
+  async function loadFeedbackReview() {
+    setReviewLoading(true);
+    setReviewError(null);
+    try {
+      const records = await api<FeedbackReviewRecord[]>("/api/feedback?limit=100");
+      setReviewItems(records.filter((record) => record.rating !== "helpful"));
+    } catch (caught) {
+      setReviewError(
+        caught instanceof Error ? caught.message : "Die Feedback-Liste konnte nicht geladen werden.",
+      );
+    } finally {
+      setReviewLoading(false);
+    }
+  }
+
+  function openFeedbackReview() {
+    setReviewOpen(true);
+    void loadFeedbackReview();
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -643,9 +828,14 @@ export default function Home() {
           <span className="brand-mark" aria-hidden="true">♞</span>
           <span><strong>Chess Opening Coach</strong><small>Verstehen statt auswendig lernen</small></span>
         </a>
-        <div className={health ? "local-status" : "local-status offline"}>
-          <span className="status-dot" aria-hidden="true" />
-          {health ? "Lokal verbunden" : "Coach nicht verbunden"}
+        <div className="topbar-actions">
+          <button className="review-list-action" onClick={openFeedbackReview} type="button">
+            Feedback prüfen
+          </button>
+          <div className={health ? "local-status" : "local-status offline"}>
+            <span className="status-dot" aria-hidden="true" />
+            {health ? "Lokal verbunden" : "Coach nicht verbunden"}
+          </div>
         </div>
       </header>
 
@@ -938,6 +1128,14 @@ export default function Home() {
                         </div>
                       )}
                     </details>
+                    {session && message.message_id && (
+                      <ExplanationFeedbackControl
+                        key={message.message_id}
+                        message={message}
+                        onSaved={(feedback) => updateMessageFeedback(message.message_id!, feedback)}
+                        sessionId={session.session_id}
+                      />
+                    )}
                   </div>
                 </article>
               ))
@@ -977,6 +1175,50 @@ export default function Home() {
           </div>
         </aside>
       </section>
+
+      {reviewOpen && (
+        <div className="review-overlay" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setReviewOpen(false);
+        }}>
+          <section aria-labelledby="review-title" aria-modal="true" className="review-dialog" role="dialog">
+            <header>
+              <div>
+                <p className="eyebrow">Lokale Qualitätsprüfung</p>
+                <h2 id="review-title">Unklare und falsche Erklärungen</h2>
+              </div>
+              <button aria-label="Feedback-Liste schließen" onClick={() => setReviewOpen(false)} type="button">×</button>
+            </header>
+            <p className="review-intro">Diese Einträge sind Prüfkandidaten, noch keine bestätigten Schachfehler.</p>
+            <div className="review-list">
+              {reviewLoading && <p role="status">Feedback wird geladen …</p>}
+              {reviewError && <p className="review-error" role="alert">{reviewError}</p>}
+              {!reviewLoading && !reviewError && reviewItems.length === 0 && (
+                <div className="review-empty"><span aria-hidden="true">✓</span><p>Noch keine unklaren oder falschen Erklärungen markiert.</p></div>
+              )}
+              {!reviewLoading && reviewItems.map((record) => (
+                <article className="review-item" key={record.id}>
+                  <div className="review-item-heading">
+                    <span className={`review-rating ${record.rating}`}>{record.rating === "wrong" ? "Falsch" : "Unklar"}</span>
+                    <strong>{record.move_san ? `${record.move_san} · ` : ""}{record.opening_name ?? "Unbenannte Stellung"}</strong>
+                  </div>
+                  {record.question && <blockquote>„{record.question}“</blockquote>}
+                  <p>{record.summary_snapshot}</p>
+                  {record.note && <div className="review-note"><small>Deine Notiz</small>{record.note}</div>}
+                  <details>
+                    <summary>Gespeicherten Kontext ansehen</summary>
+                    <p>{record.details_snapshot}</p>
+                    <dl>
+                      <div><dt>Stellung</dt><dd>{record.position_fen}</dd></div>
+                      <div><dt>Quelle</dt><dd>{record.source}</dd></div>
+                      <div><dt>Modell</dt><dd>{record.llm_model ?? "kein LLM"}</dd></div>
+                    </dl>
+                  </details>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

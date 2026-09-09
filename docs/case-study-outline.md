@@ -124,6 +124,9 @@
 42. A final `Bb5` run combines exact Emms evidence, deterministic board effects,
     and reply-robust Stockfish plans, while a second-color game confirms the
     improvement did not hard-code one opening path.
+43. Repeated learner objections become a product capability: a three-state,
+    low-friction feedback loop preserves the complete explanation context while
+    treating human ratings as review evidence rather than automatic chess truth.
 
 ## Evidence already captured
 
@@ -186,6 +189,11 @@
 - Two exact, legality-checked Emms claims for `3.Bb5`, with source pages and an
   accepted German synthesis after sentence-level critic filtering
 - A final six-case guardrail pass plus white- and black-side API dogfooding
+- A local explanation-feedback schema with revisable ratings, optional notes,
+  exact FEN/move/engine/source/model snapshots, filtered review, and ignored
+  fixture-candidate export
+- A documented distinction between “factual error” and “did not help me
+  understand,” derived directly from the learner's earlier objections
 
 ## Questions for later evaluation
 
@@ -201,3 +209,6 @@
   with deeper Stockfish evidence alone?
 - Which failures originate in extraction, retrieval, or synthesis, and how can
   they be distinguished in evaluation?
+- How often do `unclear` and `wrong` judgments lead to different root causes and
+  therefore different fixes?
+- Does the one-click control remain unobtrusive enough to use after every move?

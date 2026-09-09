@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import FastAPI, HTTPException, Path
+from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -30,6 +30,11 @@ class QuestionRequest(BaseModel):
     question: str = Field(min_length=2, max_length=600)
     focus_move_uci: str | None = Field(default=None, pattern="^[a-h][1-8][a-h][1-8][qrbn]?$")
     deep: bool = False
+
+
+class ExplanationFeedbackRequest(BaseModel):
+    rating: Literal["helpful", "unclear", "wrong"]
+    note: str = Field(default="", max_length=1000)
 
 
 def build_service(settings: Settings | None = None) -> CoachService:
@@ -168,6 +173,30 @@ def create_app(service: CoachService | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.put("/api/sessions/{session_id}/messages/{message_id}/feedback")
+    def rate_explanation(
+        session_id: Annotated[str, Path(min_length=1)],
+        message_id: Annotated[str, Path(min_length=1)],
+        request: ExplanationFeedbackRequest,
+    ) -> dict[str, Any]:
+        try:
+            return coach.rate_explanation(
+                session_id, message_id, request.rating, request.note
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/feedback")
+    def explanation_feedback(
+        rating: Annotated[
+            Literal["helpful", "unclear", "wrong"] | None, Query()
+        ] = None,
+        limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    ) -> list[dict[str, Any]]:
+        return coach.explanation_feedback(rating=rating, limit=limit)
 
     @app.get("/api/learning/summary")
     def learning_summary() -> dict[str, int]:

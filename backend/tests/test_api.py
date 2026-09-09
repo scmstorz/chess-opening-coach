@@ -39,6 +39,35 @@ def test_api_session_and_move_round_trip() -> None:
         assert answered.status_code == 200
         assert answered.json()["message"]["kind"] == "question"
         assert answered.json()["message"]["move"] == suggested.json()["move_san"]
+        message_id = answered.json()["message"]["message_id"]
+
+        rated = client.put(
+            f"/api/sessions/{session.json()['session_id']}/messages/{message_id}/feedback",
+            json={"rating": "unclear", "note": "Der langfristige Plan fehlt mir noch."},
+        )
+
+        assert rated.status_code == 200
+        assert rated.json()["rating"] == "unclear"
+        assert rated.json()["note"] == "Der langfristige Plan fehlt mir noch."
+
+        revised = client.put(
+            f"/api/sessions/{session.json()['session_id']}/messages/{message_id}/feedback",
+            json={"rating": "wrong", "note": "Die behauptete Idee passt nicht zur Stellung."},
+        )
+
+        assert revised.status_code == 200
+        assert answered.json()["message"]["feedback"] is None
+        review = client.get("/api/feedback", params={"rating": "wrong"})
+        assert review.status_code == 200
+        assert len(review.json()) == 1
+        assert review.json()[0]["message_id"] == message_id
+        assert review.json()[0]["position_fen"] == session.json()["fen"]
+        assert review.json()[0]["move_uci"] == suggested.json()["move_uci"]
+        assert review.json()[0]["summary_snapshot"] == answered.json()["message"]["summary"]
+        assert review.json()[0]["engine"]["available"] is True
+        assert review.json()[0]["explanation_sections"]
+        assert review.json()[0]["references"] == []
+        assert client.get("/api/learning/summary").json()["explanations_wrong"] == 1
 
         played = client.post(
             f"/api/sessions/{session.json()['session_id']}/moves",
@@ -52,7 +81,9 @@ def test_api_session_and_move_round_trip() -> None:
 
         assert undone.status_code == 200
         assert undone.json()["move_history"] == []
-        assert undone.json()["message_history"] == answered.json()["message_history"]
+        assert len(undone.json()["message_history"]) == 1
+        assert undone.json()["message_history"][0]["message_id"] == message_id
+        assert undone.json()["message_history"][0]["feedback"] == revised.json()
         assert undone.json()["can_undo"] is False
 
 

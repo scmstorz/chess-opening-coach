@@ -1495,3 +1495,55 @@ drag-and-drop inspection.
 ADR 0011 contains the binding rules. The full metrics, failed intermediate
 `Ba4` result, critic behavior, and dogfooding transcript are summarized in
 `docs/evaluations/2026-09-09-progressive-emms-and-dogfood.md`.
+
+### Turning learner objections into a durable explanation-quality loop
+
+After the third-book compiler work passed its fixed cases, the next bottleneck
+was no longer missing chess infrastructure. The project had repeatedly learned
+more from direct learner objections than from automated “grounded” checks, but
+those objections existed only in conversation. The agreed next slice was a
+low-friction feedback mechanism under every explanation in the coach feed.
+
+The choice was deliberately a three-state scale rather than thumbs or stars.
+`Hilfreich` measures whether an explanation did its job. `Unklar` says that the
+answer may be defensible but did not create understanding. `Falsch` flags a
+suspected factual or positional error. This distinction maps to different next
+checks and directly reflects the earlier `c3` and `Na2` failures. A free-text
+report is valuable but cannot be mandatory after every half-move, so the first
+click saves immediately. The two negative choices open an optional note field;
+a positive judgment can also be annotated.
+
+Saving only the label would repeat the original reproducibility problem. Each
+feed message now has a session-unique UUID and an explicit position FEN. The
+feedback row snapshots the opening, question, UCI/SAN move, visible summary,
+expanded sections, engine payload, knowledge status, source, model, and public
+book-reference metadata. Questions about past moves preserve the reconstructed
+historical FEN, not the live board. The record excludes retrieved book passages
+and filesystem paths.
+
+One row per message is updated if the learner changes the judgment. Feedback
+survives a later chess undo: the response disappears from the active feed as
+requested, while the rating remains useful evidence about content that was
+actually shown. This is safe because the complete snapshot no longer depends
+on the mutated session.
+
+The `Feedback prüfen` control opens a scrollable local list of the unclear and
+wrong snapshots without interrupting the active game. The review boundary is as important as capture. A learner click is evidence
+about explanation quality, not a new source of chess truth. No rating changes
+an engine result, book claim, prompt, or test automatically. A local endpoint
+returns the review list, and an export utility writes `unclear` and `wrong`
+records into the ignored `outputs/` directory as fixture candidates. Human
+review must still classify the failure before a regression expectation changes.
+
+The implementation reuses the local learner SQLite database. Browser-only
+storage would make quality evidence fragile; cloud D1 would contradict the
+settled offline-first, single-user boundary. The existing hosting manifest
+therefore remains without a database binding. ADR 0012 records these options,
+the undo semantics, and the distinction between user signal and chess truth.
+
+The automated first check exercises rating, revision, note storage, filtered
+review, the position/move/engine snapshot, feedback persistence through a later
+turn undo, and summary counts. All 78 backend tests, frontend lint, and the
+production build pass. A real learner play session remains the necessary next
+test because no automated check can establish that the controls are pleasant
+to use or that the three labels feel natural during play.

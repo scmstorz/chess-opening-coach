@@ -50,6 +50,9 @@ operator.
 - Multi-signal detection of the probable opening-to-middlegame transition
 - Learner-controlled choice to continue or create a grounded opening review
 - Persistent opening summaries with optional, non-automatic review recommendations
+- One-click `Hilfreich`, `Unklar`, or `Falsch` ratings below every feed explanation
+- Optional feedback notes stored with the exact position, move, answer, engine result, source, and model
+- In-app local review list plus fixture-candidate export for learner-identified explanation failures
 - Local SQLite interaction history and Stockfish cache
 - Responsive layout and keyboard-focusable board squares
 
@@ -180,6 +183,26 @@ tracked text with non-reversible fingerprints of 24-word source sequences to
 catch accidentally copied extracts. It never adds the fingerprints or source
 text to Git. See `docs/publication-safety.md` for the operating boundary and
 limitations.
+
+## Explanation feedback
+
+Every explanation in the coach feed can be rated with one click. `Unklar` and
+`Falsch` immediately open an optional note field; a note can also be added to a
+helpful answer. SQLite stores one revisable judgment per message together with
+a snapshot of its FEN, move, rendered explanation sections, Stockfish payload,
+source metadata, and active model. Browser storage is not used for these records.
+
+Review the newest records through `GET /api/feedback`, optionally filtered with
+`?rating=unclear` or `?rating=wrong`. Export the two failure categories into the
+Git-ignored `outputs/` directory with:
+
+```bash
+.venv/bin/python scripts/export_explanation_feedback.py
+```
+
+The export creates candidates for human review. A learner rating is evidence
+about teaching quality, not proof that a chess claim is false, so cases are not
+automatically promoted into the regression suite.
 
 ## Verification
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import random
 import re
 import threading
@@ -632,6 +633,7 @@ class CoachService:
                 "actor": "coach",
                 "question": clean_question,
                 "move": san,
+                "move_uci": move.uci() if move else None,
                 "summary": text.summary,
                 "details": text.details,
                 "source": text.source,
@@ -647,9 +649,80 @@ class CoachService:
                     "evidence_count": len(book_evidence.facts),
                     "used_evidence_ids": list(used_evidence_ids),
                 },
+                "opening": asdict(opening) if opening else None,
             }
+            self._prepare_message(message, board.fen())
             session.message_history.append(message)
             return {"message": message, "message_history": session.message_history}
+
+    def rate_explanation(
+        self,
+        session_id: str,
+        message_id: str,
+        rating: str,
+        note: str = "",
+    ) -> dict[str, Any]:
+        """Persist the learner's judgment and the exact explanation context."""
+
+        if rating not in {"helpful", "unclear", "wrong"}:
+            raise ValueError("Unbekannte Erklärungsbewertung")
+        session = self._session(session_id)
+        with session.lock:
+            message = next(
+                (
+                    candidate
+                    for candidate in session.message_history
+                    if candidate.get("message_id") == message_id
+                ),
+                None,
+            )
+            if message is None:
+                raise KeyError("Diese Erklärung gehört nicht mehr zur aktiven Sitzung")
+
+            opening = message.get("opening")
+            if not isinstance(opening, dict):
+                opening = asdict(session.opening) if session.opening else {}
+            stored = self.store.record_explanation_feedback(
+                {
+                    "session_id": session.session_id,
+                    "message_id": message_id,
+                    "rating": rating,
+                    "note": note.strip(),
+                    "position_fen": message.get("position_fen") or session.board.fen(),
+                    "opening_eco": opening.get("eco"),
+                    "opening_name": opening.get("name"),
+                    "message_kind": message.get("kind", "move"),
+                    "actor": message.get("actor", "coach"),
+                    "question": message.get("question"),
+                    "move_uci": message.get("move_uci"),
+                    "move_san": message.get("move"),
+                    "summary_snapshot": message.get("summary", ""),
+                    "details_snapshot": message.get("details", ""),
+                    "explanation_sections_payload": json.dumps(
+                        message.get("explanation_sections") or [], ensure_ascii=False
+                    ),
+                    "source": message.get("source", "unknown"),
+                    "llm_model": message.get("model"),
+                    "engine_payload": _json_payload(message.get("engine")),
+                    "references_payload": json.dumps(
+                        message.get("references") or [], ensure_ascii=False
+                    ),
+                    "knowledge_payload": _json_payload(message.get("knowledge")),
+                }
+            )
+            receipt = _feedback_receipt(stored)
+            message["feedback"] = receipt
+            return receipt
+
+    def explanation_feedback(
+        self, *, rating: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """Expose locally stored feedback as fixture-ready structured records."""
+
+        if rating is not None and rating not in {"helpful", "unclear", "wrong"}:
+            raise ValueError("Unbekannte Erklärungsbewertung")
+        rows = self.store.explanation_feedback(rating=rating, limit=limit)
+        return [_decode_feedback_row(row) for row in rows]
 
     def _select_theory_suggestion(self, board: chess.Board) -> tuple[TheoryMove, MoveAnalysis]:
         theory_moves = self.openings.theory_moves(board)
@@ -1183,6 +1256,7 @@ class CoachService:
 
     def _illegal_message(self, attempt: int) -> dict[str, Any]:
         return {
+            "kind": "move",
             "actor": "learner",
             "move": None,
             "summary": "Dieser Zug ist in der aktuellen Stellung nicht legal.",
@@ -1200,6 +1274,7 @@ class CoachService:
     ) -> dict[str, Any]:
         text = self.tutor.explain(facts, fallback)
         return {
+            "kind": "move",
             "actor": actor,
             "move": san,
             "summary": text.summary,
@@ -1208,6 +1283,7 @@ class CoachService:
             "model": text.model,
             "attempt": None,
             "engine": facts["engine"],
+            "opening": facts.get("opening"),
         }
 
     def _grounded(
@@ -1304,6 +1380,7 @@ class CoachService:
         analysis: MoveAnalysis | None,
         message: dict[str, Any],
     ) -> None:
+        self._prepare_message(message, fen_before)
         self.store.record(
             {
                 "session_id": session.session_id,
@@ -1331,6 +1408,12 @@ class CoachService:
     ) -> None:
         message["move_uci"] = move.uci()
         message["fen_after"] = board_after.fen()
+
+    @staticmethod
+    def _prepare_message(message: dict[str, Any], position_fen: str) -> None:
+        message.setdefault("message_id", str(uuid.uuid4()))
+        message.setdefault("position_fen", position_fen)
+        message.setdefault("feedback", None)
 
     def _save_turn_snapshot(self, session: GameSession) -> None:
         session.undo_stack.append(
@@ -1364,6 +1447,8 @@ class CoachService:
                 session.phase = "transition"
                 session.opening_end = evidence
                 messages.append(self._opening_end_message(evidence))
+        for message in messages:
+            self._prepare_message(message, session.board.fen())
         session.message_history.extend(messages)
         opening = asdict(session.opening) if session.opening else None
         legal_moves = [move.uci() for move in session.board.legal_moves]
@@ -1662,6 +1747,32 @@ def _format_evaluation(score: float | None, mate: int | None) -> str:
     if score is None:
         return "nicht verfügbar"
     return f"{score:+.2f}".replace(".", ",")
+
+
+def _json_payload(value: Any) -> str | None:
+    return json.dumps(value, ensure_ascii=False) if value is not None else None
+
+
+def _feedback_receipt(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "rating": row["rating"],
+        "note": row["note"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _decode_feedback_row(row: dict[str, Any]) -> dict[str, Any]:
+    result = dict(row)
+    payload_fields = {
+        "explanation_sections_payload": "explanation_sections",
+        "engine_payload": "engine",
+        "references_payload": "references",
+        "knowledge_payload": "knowledge",
+    }
+    for stored_name, public_name in payload_fields.items():
+        payload = result.pop(stored_name)
+        result[public_name] = json.loads(payload) if payload else None
+    return result
 
 
 def _move_concept(board: chess.Board, move: chess.Move) -> str:

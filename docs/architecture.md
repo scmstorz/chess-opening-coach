@@ -332,17 +332,63 @@ The UI receives only a German explanation and compact source metadata. Failed
 generation, weak evidence, or rejected grounding produces a structured status
 and an explicit learner-facing knowledge boundary.
 
+## Human explanation feedback
+
+Every message shown in the coach feed receives a session-unique UUID and the FEN
+of the position its explanation concerns. For a question about an earlier move,
+this is the reconstructed historical pre-move FEN rather than the live board.
+The learner can assign one revisable three-state judgment:
+
+- `helpful`: the explanation helped;
+- `unclear`: it may be correct, but did not create understanding;
+- `wrong`: the learner suspects a factual or positional error.
+
+The first click persists immediately. `unclear` and `wrong` open an optional
+note field automatically; helpful answers can receive a note as well. The note
+is never required because requiring prose after every half-move would work
+against the low-friction training loop.
+
+```text
+feed explanation + position UUID
+  -> one-click learner judgment
+  -> optional note
+  -> SQLite upsert of judgment plus immutable explanation context
+  -> local review list and API
+  -> optional ignored JSON export
+  -> human verification before a regression fixture is changed
+```
+
+The snapshot contains the position, opening identity, question, move, summary,
+expanded sections, engine payload, book-reference metadata, knowledge status,
+source, and model. It does not contain retrieved source passages or PDF paths.
+One row per `(session_id, message_id)` is updated when the learner changes their
+mind; the original creation time remains stable and the update time changes.
+
+An undo operation removes the game turn and its visible coach response as
+before, but already submitted explanation feedback remains in the quality log.
+That judgment describes a generated artifact and remains useful even when the
+learner chooses a different chess move afterwards. The complete snapshot makes
+the issue reproducible without relying on the now-mutated game session.
+
+Ratings are signals, not chess ground truth. Neither `wrong` nor `unclear`
+automatically changes prompts, book claims, engine thresholds, or regression
+expectations. A local review/export step must first determine whether the cause
+was factual error, weak pedagogy, missing evidence, wrong position resolution,
+or simply a learner preference.
+
 ## Persistence
 
-SQLite stores interactions, cached Stockfish results, and completed opening
-summaries. A summary records the final position, identified opening, observed
+SQLite stores interactions, cached Stockfish results, completed opening
+summaries, and explanation feedback. A summary records the final position, identified opening, observed
 center/development/king-safety facts, strong moves, correction points, one
 takeaway, and an optional review recommendation. The recommendation is data,
 not an automatic scheduler action: the learner remains in control.
 
 Active games are held in memory because interrupted games are intentionally not
 resumable. The local Python SQLite database remains the source of truth for
-learning data; browser storage is not used for it.
+learning and explanation-quality data; browser storage is not used for it.
+Cloud D1 remains unconfigured because offline-first, single-user persistence is
+a settled product requirement rather than an incidental implementation detail.
 
 ## Current boundaries
 

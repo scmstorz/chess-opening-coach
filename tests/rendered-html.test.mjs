@@ -27,6 +27,7 @@ test("server-renders the chess coach product shell", async () => {
   assert.doesNotMatch(html, /Training starten/);
   assert.match(html, /Zug vorschlagen/);
   assert.match(html, /Neue Partie/);
+  assert.match(html, /Feedback prüfen/);
   assert.match(html, /Frage zur Stellung/);
   assert.match(html, /Geerdet mit Stellung, Eröffnungstheorie und Stockfish/);
   assert.doesNotMatch(html, /Freie Rückfragen folgen/);

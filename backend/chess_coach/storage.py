@@ -57,6 +57,34 @@ class SQLiteStore:
                     move_count INTEGER NOT NULL,
                     payload TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS explanation_feedback (
+                    id INTEGER PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    message_id TEXT NOT NULL,
+                    rating TEXT NOT NULL CHECK(rating IN ('helpful', 'unclear', 'wrong')),
+                    note TEXT NOT NULL DEFAULT '',
+                    position_fen TEXT NOT NULL,
+                    opening_eco TEXT,
+                    opening_name TEXT,
+                    message_kind TEXT,
+                    actor TEXT NOT NULL,
+                    question TEXT,
+                    move_uci TEXT,
+                    move_san TEXT,
+                    summary_snapshot TEXT NOT NULL,
+                    details_snapshot TEXT NOT NULL,
+                    explanation_sections_payload TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    llm_model TEXT,
+                    engine_payload TEXT,
+                    references_payload TEXT NOT NULL,
+                    knowledge_payload TEXT,
+                    UNIQUE(session_id, message_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_explanation_feedback_rating_updated
+                ON explanation_feedback(rating, updated_at DESC);
                 """
             )
             self.connection.execute("PRAGMA optimize")
@@ -181,6 +209,94 @@ class SQLiteStore:
             )
             self.connection.commit()
 
+    def record_explanation_feedback(self, values: dict[str, Any]) -> dict[str, Any]:
+        """Upsert one learner judgment together with its reproducible context."""
+
+        now = datetime.now(UTC).isoformat()
+        columns = (
+            "created_at",
+            "updated_at",
+            "session_id",
+            "message_id",
+            "rating",
+            "note",
+            "position_fen",
+            "opening_eco",
+            "opening_name",
+            "message_kind",
+            "actor",
+            "question",
+            "move_uci",
+            "move_san",
+            "summary_snapshot",
+            "details_snapshot",
+            "explanation_sections_payload",
+            "source",
+            "llm_model",
+            "engine_payload",
+            "references_payload",
+            "knowledge_payload",
+        )
+        row = {
+            "created_at": now,
+            "updated_at": now,
+            "note": "",
+            "explanation_sections_payload": "[]",
+            "references_payload": "[]",
+            **values,
+        }
+        placeholders = ", ".join("?" for _ in columns)
+        updates = ", ".join(
+            f"{column} = excluded.{column}"
+            for column in columns
+            if column not in {"created_at", "session_id", "message_id"}
+        )
+        with self._lock:
+            self.connection.execute(
+                f"""
+                INSERT INTO explanation_feedback ({', '.join(columns)})
+                VALUES ({placeholders})
+                ON CONFLICT(session_id, message_id) DO UPDATE SET {updates}
+                """,
+                tuple(row.get(column) for column in columns),
+            )
+            stored = self.connection.execute(
+                """
+                SELECT * FROM explanation_feedback
+                WHERE session_id = ? AND message_id = ?
+                """,
+                (row["session_id"], row["message_id"]),
+            ).fetchone()
+            self.connection.commit()
+        return dict(stored)
+
+    def explanation_feedback(
+        self, *, rating: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """Return newest feedback snapshots for local review or fixture export."""
+
+        with self._lock:
+            if rating is None:
+                rows = self.connection.execute(
+                    """
+                    SELECT * FROM explanation_feedback
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            else:
+                rows = self.connection.execute(
+                    """
+                    SELECT * FROM explanation_feedback
+                    WHERE rating = ?
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                    """,
+                    (rating, limit),
+                ).fetchall()
+        return [dict(row) for row in rows]
+
     def summary(self) -> dict[str, int]:
         with self._lock:
             row = self.connection.execute(
@@ -188,7 +304,14 @@ class SQLiteStore:
                 SELECT COUNT(*) AS attempts,
                        COALESCE(SUM(actor = 'learner' AND accepted = 1), 0) AS accepted,
                        COALESCE(SUM(actor = 'learner' AND accepted = 0), 0) AS corrections,
-                       (SELECT COUNT(*) FROM session_summaries) AS sessions_reviewed
+                       (SELECT COUNT(*) FROM session_summaries) AS sessions_reviewed,
+                       (SELECT COUNT(*) FROM explanation_feedback) AS explanations_rated,
+                       (SELECT COUNT(*) FROM explanation_feedback
+                        WHERE rating = 'helpful') AS explanations_helpful,
+                       (SELECT COUNT(*) FROM explanation_feedback
+                        WHERE rating = 'unclear') AS explanations_unclear,
+                       (SELECT COUNT(*) FROM explanation_feedback
+                        WHERE rating = 'wrong') AS explanations_wrong
                 FROM interactions
                 """
             ).fetchone()

@@ -46,16 +46,22 @@ def build_service(settings: Settings | None = None) -> CoachService:
     )
     book_knowledge = (
         BookKnowledgeBase(settings.book_database_path)
-        if settings.books_enabled
-        else NullBookKnowledgeBase("Buchwissen ist in der Konfiguration deaktiviert.")
+        if settings.private_book_knowledge_enabled
+        else NullBookKnowledgeBase(
+            "Privates Buchwissen ist im öffentlichen Laufzeitprofil deaktiviert."
+            if settings.runtime_profile == "public"
+            else "Buchwissen ist in der Konfiguration deaktiviert."
+        )
     )
-    return CoachService(
+    service = CoachService(
         OpeningBook(settings.opening_data_path),
         engine,
         OllamaTutor(settings.ollama_url, settings.ollama_model),
         store,
         book_knowledge=book_knowledge,
     )
+    service.runtime_profile = settings.runtime_profile
+    return service
 
 
 def create_app(service: CoachService | None = None) -> FastAPI:
@@ -80,6 +86,7 @@ def create_app(service: CoachService | None = None) -> FastAPI:
     def health() -> dict[str, Any]:
         return {
             "status": "ok",
+            "runtime_profile": getattr(coach, "runtime_profile", "custom"),
             "openings": {
                 "source": coach.openings.source,
                 "entries": coach.openings.entries_loaded,

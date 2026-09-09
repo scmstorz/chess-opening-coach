@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+RUNTIME_PROFILES = frozenset({"local", "public"})
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -16,6 +17,7 @@ def _env_bool(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class Settings:
+    runtime_profile: str = os.environ.get("CHESS_COACH_RUNTIME_PROFILE", "local")
     database_path: Path = Path(
         os.environ.get("CHESS_COACH_DATABASE", PROJECT_ROOT / "data" / "coach.db")
     )
@@ -42,3 +44,19 @@ class Settings:
     stockfish_multipv: int = int(os.environ.get("STOCKFISH_MULTIPV", "3"))
     ollama_url: str = os.environ.get("CHESS_COACH_OLLAMA_URL", "http://127.0.0.1:11434")
     ollama_model: str | None = os.environ.get("CHESS_COACH_OLLAMA_MODEL")
+
+    def __post_init__(self) -> None:
+        normalized_profile = self.runtime_profile.strip().lower()
+        if normalized_profile not in RUNTIME_PROFILES:
+            choices = ", ".join(sorted(RUNTIME_PROFILES))
+            raise ValueError(
+                f"Unsupported CHESS_COACH_RUNTIME_PROFILE {self.runtime_profile!r}; "
+                f"choose one of: {choices}"
+            )
+        object.__setattr__(self, "runtime_profile", normalized_profile)
+
+    @property
+    def private_book_knowledge_enabled(self) -> bool:
+        """Return whether private local book knowledge may enter runtime prompts."""
+
+        return self.runtime_profile == "local" and self.books_enabled

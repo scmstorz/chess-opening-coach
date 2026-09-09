@@ -20,6 +20,10 @@ separate sources of information.
 - Locally compiled chess books contribute attributed strategic source claims.
 - SQLite stores interactions and cached engine analysis locally.
 
+The open-source core contains no copyrighted chess books or compiled book
+corpus. Private book knowledge is an optional local overlay supplied by the
+operator.
+
 ## What works now
 
 - Local browser UI with a drag-and-drop and click-to-move chessboard
@@ -97,6 +101,7 @@ CHESS_COACH_OLLAMA_MODEL=qwen3.8:27b-mlx
 CHESS_COACH_OLLAMA_URL=http://127.0.0.1:11434
 CHESS_COACH_BACKEND_PORT=53686
 CHESS_COACH_FRONTEND_PORT=53687
+CHESS_COACH_RUNTIME_PROFILE=local
 CHESS_COACH_BOOKS_ENABLED=true
 CHESS_COACH_BOOK_DATABASE=/absolute/path/to/book_knowledge.db
 STOCKFISH_PATH=/absolute/path/to/stockfish
@@ -109,6 +114,11 @@ CHESS_COACH_DATABASE=/absolute/path/to/coach.db
 CHESS_COACH_OPENINGS=/absolute/path/to/opening-tsv-directory
 ```
 
+`CHESS_COACH_RUNTIME_PROFILE=local` permits the explicitly enabled private
+book database. `CHESS_COACH_RUNTIME_PROFILE=public` disables private book
+retrieval even if `CHESS_COACH_BOOKS_ENABLED=true`; this is the fail-closed
+profile for public builds and demonstrations.
+
 ## Local chess books
 
 Owned PDF sources live in `data/books/`. PDFs and the derived
@@ -120,6 +130,8 @@ deployed. Import or refresh a book with:
   "data/books/Stewart, Clyde - Chess Openings For Beginners (2021).pdf"
 .venv/bin/python -m chess_coach.book_knowledge.cli ingest \
   "data/books/Fundamental Chess Openings - Paul van der Sterren.pdf"
+.venv/bin/python -m chess_coach.book_knowledge.cli ingest \
+  "data/books/John Emms - Discovering Chess Openings.pdf"
 .venv/bin/python -m chess_coach.book_knowledge.cli verify
 ```
 
@@ -143,12 +155,35 @@ The inference method and parent are stored for audit; unresolved fragments stay
 quarantined. Without a recognized opening, bare move names never trigger a
 global book search.
 
+## Publication safety
+
+Run the normal repository guard before every commit or public archive:
+
+```bash
+npm run check:publication
+```
+
+Before a release, run the stricter local check while the private knowledge
+database is available:
+
+```bash
+npm run check:publication:release
+```
+
+The guard rejects private document/database paths and file types in the Git
+index or repository history. When the local corpus exists, it also compares
+tracked text with non-reversible fingerprints of 24-word source sequences to
+catch accidentally copied extracts. It never adds the fingerprints or source
+text to Git. See `docs/publication-safety.md` for the operating boundary and
+limitations.
+
 ## Verification
 
 ```bash
 .venv/bin/pytest
 .venv/bin/ruff check backend scripts
 .venv/bin/python benchmarks/explanation_quality.py
+npm run check:publication:release
 npm run lint
 npm test
 git diff --check

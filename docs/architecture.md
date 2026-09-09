@@ -23,6 +23,14 @@ The book-knowledge database is separate from the learner log. Its compiler is
 an offline authoring process; runtime opens it read-only. Owned PDFs, extracted
 text, and the derived database remain local and are ignored by Git.
 
+The runtime has an explicit publication boundary. The default `local` profile
+may use an enabled operator-supplied knowledge database. The fail-closed
+`public` profile always installs a null book provider, even when the database
+exists or the books flag is true. Public Git and release artifacts contain the
+compiler but not its private inputs or outputs. A release guard scans Git paths,
+history, and - when the local corpus is available - long source-text overlap.
+The detailed operating procedure is in `docs/publication-safety.md`.
+
 `scripts/start_local.py` uses stable loopback ports (`53687` for the browser and
 `53686` for FastAPI) and checks that they are available before starting. Both
 can be changed explicitly through environment variables. The browser sees one

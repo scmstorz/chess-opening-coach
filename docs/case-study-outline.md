@@ -98,6 +98,17 @@
 34. An unrelated Schliemann citation from a broad Ruy Lopez text match proves
     that provenance and relevance are different checks; variation-specific book
     advice now requires an exact position.
+35. Selecting a third owned book triggers a publication concern. The project
+    avoids the false choice between abandoning open source and distributing
+    protected content by splitting a public code core from a private local
+    knowledge overlay.
+36. The policy becomes executable: a fail-closed public runtime profile ignores
+    private books, while a release gate scans Git history, private file types,
+    and long source-text fingerprints without committing those fingerprints.
+37. The Emms import validates the source choice but reveals another layout
+    boundary: question-led prose is ideal for the learner, while isolated moves
+    interleaved with prose yield only seven safe position anchors. Pedagogical
+    quality and retrievability remain separate measurements.
 
 ## Evidence already captured
 
@@ -143,6 +154,16 @@
   position reconstruction
 - A retrieval example where a legitimate citation is removed because it belongs
   to the wrong sub-variation
+- An explicit public-core/private-knowledge decision with two tested runtime
+  profiles
+- A publication gate covering the Git index, full path history, private formats,
+  and 24-word local-corpus fingerprints
+- A clean-history result proving that no PDF or knowledge database had entered
+  the repository before publication planning
+- A third private source import with 363 pages, 160 chunks, 127 verified lines,
+  seven conservative position anchors, and a documented parser limitation
+- A three-case post-import regression in which `Bb5`, `Na2`, and `a4` remain
+  correct and deliberately expose no unanchored Emms citation
 
 ## Questions for later evaluation
 

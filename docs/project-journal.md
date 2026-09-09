@@ -1352,3 +1352,85 @@ build, and the rendered-shell test. ADR 0009 and
 full observations. If source expansion follows, John Emms' *Discovering Chess
 Openings* is the leading local candidate because it adds principle-oriented
 teaching rather than another encyclopedic catalogue.
+
+### Separating the publishable product from private book knowledge
+
+When the Emms source was located, the learner raised a more fundamental
+question: had local book RAG made the entire application impossible to publish?
+The answer required separating software publication from content publication.
+Keeping everything private would discard reusable engineering work; publishing
+only the derived database would still expose searchable protected prose; and
+static LLM paraphrases were not accepted as an automatic rights-clearing step.
+
+The chosen architecture keeps the application, compiler, schemas, open opening
+data, and synthetic tests in a public core. Owned PDFs, extracted chunks, and
+`book_knowledge.db` are an operator-supplied private overlay. The existing Git
+ignore rules already excluded every PDF and SQLite corpus, and an audit of all
+84 historical paths found no leaked book or database file. The Emms PDF could
+therefore remain useful locally without becoming part of a future repository.
+
+This boundary is now executable. `CHESS_COACH_RUNTIME_PROFILE=public` installs
+a null book provider even if the books flag is true and a private database is
+present. The development default remains `local`, where book access is still an
+explicit feature flag. Unknown profiles fail at configuration construction.
+
+A publication gate adds defense in depth. It rejects private paths, PDF/e-book
+formats, SQLite databases, and sidecars in both the Git index and historical
+paths. If the local corpus is available, it creates in-memory hashes of every
+24-word source sequence and scans indexed plus current tracked text. The strict
+release command fails if that overlap scan cannot run. The first strict run
+passed across 84 tracked and 84 historical paths and 88 tracked text variants.
+This control does not decide whether a short quotation is legally justified or
+whether a source was lawfully acquired, so the documented release process still
+requires manual review and publication from Git rather than a zip of the local
+working directory.
+
+ADR 0010 records the options and decision; `docs/publication-safety.md` is the
+operating procedure. This became a case-study example of turning a late legal
+and product concern into a testable architectural boundary rather than a prose
+disclaimer.
+
+The legal check consulted the German Copyright Act provisions on protected
+works, public availability, text and data mining, quotation, and private
+reproduction. They informed a deliberately conservative release policy rather
+than a claim that the engineering gate constitutes legal clearance.
+
+### Importing the principle-oriented Emms source behind that boundary
+
+The source was found in the learner's `Documents/Books/Schach` folder under a
+filename ending in `(2020)`. Its own front matter states first publication in
+2006. The durable private copy was therefore named `John Emms - Discovering
+Chess Openings.pdf`; the compiler correctly inferred 2006 instead of preserving
+the misleading filename suffix. Its SHA-256 is recorded in the public local
+source registry, while the file itself remains ignored.
+
+Visual inspection covered the contents, introduction, centre and development
+lessons, the early `Bb5` explanation, a Ruy Lopez `a4` pawn break, the later Ruy
+Lopez overview, and an Open Sicilian example. The source is unusually well
+aligned with the product: it asks learners to reconstruct sensible theory from
+centre control, development, and king safety instead of merely memorizing an
+encyclopaedia.
+
+The complete local import produced 363 pages, 795 positioned spans, four
+detected sections, 160 chunks, 352 claims, 127 valid or context-resolved lines,
+seven final-position anchors, 342 likely board diagrams, and 859 review issues.
+The combined three-book database has 1,559 chunks and passes integrity, foreign
+key, FTS, orphan, and index-plan verification.
+
+The low anchor count is an informative negative result. This converted PDF
+often places a move, explanatory prose, another move, and a diagram inside one
+large text block. The current conservative parser validates complete sequences
+but will not stitch isolated moves through prose. Emms already contributes to
+broad concept search, but the live coach must not attach its excellent `Bb5`
+prose to the exact `3.Bb5` position until that progressive sequence is proven.
+The next compiler increment is therefore uniquely legal progressive annotated
+move reconstruction, followed by the unchanged `d3`, `Bb5`, `Na2`, and `a4`
+evaluation set. The detailed import record is in
+`docs/evaluations/2026-09-09-publication-boundary-and-emms-import.md`.
+
+The immediate three-case production-path regression explicitly selected
+`qwen3.8:27b-mlx` with Stockfish 18 and the three-book database. `Bb5`, `Na2`,
+and `a4` all passed every automated guardrail, and none displayed an Emms
+reference. This is the intended fail-closed outcome until the source gains exact
+position anchors. Cached engine data made these runs unusually fast, so their
+timings were not reused for the countdown model.

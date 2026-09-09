@@ -12,7 +12,7 @@ from typing import Any
 import chess
 
 from chess_coach.book_knowledge import BookKnowledgeBase, NullBookKnowledgeBase
-from chess_coach.book_knowledge.models import BookEvidence
+from chess_coach.book_knowledge.models import BookEvidence, BookFact
 from chess_coach.engine import (
     CandidateAnalysis,
     MoveAnalysis,
@@ -47,6 +47,19 @@ class HistoricalMoveContext:
 
 
 @dataclass(frozen=True, slots=True)
+class MoveNotationClarification:
+    """A coordinate-resolvable move whose piece designators contradict the board."""
+
+    original_question: str
+    corrected_question: str
+    move_uci: str
+    move_san: str
+    fen: str
+    prompt: str
+    explanation: str
+
+
+@dataclass(frozen=True, slots=True)
 class OpeningEndEvidence:
     likely: bool
     headline: str
@@ -68,6 +81,7 @@ class GameSession:
     phase: str = "opening"
     opening_end: OpeningEndEvidence | None = None
     opening_summary: dict[str, Any] | None = None
+    pending_move_clarification: MoveNotationClarification | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -411,11 +425,53 @@ class CoachService:
         """Answer a position question from verified theory and engine facts."""
         session = self._session(session_id)
         with session.lock:
-            clean_question = question.strip()
-            if not clean_question:
+            display_question = question.strip()
+            if not display_question:
                 raise ValueError("Bitte gib eine Frage ein")
 
             board = session.board
+            clean_question = display_question
+            confirmed_clarification = False
+            pending = session.pending_move_clarification
+            if pending is not None:
+                session.pending_move_clarification = None
+                if _is_affirmative_answer(display_question) and pending.fen == board.fen():
+                    clean_question = pending.corrected_question
+                    focus_move_uci = pending.move_uci
+                    confirmed_clarification = True
+
+            if not confirmed_clarification:
+                clarification = self._move_notation_clarification(board, clean_question)
+                if clarification is not None:
+                    session.pending_move_clarification = clarification
+                    message = {
+                        "kind": "clarification",
+                        "actor": "coach",
+                        "question": display_question,
+                        "move": clarification.move_san,
+                        "move_uci": clarification.move_uci,
+                        "summary": clarification.prompt,
+                        "details": clarification.explanation,
+                        "source": "deterministic",
+                        "model": None,
+                        "attempt": None,
+                        "engine": None,
+                        "explanation_sections": [],
+                        "analysis_mode": "standard",
+                        "references": [],
+                        "knowledge": {
+                            "status": "no_evidence",
+                            "reason": "move_notation_requires_confirmation",
+                            "evidence_count": 0,
+                            "perspective_filtered_count": 0,
+                            "used_evidence_ids": [],
+                        },
+                        "opening": asdict(session.opening) if session.opening else None,
+                    }
+                    self._prepare_message(message, board.fen())
+                    session.message_history.append(message)
+                    return {"message": message, "message_history": session.message_history}
+
             context_opening = session.opening
             question_phase = session.phase
             book_evidence = BookEvidence((), "none", False)
@@ -552,52 +608,84 @@ class CoachService:
                 }
                 text = fallback
 
-            book_evidence = self.book_knowledge.retrieve(
-                question=clean_question,
-                board=board,
-                opening=opening,
-                focus_move=move,
+            immediate_tactic = next(
+                (
+                    str(fact["text"])
+                    for fact in answer_facts
+                    if fact.get("id") == "immediate_material_tactic"
+                ),
+                None,
             )
-            if selection_facts is not None:
-                text = self.tutor.answer_question(selection_facts, text)
-
-            synthesis = self.tutor.synthesize_book_explanation(
-                question=clean_question,
-                verified_facts=_book_synthesis_facts(answer_facts),
-                book_facts=[
-                    {
-                        "id": fact.id,
-                        "text": fact.text,
-                        "claim_type": fact.claim_type,
-                        "validation_status": fact.validation_status,
-                        "match_kind": fact.match_kind,
-                    }
-                    for fact in book_evidence.facts
-                ],
-            )
-            knowledge_status = synthesis.status
-            knowledge_reason = synthesis.reason or book_evidence.reason
-            used_evidence_ids = synthesis.evidence_ids
-            if synthesis.text:
-                book_text = synthesis.text
+            if immediate_tactic:
+                # A directly provable one-ply material loss answers the learner's
+                # question more precisely than broad opening prose or LLM selection.
+                # Keep this path short, deterministic, and free of book retrieval.
                 text = TutorText(
-                    summary=text.summary,
+                    summary=immediate_tactic,
                     details=text.details,
-                    source=book_text.source,
-                    model=book_text.model,
+                    source="deterministic",
+                    model=None,
                 )
-                explanation_sections.insert(
-                    0,
-                    {
-                        "title": "Buchgestützter Plan",
-                        # The deterministic sections already contain the verified
-                        # board effects. Keep the book layer to its actual source
-                        # idea instead of repeating those effects a second time.
-                        "text": book_text.summary,
-                    },
-                )
+                perspective_filtered = 0
+                knowledge_status = "no_evidence"
+                knowledge_reason = "immediate_tactic_takes_priority"
             else:
-                if not _has_supported_explanation(answer_facts, explanation_sections):
+                book_evidence = self.book_knowledge.retrieve(
+                    question=clean_question,
+                    board=board,
+                    opening=opening,
+                    focus_move=move,
+                )
+                if selection_facts is not None:
+                    text = self.tutor.answer_question(selection_facts, text)
+
+                relevant_book_facts = _relevant_book_facts(
+                    book_evidence.facts,
+                    board=board,
+                    focus_move=move,
+                    question=clean_question,
+                )
+                perspective_filtered = len(book_evidence.facts) - len(relevant_book_facts)
+                synthesis = self.tutor.synthesize_book_explanation(
+                    question=clean_question,
+                    verified_facts=_book_synthesis_facts(answer_facts),
+                    book_facts=[
+                        {
+                            "id": fact.id,
+                            "text": fact.text,
+                            "claim_type": fact.claim_type,
+                            "validation_status": fact.validation_status,
+                            "match_kind": fact.match_kind,
+                        }
+                        for fact in relevant_book_facts
+                    ],
+                )
+                knowledge_status = synthesis.status
+                knowledge_reason = (
+                    "opponent_plan_not_relevant_to_focus_move"
+                    if perspective_filtered and not relevant_book_facts
+                    else synthesis.reason or book_evidence.reason
+                )
+                used_evidence_ids = synthesis.evidence_ids
+                if synthesis.text:
+                    book_text = synthesis.text
+                    text = TutorText(
+                        summary=text.summary,
+                        details=text.details,
+                        source=book_text.source,
+                        model=book_text.model,
+                    )
+                    explanation_sections.insert(
+                        0,
+                        {
+                            "title": "Buchgestützter Plan",
+                            # The deterministic sections already contain the verified
+                            # board effects. Keep the book layer to its actual source
+                            # idea instead of repeating those effects a second time.
+                            "text": book_text.summary,
+                        },
+                    )
+                elif not _has_supported_explanation(answer_facts, explanation_sections):
                     limitation = (
                         "Ich kann den Zug schachlich bewerten, habe aber noch keine ausreichend "
                         "belegte Erklärung für seinen langfristigen Zweck."
@@ -631,7 +719,7 @@ class CoachService:
             message = {
                 "kind": "question",
                 "actor": "coach",
-                "question": clean_question,
+                "question": display_question,
                 "move": san,
                 "move_uci": move.uci() if move else None,
                 "summary": text.summary,
@@ -647,6 +735,7 @@ class CoachService:
                     "status": knowledge_status,
                     "reason": knowledge_reason,
                     "evidence_count": len(book_evidence.facts),
+                    "perspective_filtered_count": perspective_filtered,
                     "used_evidence_ids": list(used_evidence_ids),
                 },
                 "opening": asdict(opening) if opening else None,
@@ -769,6 +858,7 @@ class CoachService:
     @staticmethod
     def _mentioned_legal_moves(board: chess.Board, question: str) -> list[chess.Move]:
         matches: list[tuple[int, chess.Move]] = []
+        matches.extend(_described_coordinate_moves(board, question))
         for move in board.legal_moves:
             san = board.san(move).rstrip("+#")
             if match := re.search(
@@ -782,6 +872,65 @@ class CoachService:
             if move not in ordered:
                 ordered.append(move)
         return ordered
+
+    @staticmethod
+    def _move_notation_clarification(
+        board: chess.Board, question: str
+    ) -> MoveNotationClarification | None:
+        """Ask before resolving contradictory piece letters from coordinates."""
+
+        for match in _MOVE_DESCRIPTION_PATTERN.finditer(question):
+            from_square = chess.parse_square(match.group("from_square").lower())
+            to_square = chess.parse_square(match.group("to_square").lower())
+            candidates = [
+                move
+                for move in board.legal_moves
+                if move.from_square == from_square and move.to_square == to_square
+            ]
+            if len(candidates) != 1:
+                continue
+            move = candidates[0]
+            moving_piece = board.piece_at(from_square)
+            target_piece = board.piece_at(to_square)
+            if moving_piece is None:
+                continue
+            from_designator = match.group("from_piece")
+            to_designator = match.group("to_piece")
+            from_mismatch = bool(
+                from_designator
+                and _piece_type_for_designator(from_designator) != moving_piece.piece_type
+            )
+            to_mismatch = bool(
+                to_designator
+                and target_piece
+                and _piece_type_for_designator(to_designator) != target_piece.piece_type
+            )
+            if not from_mismatch and not to_mismatch:
+                continue
+
+            san = board.san(move)
+            mover = _piece_name_singular(moving_piece)
+            target = (
+                _piece_name_singular(target_piece) if target_piece else "Figur"
+            )
+            corrected = f"{question[:match.start()]}{san}{question[match.end():]}"
+            return MoveNotationClarification(
+                original_question=question,
+                corrected_question=corrected,
+                move_uci=move.uci(),
+                move_san=san,
+                fen=board.fen(),
+                prompt=(
+                    f"Meinst du {san} – also, dass dein {mover} von "
+                    f"{match.group('from_square').lower()} den {target} auf "
+                    f"{match.group('to_square').lower()} schlägt?"
+                ),
+                explanation=(
+                    "In der internationalen Notation steht K für King (König) und N für "
+                    "Knight (Springer). Antworte einfach mit „ja“, wenn ich diesen Zug prüfen soll."
+                ),
+            )
+        return None
 
     @staticmethod
     def _mentioned_legal_move(board: chess.Board, question: str) -> chess.Move | None:
@@ -922,6 +1071,7 @@ class CoachService:
             f"Nach dem Zug ist die Stellung als {opening.name} eingeordnet. " if opening else ""
         )
         response_text = _move_response_context(board, move)
+        immediate_tactic_text = _newly_exposed_valuable_piece_context(board, move)
         defender_pressure_text = _defender_pressure_context(board, move)
         development_text = _development_context(board, move)
         concept_text = _useful_move_concept(
@@ -992,6 +1142,7 @@ class CoachService:
         fact_values = (
             ("focus", f"Ich beziehe deine Frage auf {san}.", False),
             ("verdict", verdict_text, False),
+            ("immediate_material_tactic", immediate_tactic_text, True),
             ("plan", plan_text, True),
             ("recurring_plan", recurring_text, deep),
             ("concept", concept_text, not plan_text),
@@ -1014,16 +1165,27 @@ class CoachService:
                 "text": text,
                 "required": required,
                 "summary_eligible": fact_id
-                in {"verdict", "plan", "direct_threat", "heuristic", "development"},
+                in {
+                    "verdict",
+                    "immediate_material_tactic",
+                    "plan",
+                    "direct_threat",
+                    "heuristic",
+                    "development",
+                },
             }
             for fact_id, text, required in fact_values
             if text
         ]
         fallback = TutorText(
-            summary=f"Ich beziehe deine Frage auf {san}. {verdict_text}",
+            summary=(
+                immediate_tactic_text
+                or f"Ich beziehe deine Frage auf {san}. {verdict_text}"
+            ),
             details=" ".join(
                 part
                 for part in (
+                    immediate_tactic_text,
                     response_text,
                     defender_pressure_text,
                     heuristic_text,
@@ -1047,6 +1209,7 @@ class CoachService:
         concrete_text = " ".join(
             part
             for part in (
+                immediate_tactic_text,
                 response_text,
                 defender_pressure_text,
                 heuristic_text,
@@ -1062,9 +1225,14 @@ class CoachService:
             "Aus den geprüften Varianten lässt sich kein einzelner stabiler Langzeitplan "
             "belegen. Ich beschränke mich deshalb auf die konkreten Folgen unten."
         )
-        explanation_sections = [
-            {"title": "Mittel- und langfristiger Plan", "text": plan_section},
-        ]
+        if immediate_tactic_text:
+            explanation_sections = [
+                {"title": "Sofortige taktische Folge", "text": immediate_tactic_text}
+            ]
+        else:
+            explanation_sections = [
+                {"title": "Mittel- und langfristiger Plan", "text": plan_section},
+            ]
         if deep:
             explanation_sections.append(
                 {
@@ -1749,6 +1917,62 @@ def _format_evaluation(score: float | None, mate: int | None) -> str:
     return f"{score:+.2f}".replace(".", ",")
 
 
+_MOVE_DESCRIPTION_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])"
+    r"(?P<from_piece>[KQRBNPSTLD])?\s*"
+    r"(?P<from_square>[a-h][1-8])\s*"
+    r"(?:x|×|->|→|–|-|nach|auf|schl[aä]gt|nimmt)\s*"
+    r"(?P<to_piece>[KQRBNPSTLD])?\s*"
+    r"(?P<to_square>[a-h][1-8])"
+    r"(?![A-Za-z0-9])",
+    re.I,
+)
+
+
+def _piece_type_for_designator(designator: str) -> int | None:
+    return {
+        "K": chess.KING,
+        "Q": chess.QUEEN,
+        "D": chess.QUEEN,
+        "R": chess.ROOK,
+        "T": chess.ROOK,
+        "B": chess.BISHOP,
+        "L": chess.BISHOP,
+        "N": chess.KNIGHT,
+        "S": chess.KNIGHT,
+        "P": chess.PAWN,
+    }.get(designator.upper())
+
+
+def _described_coordinate_moves(
+    board: chess.Board, question: str
+) -> list[tuple[int, chess.Move]]:
+    """Resolve verbose source/target descriptions only through current legality."""
+
+    described: list[tuple[int, chess.Move]] = []
+    for match in _MOVE_DESCRIPTION_PATTERN.finditer(question):
+        from_square = chess.parse_square(match.group("from_square").lower())
+        to_square = chess.parse_square(match.group("to_square").lower())
+        candidates = [
+            move
+            for move in board.legal_moves
+            if move.from_square == from_square and move.to_square == to_square
+        ]
+        if len(candidates) == 1:
+            described.append((match.start(), candidates[0]))
+    return described
+
+
+def _is_affirmative_answer(text: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"\s*(?:ja|jep|jo|genau|richtig|korrekt|das meine ich|ja bitte)[.!]?\s*",
+            text,
+            re.I,
+        )
+    )
+
+
 def _json_payload(value: Any) -> str | None:
     return json.dumps(value, ensure_ascii=False) if value is not None else None
 
@@ -1773,6 +1997,103 @@ def _decode_feedback_row(row: dict[str, Any]) -> dict[str, Any]:
         payload = result.pop(stored_name)
         result[public_name] = json.loads(payload) if payload else None
     return result
+
+
+def _relevant_book_facts(
+    facts: tuple[BookFact, ...],
+    *,
+    board: chess.Board,
+    focus_move: chess.Move | None,
+    question: str,
+) -> tuple[BookFact, ...]:
+    """Drop generic opponent plans that cannot explain the focused side's move."""
+
+    relevant: list[BookFact] = []
+    focus_tokens: tuple[str, ...] = ()
+    if focus_move and focus_move in board.legal_moves:
+        focus_tokens = (board.san(focus_move).rstrip("+#"), focus_move.uci())
+    asks_for_focus_rationale = bool(focus_tokens) and (
+        any(_contains_chess_token(question, token) for token in focus_tokens)
+        or bool(
+            re.search(
+                r"\bwarum\b.*\b(?:zug|gut|sinnvoll|stark|schlecht|problematisch)\w*\b",
+                question,
+                re.I,
+            )
+        )
+    )
+    for fact in facts:
+        if fact.claim_type != "plan":
+            relevant.append(fact)
+            continue
+        if any(_contains_chess_token(fact.text, token) for token in focus_tokens):
+            relevant.append(fact)
+            continue
+        actor = _explicit_plan_actor(fact.text)
+        if actor is None:
+            if asks_for_focus_rationale and fact.match_kind not in {
+                "position",
+                "position_after_move",
+            }:
+                # A generic opening plan with no named side and no focus move
+                # cannot answer why this side's concrete move is useful.
+                continue
+            relevant.append(fact)
+            continue
+        if actor == board.turn:
+            relevant.append(fact)
+            continue
+        if _question_requests_side(question, actor, focus_side=board.turn):
+            relevant.append(fact)
+    return tuple(relevant)
+
+
+def _contains_chess_token(text: str, token: str) -> bool:
+    return bool(re.search(rf"(?<![A-Za-z0-9]){re.escape(token)}(?![A-Za-z0-9])", text, re.I))
+
+
+def _explicit_plan_actor(text: str) -> chess.Color | None:
+    normalized = text.casefold().replace("’", "'")
+    subject_patterns = (
+        r"\b(white|black)\s+(?:immediately\s+)?(?:can|could|should|must|aims?|tries|"
+        r"intends?|seeks?|plans?|uses?|creates?|plays?|gains?|keeps?|develops?|"
+        r"controls?|attacks?|defends?|wants?|has)\b",
+        r"\b(wei(?:ß|ss)|schwarz)(?:e|er|en|em)?\s+(?:kann|könnte|sollte|muss|will|"
+        r"versucht|plant|spielt|gewinnt|behält|entwickelt|kontrolliert|greift|"
+        r"verteidigt|hat)\b",
+    )
+    for pattern in subject_patterns:
+        if match := re.search(pattern, normalized):
+            return _named_chess_color(match.group(1))
+    context_patterns = (
+        r"\b(?:playing|played|starting|started)\s+(?:second\s+)?as\s+(white|black)\b",
+        r"\b(?:for|by)\s+(white|black)\b",
+        r"\b(white|black)'s\s+(?:plan|strategy|idea|aim)\b",
+        r"\b(?:für|von)\s+(wei(?:ß|ss)|schwarz)(?:e|er|en|em)?\b",
+        r"\b(wei(?:ß|ss)|schwarz)(?:e|er|en|em)?\s+(?:plan|strategie|idee|ziel)\b",
+    )
+    for pattern in context_patterns:
+        if match := re.search(pattern, normalized):
+            return _named_chess_color(match.group(1))
+    return None
+
+
+def _named_chess_color(name: str) -> chess.Color:
+    return chess.WHITE if name.startswith(("white", "wei")) else chess.BLACK
+
+
+def _question_requests_side(
+    question: str, side: chess.Color, *, focus_side: chess.Color
+) -> bool:
+    normalized = question.casefold()
+    if side != focus_side and re.search(r"\b(?:gegner|gegnerin|opponent)\w*\b", normalized):
+        return True
+    pattern = (
+        r"\b(?:white|wei(?:ß|ss))\w*\b"
+        if side == chess.WHITE
+        else r"\b(?:black|schwarz)\w*\b"
+    )
+    return bool(re.search(pattern, normalized))
 
 
 def _move_concept(board: chess.Board, move: chess.Move) -> str:
@@ -2748,6 +3069,71 @@ def _piece_name_singular(piece: chess.Piece | None) -> str:
         chess.QUEEN: "Dame",
         chess.KING: "König",
     }[piece.piece_type]
+
+
+def _newly_exposed_valuable_piece_context(board: chess.Board, move: chess.Move) -> str:
+    """Explain an immediate legal queen/rook capture created by vacating a line."""
+
+    moving_piece = board.piece_at(move.from_square)
+    if moving_piece is None:
+        return ""
+    mover = board.turn
+    opponent = not mover
+    projected = board.copy(stack=False)
+    projected.push(move)
+    san = board.san(move)
+
+    for piece_type in (chess.QUEEN, chess.ROOK):
+        for target_square in board.pieces(piece_type, mover):
+            if board.is_attacked_by(opponent, target_square):
+                continue
+            if not projected.is_attacked_by(opponent, target_square):
+                continue
+            captures = [
+                reply
+                for reply in projected.generate_legal_captures()
+                if reply.to_square == target_square
+            ]
+            if not captures:
+                continue
+            reply = captures[0]
+            attacker = projected.piece_at(reply.from_square)
+            between = chess.between(reply.from_square, target_square)
+            vacated_line = bool(between & chess.BB_SQUARES[move.from_square])
+            if attacker is None or not vacated_line:
+                continue
+
+            reply_san = projected.san(reply)
+            opponent_name = "Schwarz" if opponent == chess.BLACK else "Weiß"
+            target_name = "deine Dame" if piece_type == chess.QUEEN else "deinen Turm"
+            moved_name = _piece_name_singular(moving_piece)
+            line = _line_square_names(reply.from_square, target_square)
+            line_kind = "Diagonale" if attacker.piece_type == chess.BISHOP else "Linie"
+            return (
+                f"Nach {san} kann {opponent_name} sofort mit {reply_san} {target_name} "
+                f"schlagen. Dein {moved_name} auf {chess.square_name(move.from_square)} hatte "
+                f"bis dahin die {line_kind} {line} blockiert."
+            )
+    return ""
+
+
+def _line_square_names(from_square: chess.Square, to_square: chess.Square) -> str:
+    from_file = chess.square_file(from_square)
+    from_rank = chess.square_rank(from_square)
+    to_file = chess.square_file(to_square)
+    to_rank = chess.square_rank(to_square)
+    file_step = (to_file > from_file) - (to_file < from_file)
+    rank_step = (to_rank > from_rank) - (to_rank < from_rank)
+    file_index = from_file
+    rank_index = from_rank
+    squares: list[str] = []
+    while True:
+        squares.append(chess.square_name(chess.square(file_index, rank_index)))
+        if file_index == to_file and rank_index == to_rank:
+            break
+        file_index += file_step
+        rank_index += rank_step
+    return "–".join(squares)
 
 
 def _piece_name_accusative(piece: chess.Piece | None) -> str:

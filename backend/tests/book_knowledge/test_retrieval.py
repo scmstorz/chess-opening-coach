@@ -121,6 +121,47 @@ def _knowledge_database(path: Path) -> None:
     connection.close()
 
 
+def _insert_opening_plan(
+    database: Path, *, ordinal: int, title: str, text: str, source_ref: str
+) -> None:
+    connection = connect_writable(database)
+    chunk = connection.execute(
+        """
+        INSERT INTO chunks(
+            book_id, ordinal, title, section_path, page_start, page_end,
+            text, text_sha256, char_count, token_estimate, source_ref
+        ) VALUES('book_test', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            ordinal,
+            title,
+            f"Openings > {title}",
+            ordinal,
+            ordinal,
+            text,
+            f"hash-{ordinal}",
+            len(text),
+            20,
+            source_ref,
+        ),
+    )
+    connection.execute(
+        "INSERT INTO chunks_fts(chunk_id, title, section_path, text) VALUES(?, ?, ?, ?)",
+        (chunk.lastrowid, title, f"Openings > {title}", text),
+    )
+    connection.execute(
+        """
+        INSERT INTO claims(
+            book_id, chunk_id, page_number, claim_type, text,
+            confidence, extraction_method, validation_status
+        ) VALUES('book_test', ?, ?, 'plan', ?, 0.9, 'fixture', 'source_only')
+        """,
+        (chunk.lastrowid, ordinal, text),
+    )
+    connection.commit()
+    connection.close()
+
+
 def test_german_alias_and_exact_position_retrieve_safe_fact(tmp_path: Path) -> None:
     database = tmp_path / "knowledge.db"
     _knowledge_database(database)
@@ -287,3 +328,36 @@ def test_broad_move_match_does_not_admit_variation_specific_recommendation(
     assert evidence.facts
     assert {fact.claim_type for fact in evidence.facts} == {"plan"}
     assert all("risky unrelated gambit" not in fact.text for fact in evidence.facts)
+
+
+def test_variation_name_does_not_retrieve_other_generic_defense_chapters(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "knowledge.db"
+    _knowledge_database(database)
+    _insert_opening_plan(
+        database,
+        ordinal=40,
+        title="French Defense",
+        text="The French Defense gives Black a compact defensive plan.",
+        source_ref="book_test:p40:c0040",
+    )
+    _insert_opening_plan(
+        database,
+        ordinal=50,
+        title="Dutch Defence",
+        text="The Dutch Defence gives Black a kingside plan.",
+        source_ref="book_test:p50:c0050",
+    )
+
+    evidence = BookKnowledgeBase(database).retrieve(
+        question="Warum ist c4 hier gut?",
+        board=chess.Board(),
+        opening=OpeningIdentity("A90", "Dutch Defense: Stonewall Variation"),
+        focus_move=chess.Move.from_uci("c2c4"),
+    )
+
+    assert evidence.facts
+    assert {fact.citation.title for fact in evidence.facts} == {"Test Book"}
+    assert all("French" not in fact.text for fact in evidence.facts)
+    assert any("Dutch" in fact.text for fact in evidence.facts)

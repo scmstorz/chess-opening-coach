@@ -389,6 +389,62 @@ def test_question_uses_the_first_of_multiple_named_legal_moves() -> None:
     assert reversed_order == chess.Move.from_uci("b5a4")
 
 
+def test_contradictory_piece_notation_requires_confirmation_before_analysis() -> None:
+    coach = service()
+    session = coach.create_session("white")
+    active = coach.sessions[session["session_id"]]
+    board = chess.Board()
+    for san in ("e4", "g6", "d4", "Bg7", "Nf3", "d6", "c4", "Bg4", "Nc3", "Nc6", "d5", "Nd4"):
+        board.push_san(san)
+    active.board = board
+    active.opening = OpeningIdentity("B06", "Modern Defense")
+
+    clarification = coach.answer_question(
+        session["session_id"],
+        "Warum ist Kf3xKd4 nicht gut?",
+        "c1e3",
+    )["message"]
+
+    assert clarification["kind"] == "clarification"
+    assert clarification["move"] == "Nxd4"
+    assert clarification["move_uci"] == "f3d4"
+    assert clarification["engine"] is None
+    assert clarification["summary"] == (
+        "Meinst du Nxd4 – also, dass dein Springer von f3 den Springer auf d4 schlägt?"
+    )
+    assert "K für King" in clarification["details"]
+    assert "N für Knight" in clarification["details"]
+
+
+def test_confirmed_move_question_prioritizes_immediate_queen_loss() -> None:
+    coach = service()
+    session = coach.create_session("white")
+    active = coach.sessions[session["session_id"]]
+    board = chess.Board()
+    for san in ("e4", "g6", "d4", "Bg7", "Nf3", "d6", "c4", "Bg4", "Nc3", "Nc6", "d5", "Nd4"):
+        board.push_san(san)
+    active.board = board
+    active.opening = OpeningIdentity("B06", "Modern Defense")
+    coach.answer_question(session["session_id"], "Warum ist Kf3xKd4 nicht gut?", "c1e3")
+
+    answer = coach.answer_question(session["session_id"], "ja")["message"]
+
+    assert answer["kind"] == "question"
+    assert answer["question"] == "ja"
+    assert answer["move"] == "Nxd4"
+    assert answer["summary"] == (
+        "Nach Nxd4 kann Schwarz sofort mit Bxd1 deine Dame schlagen. Dein Springer auf f3 "
+        "hatte bis dahin die Diagonale g4–f3–e2–d1 blockiert."
+    )
+    assert answer["source"] == "deterministic"
+    assert answer["references"] == []
+    assert answer["knowledge"]["reason"] == "immediate_tactic_takes_priority"
+    assert all(
+        section["title"] != "Buchgestützter Plan"
+        for section in answer["explanation_sections"]
+    )
+
+
 def test_question_about_suggestion_is_grounded_without_playing_the_move() -> None:
     coach = service()
     session = coach.create_session("white")

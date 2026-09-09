@@ -1547,3 +1547,79 @@ turn undo, and summary counts. All 78 backend tests, frontend lint, and the
 production build pass. A real learner play session remains the necessary next
 test because no automated check can establish that the controls are pleasant
 to use or that the three labels feel natural during play.
+
+### Grounded did not yet mean relevant
+
+The first live feedback after adding the rating controls exposed a presentation
+problem and a deeper retrieval problem. One expanded answer rendered three large
+cards for three passages from the same book. The claim-level references were
+valuable for an audit, but repeating the title, author, and status did not help
+the learner. The UI now groups by stable book ID, merges adjacent or overlapping
+page ranges, retains disjoint ranges, and displays the contributing passage
+count once. This is only a view aggregation; the backend and feedback snapshot
+keep every source reference.
+
+A question about why White's `c4` was useful began with a book statement about a
+strategy for Black in the Dutch Defense. The statement was attributed and had
+survived the synthesis critic, but it was irrelevant in two independent ways.
+The stored interaction showed a Modern Defense pre-move FEN, while the broad FTS
+query had combined chapters through the generic word `Defense`. The surviving
+Dutch statement also explicitly described Black while the focused mover was
+White.
+
+The repair adds two gates after full-text search. The first requires the
+normalized opening family in broad opening, move, and question matches; a
+variation suffix is ignored and British/American `Defence` spelling is
+normalized. The second inspects broad plan claims for an explicit actor. An
+opponent plan cannot justify the focused side's move unless the learner asks for
+that opponent's plan. An actorless broad plan is also withheld from a concrete
+“why is this move good?” question unless it has exact-position evidence. This
+reduces recall on imperfectly sectioned books, but no evidence is better than a
+fluent wrong-side explanation. Querying the actual stored `c4` FEN against the
+three-book database now returns zero claims instead of the earlier French,
+Bogo-Indian, and Dutch mixture.
+
+### Improvised notation reveals an unsafe focus fallback
+
+In the position after `1.e4 g6 2.d4 Bg7 3.Nf3 d6 4.c4 Bg4 5.Nc3 Nc6 6.d5 Nd4`,
+the learner asked why `Kf3xKd4` was not good. International notation uses `K`
+for king and `N` for knight, so the string was not valid SAN. The fields still
+made one intended move highly likely: the knight on `f3` can capture the knight
+on `d4`. The service recognized neither the malformed description nor its
+uncertainty. It silently retained the UI's highlighted suggestion and answered
+about `Be3` instead.
+
+The first proposed repair was to accept source and destination coordinates as a
+robust alias. The learner corrected the product requirement: when the piece
+letters contradict the board, the coach must ask what was meant. Silent repair
+would hide uncertainty and miss a useful notation lesson. The chosen resolver
+therefore accepts verbose coordinates only through `python-chess` legality, but
+returns a confirmation prompt for conflicting designators. The proposed move is
+stored with the exact FEN. A simple affirmative answer continues the original
+question only if the position has not changed.
+
+This case also exposed a priority failure in explanation composition. `Nxd4`
+vacates `f3`, which had blocked the bishop on `g4` from the queen on `d1` through
+`e2`. Black can immediately answer `...Bxd1`. The correct beginner explanation
+does not require a long-term plan, book passage, or another model. A new narrow
+board detector checks whether the focused move newly permits a legal slider
+capture of a previously unattacked queen or rook and whether the vacated square
+lies between attacker and target. When it fires, the causal tactical sentence
+is the short answer and book retrieval plus LLM selection are skipped.
+
+The real local production components reproduced the required conversation. The
+first response asked whether the learner meant `Nxd4` and explained `K` versus
+`N`. After `ja`, the coach stated that `...Bxd1` wins the queen and identified
+the opened `g4-f3-e2-d1` diagonal. No book citation appeared. This is a compact
+example of the project's principle becoming an ordering rule: immediate board
+truth outranks engine comparison; engine comparison outranks broad strategic
+interpretation; the LLM operates only after the relevant truth has been chosen.
+
+ADR 0013 records the alternatives and boundaries. The exact incidents,
+production-path outputs, and targeted regression scope are preserved in
+`docs/evaluations/2026-09-09-relevance-and-tactical-priority.md`.
+
+The final checkpoint reports 83 passing backend tests plus Ruff, frontend lint,
+the rendered-page test, production build, and publication-safety scan. The scan
+covered 95 tracked and historical paths and compared the public code text with
+105 private-corpus variants without detecting a source leak.

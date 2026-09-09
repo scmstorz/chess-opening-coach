@@ -31,10 +31,19 @@ type BookReference = {
   match_kind: string;
 };
 
+type GroupedBookReference = Omit<
+  BookReference,
+  "pdf_page_start" | "pdf_page_end" | "source_ref" | "warnings" | "match_kind"
+> & {
+  page_ranges: { start: number; end: number }[];
+  reference_count: number;
+};
+
 type KnowledgeInfo = {
   status: "grounded" | "no_evidence" | "insufficient_evidence" | "model_unavailable" | "rejected";
   reason: string | null;
   evidence_count: number;
+  perspective_filtered_count?: number;
   used_evidence_ids: string[];
 };
 
@@ -67,7 +76,7 @@ type FeedbackReviewRecord = ExplanationFeedback & {
 
 type CoachMessage = {
   message_id?: string;
-  kind?: "move" | "question" | "phase" | "summary";
+  kind?: "move" | "question" | "clarification" | "phase" | "summary";
   actor: "learner" | "coach";
   question?: string;
   move: string | null;
@@ -175,10 +184,67 @@ type Health = {
   books?: { available: boolean; book_count: number; chunk_count: number; reason: string | null };
 };
 
-function pdfPageLabel(reference: BookReference): string {
-  return reference.pdf_page_start === reference.pdf_page_end
-    ? `PDF-Seite ${reference.pdf_page_start}`
-    : `PDF-Seiten ${reference.pdf_page_start}–${reference.pdf_page_end}`;
+function groupBookReferences(references: BookReference[]): GroupedBookReference[] {
+  const groups = new Map<string, BookReference[]>();
+  for (const reference of references) {
+    const current = groups.get(reference.book_id) ?? [];
+    current.push(reference);
+    groups.set(reference.book_id, current);
+  }
+  const statusOrder: Record<BookReference["status"], number> = {
+    source_only: 0,
+    legality_checked: 1,
+    engine_checked: 2,
+  };
+  return [...groups.values()].map((bookReferences) => {
+    const first = bookReferences[0];
+    const pageRanges = bookReferences
+      .map((reference) => ({
+        start: reference.pdf_page_start,
+        end: reference.pdf_page_end,
+      }))
+      .sort((left, right) => left.start - right.start || left.end - right.end)
+      .reduce<{ start: number; end: number }[]>((merged, range) => {
+        const previous = merged.at(-1);
+        if (previous && range.start <= previous.end + 1) {
+          previous.end = Math.max(previous.end, range.end);
+        } else {
+          merged.push({ ...range });
+        }
+        return merged;
+      }, []);
+    const conservativeStatus = bookReferences.reduce<BookReference["status"]>(
+      (current, reference) => (
+        statusOrder[reference.status] < statusOrder[current] ? reference.status : current
+      ),
+      "engine_checked",
+    );
+    return {
+      kind: "book",
+      book_id: first.book_id,
+      title: first.title,
+      author: first.author,
+      year: first.year,
+      status: conservativeStatus,
+      page_ranges: pageRanges,
+      reference_count: bookReferences.length,
+    };
+  });
+}
+
+function pdfPageRangesLabel(reference: GroupedBookReference): string {
+  const ranges = reference.page_ranges.map((range) => (
+    range.start === range.end ? `${range.start}` : `${range.start}–${range.end}`
+  ));
+  const singular = ranges.length === 1 && reference.page_ranges[0].start === reference.page_ranges[0].end;
+  return `PDF-${singular ? "Seite" : "Seiten"} ${ranges.join(", ")}`;
+}
+
+function groupedReferenceStatus(reference: GroupedBookReference): string {
+  const count = `${reference.reference_count} ${reference.reference_count === 1 ? "Buchstelle" : "Buchstellen"}`;
+  if (reference.status === "engine_checked") return `${count} · mit Stockfish geprüft`;
+  if (reference.status === "legality_checked") return `${count} · Buchzüge auf Legalität geprüft`;
+  return `${count} · Buchaussagen nicht unabhängig verifiziert`;
 }
 
 const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
@@ -1087,10 +1153,10 @@ export default function Home() {
               </article>
             ) : (
               messages.map((message, index) => (
-                <article className={`coach-message ${message.actor}${message.kind === "question" ? " question-answer" : ""}`} key={`${index}-${message.move}-${message.question ?? message.summary}`}>
+                <article className={`coach-message ${message.actor}${message.kind === "question" || message.kind === "clarification" ? " question-answer" : ""}`} key={`${index}-${message.move}-${message.question ?? message.summary}`}>
                   <span className="message-index">{String(index + 1).padStart(2, "0")}</span>
                   <div>
-                    <small className="message-author">{message.kind === "question" ? "Antwort zur Frage" : message.kind === "phase" ? "Phasenwechsel" : message.kind === "summary" ? "Lernbilanz" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
+                    <small className="message-author">{message.kind === "clarification" ? "Rückfrage zum Zug" : message.kind === "question" ? "Antwort zur Frage" : message.kind === "phase" ? "Phasenwechsel" : message.kind === "summary" ? "Lernbilanz" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
                     {message.question && <blockquote className="question-quote">„{message.question}“</blockquote>}
                     <p>{message.summary}</p>
                     <details>
@@ -1108,27 +1174,21 @@ export default function Home() {
                       {message.references && message.references.length > 0 && (
                         <div className="book-references" aria-label="Verwendete Buchquellen">
                           <h4>Buchquelle</h4>
-                          {message.references.map((reference) => (
-                            <div className="book-reference" key={reference.source_ref}>
+                          {groupBookReferences(message.references).map((reference) => (
+                            <div className="book-reference" key={reference.book_id}>
                               <strong>{reference.title}</strong>
                               <span>
-                                {[reference.author, reference.year, pdfPageLabel(reference)]
+                                {[reference.author, reference.year, pdfPageRangesLabel(reference)]
                                   .filter(Boolean)
                                   .join(" · ")}
                               </span>
-                              <small>
-                                {reference.status === "engine_checked"
-                                  ? "Buchaussage und Stellung mit Stockfish geprüft"
-                                  : reference.status === "legality_checked"
-                                  ? "Buchzug auf Legalität geprüft"
-                                  : "Buchaussage · nicht unabhängig verifiziert"}
-                              </small>
+                              <small>{groupedReferenceStatus(reference)}</small>
                             </div>
                           ))}
                         </div>
                       )}
                     </details>
-                    {session && message.message_id && (
+                    {session && message.message_id && message.kind !== "clarification" && (
                       <ExplanationFeedbackControl
                         key={message.message_id}
                         message={message}

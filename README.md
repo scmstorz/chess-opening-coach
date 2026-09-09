@@ -34,12 +34,14 @@ operator.
 - Theory-aware and Stockfish-checked coach moves
 - Non-playing `Zug vorschlagen` hint from opening theory or Stockfish, with source/target highlighting
 - Grounded follow-up questions about the current position or suggested move
+- Friendly clarification when source/target squares imply a move but the typed piece notation conflicts
 - Board-derived explanations of direct threats, controlled squares, and concrete engine lines
+- Deterministic priority for immediate queen or rook loss before plans, books, or LLM wording
 - Optional `Tief erklären` analysis with consistently rechecked candidates and three opponent-reply branches
 - Plan-oriented explanations that retain only follow-up ideas recurring across independent reply branches
 - Expandable sections for long-term plan, concrete effects, alternatives, and engine lines
 - A local PDF knowledge compiler with page-level provenance, FTS retrieval, and explicit issue quarantine
-- Grounded German book synthesis with compact source metadata and an honest evidence fallback
+- Grounded German book synthesis with one compact source card per book and an honest evidence fallback
 - Learned countdown estimates for normal and deep coach operations
 - Visible engine evaluation using the standard White-positive convention
 - German feedback after every learner and coach move

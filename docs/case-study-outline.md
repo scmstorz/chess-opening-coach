@@ -127,6 +127,17 @@
 43. Repeated learner objections become a product capability: a three-state,
     low-friction feedback loop preserves the complete explanation context while
     treating human ratings as review evidence rather than automatic chess truth.
+44. A `c4` explanation demonstrates that provenance is still not relevance: a
+    correctly cited plan for Black in a different “Defense” cannot answer why
+    White's move is useful. Opening-family and actor gates prefer no evidence.
+45. The learner's improvised `Kf3xKd4` notation reveals an unsafe fallback to a
+    highlighted `Be3`. The coach now asks about the uniquely inferable `Nxd4`
+    instead of silently guessing and teaches `K` versus `N` in context.
+46. The confirmed position contains a one-ply answer—`...Bxd1` wins the queen.
+    Deterministic tactical priority produces a shorter, better explanation than
+    Stockfish plan extraction, book RAG, or a multi-model ensemble.
+47. Three repetitive citation cards become one presentation aggregate per book,
+    while claim-level references remain intact for audits and feedback.
 
 ## Evidence already captured
 
@@ -194,6 +205,12 @@
   fixture-candidate export
 - A documented distinction between “factual error” and “did not help me
   understand,” derived directly from the learner's earlier objections
+- A persisted real-world FEN showing a cross-opening, wrong-side `c4` retrieval
+  failure and a repaired fail-closed result with zero irrelevant claims
+- A full malformed-notation confirmation regression tied to an unchanged FEN
+- A deterministic `Nxd4 ...Bxd1` queen-loss regression that bypasses book and LLM
+  layers because immediate tactics have higher explanatory priority
+- A compact one-card-per-book source display that preserves internal references
 
 ## Questions for later evaluation
 

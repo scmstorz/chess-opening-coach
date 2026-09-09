@@ -10,6 +10,9 @@ from test_service import FakeEngine
 
 
 class FakeBookKnowledge:
+    def __init__(self, text: str = "White's plan is pressure on the center.") -> None:
+        self.text = text
+
     def status(self) -> dict[str, Any]:
         return {"available": True, "book_count": 1, "chunk_count": 1, "reason": None}
 
@@ -28,7 +31,7 @@ class FakeBookKnowledge:
             (
                 BookFact(
                     "book:1",
-                    "The plan is pressure on the center.",
+                    self.text,
                     "plan",
                     "source_only",
                     citation,
@@ -108,6 +111,55 @@ def test_question_adds_german_book_synthesis_and_path_free_reference() -> None:
         "title": "Buchgestützter Plan",
         "text": "Die Buchquelle beschreibt Druck auf das Zentrum als langfristige Idee.",
     }
+
+
+def test_question_drops_generic_opponent_plan_from_own_move_explanation() -> None:
+    coach = CoachService(
+        OpeningBook(),
+        FakeEngine(),
+        FakeGroundedBookTutor(),
+        SQLiteStore(":memory:"),
+        book_knowledge=FakeBookKnowledge(
+            "The Dutch Defense is a strategy you can implement if you are playing as black."
+        ),
+    )
+    session = coach.create_session("white")
+
+    message = coach.answer_question(
+        session["session_id"], "Warum ist c4 hier gut?", "c2c4"
+    )["message"]
+
+    assert all(
+        section["title"] != "Buchgestützter Plan"
+        for section in message["explanation_sections"]
+    )
+    assert message["references"] == []
+    assert message["knowledge"]["status"] == "insufficient_evidence"
+    assert message["knowledge"]["reason"] == "opponent_plan_not_relevant_to_focus_move"
+    assert message["knowledge"]["perspective_filtered_count"] == 1
+
+
+def test_question_keeps_opponent_plan_when_the_learner_explicitly_asks_for_it() -> None:
+    coach = CoachService(
+        OpeningBook(),
+        FakeEngine(),
+        FakeGroundedBookTutor(),
+        SQLiteStore(":memory:"),
+        book_knowledge=FakeBookKnowledge(
+            "The Dutch Defense is a strategy you can implement if you are playing as black."
+        ),
+    )
+    session = coach.create_session("white")
+
+    message = coach.answer_question(
+        session["session_id"],
+        "Welchen Plan verfolgt Schwarz in dieser Stellung?",
+        "c2c4",
+    )["message"]
+
+    assert message["explanation_sections"][0]["title"] == "Buchgestützter Plan"
+    assert message["references"]
+    assert message["knowledge"]["perspective_filtered_count"] == 0
 
 
 def test_question_states_knowledge_boundary_when_no_causal_reason_is_supported() -> None:

@@ -229,6 +229,14 @@ unchanged session position. An explicitly named legal SAN/UCI move in the
 question takes precedence over the highlighted move; otherwise the service uses
 the same theory-first, Stockfish-after-theory selection as the visible hint.
 
+Verbose source/target descriptions are resolved through the current legal move
+set. If their piece letters contradict the actual pieces—for example `Kf3xKd4`
+where `f3` contains a knight—the service does not silently repair the input or
+fall back to the highlighted suggestion. It asks whether the learner means
+`Nxd4`, explains the international `K`/`N` distinction, and stores that proposed
+interpretation with the current FEN. An affirmative response continues only if
+the board is unchanged.
+
 Questions may also refer to an accepted learner move after the coach has already
 replied. The service replays accepted transition messages, resolves the named or
 last learner move, and changes only the analysis context to the verified board
@@ -244,6 +252,7 @@ user question + current FEN + verified transition history + optional highlighted
   -> when necessary, reconstruct the historical pre-move board
   -> check local theory membership and resulting opening identity
   -> run standard MultiPV, or a two-pass depth-24 comparison in deep mode
+  -> promote an immediate board-proven material consequence, when present
   -> compare concrete board effects and principal variations
   -> derive cautious plan patterns and atomic deterministic German answer facts
   -> let Ollama select only the fact IDs most relevant to the question
@@ -255,6 +264,12 @@ medium-term plan, recurring patterns across lines, concrete effects, alternative
 comparison, and raw Stockfish calculation. Standard answers omit the recurring-
 patterns section. This prevents a fluent summary from hiding the evidence needed
 to learn from the position.
+
+Immediate one-ply loss of a previously unattacked queen or rook is a stronger
+answer than a general plan. The deterministic detector requires a legal opponent
+capture and verifies that the focused move vacated a square between the slider
+and its target. When this narrow condition holds, its causal sentence becomes
+the answer and both LLM selection and book retrieval are skipped.
 
 The UI estimates remaining time from an operation-specific rolling average kept
 in browser storage. It counts down only as an estimate and changes to “noch einen
@@ -317,6 +332,13 @@ disabled because SAN alone is not a position identity. The runtime returns at
 most a few short safe claims. It never sends the entire book to a model and
 never exposes a local filesystem path to the browser.
 
+Broad full-text results must still contain the normalized opening-family name;
+a generic term such as `Defense` cannot mix Dutch, French, and Modern chapters.
+For a question about the focused side's move, broad plan claims explicitly
+written for the opponent are excluded. Actorless broad plans are excluded as
+well unless exact-position evidence makes them locally relevant. A learner who
+explicitly asks about the opponent's plan can still receive those claims.
+
 Grounded synthesis is intentionally asymmetric. A `source_only` book statement
 is always attributed as something the book or author describes. An
 opening-level source statement cannot be rewritten as the direct effect of a
@@ -328,7 +350,10 @@ unattributed source claims, excessive certainty, and move-level overstatement.
 When the critic identifies individual unsupported sentences, only those
 sentences and their evidence links are removed; supported source sentences may
 survive. An empty supported remainder rejects the complete synthesis.
-The UI receives only a German explanation and compact source metadata. Failed
+The UI receives only a German explanation and compact source metadata. Multiple
+used passages from one book render as one card with merged page ranges and the
+most conservative validation label; the underlying claim-level references stay
+separate for diagnostics and feedback. Failed
 generation, weak evidence, or rejected grounding produces a structured status
 and an explicit learner-facing knowledge boundary.
 

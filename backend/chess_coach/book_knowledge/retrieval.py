@@ -71,6 +71,20 @@ def _expression(text: str, operator: str) -> str | None:
     return f" {operator} ".join(escaped)
 
 
+def _opening_family_name(name: str) -> str:
+    """Return a spelling-normalized family name without a Lichess variation suffix."""
+
+    family = normalize_text(name.split(":", 1)[0])
+    return family.replace("defence", "defense")
+
+
+def _matches_opening_family(row: dict[str, Any], family: str) -> bool:
+    context = normalize_text(f"{row['title']} {row['section_path']}").replace(
+        "defence", "defense"
+    )
+    return family in context
+
+
 def query_expressions(connection: sqlite3.Connection, query: str) -> list[str]:
     normalized = normalize_text(query)
     expressions: list[str] = []
@@ -273,32 +287,33 @@ class BookKnowledgeBase:
         add(exact_rows(board), 1, "position")
         if opening:
             opening_rows = search_chunks(connection, opening.name, limit=fetch_limit)
-            exact_title_rows = [
+            opening_family = _opening_family_name(opening.name)
+            family_rows = [
                 row
                 for row in opening_rows
-                if normalize_text(row["title"]) == normalize_text(opening.name)
+                if _matches_opening_family(row, opening_family)
             ]
-            add(exact_title_rows or opening_rows, 2, "opening")
+            # An OR-expanded FTS query for a name such as "Dutch Defense:
+            # Stonewall" can otherwise admit every chapter containing the
+            # generic word "Defense". No family match is safer than silently
+            # importing plans from a different opening.
+            add(family_rows, 2, "opening")
         if focus_move and opening:
             san = board.san(focus_move).rstrip("+#")
             move_query = f"{opening.name} {san}"
             move_rows = search_chunks(connection, move_query, limit=fetch_limit)
-            opening_term = normalize_text(opening.name)
             move_rows = [
                 row
                 for row in move_rows
-                if opening_term
-                in normalize_text(f"{row['title']} {row['section_path']}")
+                if _matches_opening_family(row, opening_family)
             ]
             add(move_rows, 3, "move")
         if opening:
             question_rows = search_chunks(connection, question, limit=fetch_limit)
-            opening_term = normalize_text(opening.name)
             question_rows = [
                 row
                 for row in question_rows
-                if opening_term
-                in normalize_text(f"{row['title']} {row['section_path']}")
+                if _matches_opening_family(row, opening_family)
             ]
             add(question_rows, 4, "question")
         return sorted(

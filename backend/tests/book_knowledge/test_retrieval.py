@@ -169,3 +169,20 @@ def test_missing_database_uses_an_empty_degraded_provider(tmp_path: Path) -> Non
 
     null = NullBookKnowledgeBase()
     assert null.status()["available"] is False
+
+
+def test_unidentified_position_does_not_use_ambiguous_san_only_book_matches(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "knowledge.db"
+    _knowledge_database(database)
+    knowledge = BookKnowledgeBase(database)
+
+    evidence = knowledge.retrieve(
+        question="Warum ist e4 gut?",
+        board=chess.Board(),
+        opening=None,
+        focus_move=chess.Move.from_uci("e2e4"),
+    )
+
+    assert evidence.facts == ()

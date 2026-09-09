@@ -122,4 +122,7 @@ def test_question_states_knowledge_boundary_when_no_causal_reason_is_supported()
 
     assert message["knowledge"]["status"] == "insufficient_evidence"
     assert "keine ausreichend belegte Erklärung" in message["summary"]
-    assert message["explanation_sections"][0]["title"] == "Wissensgrenze"
+    assert all(
+        section["title"] != "Wissensgrenze"
+        for section in message["explanation_sections"]
+    )

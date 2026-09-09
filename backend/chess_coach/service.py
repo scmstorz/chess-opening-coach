@@ -12,7 +12,13 @@ import chess
 
 from chess_coach.book_knowledge import BookKnowledgeBase, NullBookKnowledgeBase
 from chess_coach.book_knowledge.models import BookEvidence
-from chess_coach.engine import CandidateAnalysis, MoveAnalysis, MoveComparison, StockfishService
+from chess_coach.engine import (
+    CandidateAnalysis,
+    MoveAnalysis,
+    MoveComparison,
+    MovePlanAnalysis,
+    StockfishService,
+)
 from chess_coach.openings import OpeningBook, OpeningIdentity, TheoryMove
 from chess_coach.storage import SQLiteStore
 from chess_coach.tutor import OllamaTutor, TutorText
@@ -390,7 +396,9 @@ class CoachService:
             used_evidence_ids: tuple[str, ...] = ()
             answer_facts: list[dict[str, Any]] = []
             selection_facts: dict[str, Any] | None = None
-            move = self._mentioned_legal_move(board, clean_question)
+            mentioned_moves = self._mentioned_legal_moves(board, clean_question)
+            move = mentioned_moves[0] if mentioned_moves else None
+            comparison_move = mentioned_moves[1] if len(mentioned_moves) > 1 else None
             if move is None and focus_move_uci:
                 try:
                     focused = chess.Move.from_uci(focus_move_uci)
@@ -429,6 +437,7 @@ class CoachService:
                 theory_match = False
                 opening = session.opening
                 explanation_sections: list[dict[str, str]] = []
+                plan_analysis = None
             else:
                 san = board.san(move)
                 theory_moves = (
@@ -436,10 +445,23 @@ class CoachService:
                 )
                 theory_match = move.uci() in {candidate.uci for candidate in theory_moves}
                 comparison = (
-                    self.engine.compare_moves(board, count=4, focus_move=move, deep=True)
+                    self.engine.compare_moves(
+                        board,
+                        count=4,
+                        focus_move=move,
+                        required_moves=(comparison_move,) if comparison_move else (),
+                        deep=True,
+                    )
                     if deep
-                    else self.engine.compare_moves(board, count=3, focus_move=move)
+                    else self.engine.compare_moves(
+                        board,
+                        count=3,
+                        focus_move=move,
+                        required_moves=(comparison_move,) if comparison_move else (),
+                    )
                 )
+                plan_method = getattr(self.engine, "analyze_plan_branches", None)
+                plan_analysis = plan_method(board, move) if deep and plan_method else None
                 analysis = StockfishService.analysis_from_comparison(board, move, comparison)
                 if not analysis.available:
                     analysis = precomputed_analysis or self.engine.analyze_move(board, move)
@@ -454,6 +476,8 @@ class CoachService:
                     analysis,
                     comparison,
                     opening,
+                    plan_analysis=plan_analysis,
+                    preferred_alternative=comparison_move,
                     deep=deep,
                 )
                 selection_facts = {
@@ -472,6 +496,7 @@ class CoachService:
                     "theory_moves": [candidate.san for candidate in theory_moves[:5]],
                     "engine": asdict(analysis),
                     "engine_comparison": asdict(comparison),
+                    "plan_branches": asdict(plan_analysis) if plan_analysis else None,
                     "answer_facts": answer_facts,
                     "analysis_mode": "deep" if deep else "standard",
                 }
@@ -537,6 +562,10 @@ class CoachService:
                         0,
                         {"title": "Wissensgrenze", "text": limitation},
                     )
+
+            explanation_sections = _deduplicate_explanation_sections(
+                text.summary, explanation_sections
+            )
 
             used_facts = [
                 fact for fact in book_evidence.facts if fact.id in set(used_evidence_ids)
@@ -616,7 +645,7 @@ class CoachService:
             return move, analysis, "engine", None
 
     @staticmethod
-    def _mentioned_legal_move(board: chess.Board, question: str) -> chess.Move | None:
+    def _mentioned_legal_moves(board: chess.Board, question: str) -> list[chess.Move]:
         matches: list[tuple[int, chess.Move]] = []
         for move in board.legal_moves:
             san = board.san(move).rstrip("+#")
@@ -626,7 +655,16 @@ class CoachService:
                 matches.append((match.start(), move))
             if (uci_position := question.lower().find(move.uci().lower())) >= 0:
                 matches.append((uci_position, move))
-        return min(matches, key=lambda item: item[0])[1] if matches else None
+        ordered: list[chess.Move] = []
+        for _, move in sorted(matches, key=lambda item: item[0]):
+            if move not in ordered:
+                ordered.append(move)
+        return ordered
+
+    @staticmethod
+    def _mentioned_legal_move(board: chess.Board, question: str) -> chess.Move | None:
+        moves = CoachService._mentioned_legal_moves(board, question)
+        return moves[0] if moves else None
 
     def _question_fallback(
         self,
@@ -638,6 +676,8 @@ class CoachService:
         comparison: MoveComparison,
         opening: OpeningIdentity | None,
         *,
+        plan_analysis: MovePlanAnalysis | None = None,
+        preferred_alternative: chess.Move | None = None,
         deep: bool = False,
     ) -> tuple[TutorText, list[dict[str, Any]], list[dict[str, str]]]:
         if theory_match:
@@ -669,12 +709,37 @@ class CoachService:
         continuation_text = _continuation_context(board, move, analysis)
         contrast_text = _tactical_contrast(board, move, analysis)
         plan_text = _strategic_plan_text(board, move, comparison)
-        recurring_text = _recurring_plan_text(board, comparison)
-        comparison_text = _candidate_comparison_text(board, move, analysis, comparison)
+        if analysis.loss_pawns is not None and analysis.loss_pawns >= 0.15:
+            # A recovery line after an inferior move is not evidence that the
+            # move itself serves that plan. Keep the explanation on the loss and
+            # the comparison instead of reverse-engineering a justification.
+            plan_text = ""
+        recurring_text = (
+            _cross_branch_plan_text(board, move, plan_analysis)
+            if deep and plan_analysis
+            else _recurring_plan_text(board, comparison)
+        )
+        comparison_text = _candidate_comparison_text(
+            board,
+            move,
+            analysis,
+            comparison,
+            preferred_alternative=preferred_alternative,
+        )
         engine_lines_text = _candidate_lines_text(move, analysis, comparison)
         pv_moves = " ".join(analysis.played_pv_san[:4])
         pv_text = f"Eine kurze Stockfish-Prüfvariante beginnt mit: {pv_moves}." if pv_moves else ""
         if (
+            analysis.available
+            and analysis.loss_pawns is not None
+            and analysis.loss_pawns >= 0.15
+            and analysis.best_move_san
+        ):
+            verdict_text = (
+                f"{san} ist in dieser Analyse nicht der beste Zug; Stockfish bevorzugt "
+                f"{analysis.best_move_san}."
+            )
+        elif (
             theory_match
             and analysis.available
             and analysis.loss_pawns is not None
@@ -685,6 +750,16 @@ class CoachService:
             verdict_text = f"{san} ist hier ein bewährter Eröffnungszug."
         elif analysis.available and analysis.best_move_uci == move.uci():
             verdict_text = f"Stockfish bevorzugt {san} in dieser Stellung."
+        elif (
+            analysis.available
+            and analysis.loss_pawns is not None
+            and analysis.loss_pawns < 0.15
+            and analysis.best_move_san
+        ):
+            verdict_text = (
+                f"Stockfish bewertet {san} praktisch gleichwertig mit "
+                f"{analysis.best_move_san}."
+            )
         else:
             verdict_text = f"{san} ist hier eine legale Alternative."
 
@@ -707,7 +782,13 @@ class CoachService:
             ("pv", pv_text, not engine_lines_text),
         )
         answer_facts = [
-            {"id": fact_id, "text": text, "required": required}
+            {
+                "id": fact_id,
+                "text": text,
+                "required": required,
+                "summary_eligible": fact_id
+                in {"verdict", "plan", "direct_threat", "heuristic"},
+            }
             for fact_id, text, required in fact_values
             if text
         ]
@@ -748,36 +829,44 @@ class CoachService:
             )
             if part
         )
+        plan_section = plan_text or (
+            "Aus den geprüften Varianten lässt sich kein einzelner stabiler Langzeitplan "
+            "belegen. Ich beschränke mich deshalb auf die konkreten Folgen unten."
+        )
         explanation_sections = [
-            {
-                "title": "Mittel- und langfristiger Plan",
-                "text": plan_text
-                or "Die berechneten Varianten zeigen keinen einzelnen stabilen Langzeitplan; "
-                "der Nutzen ist in dieser Stellung eher konkret und kurzfristig.",
-            },
-            *(
-                [
-                    {
-                        "title": "Was mehrere Varianten gemeinsam zeigen",
-                        "text": recurring_text
-                        or "Die Kandidaten führen zu unterschiedlichen Aufbauten; es gibt kein "
-                        "wiederkehrendes Motiv, das Stockfish allein als Begründung ausweist.",
-                    }
-                ]
-                if deep
-                else []
-            ),
-            {"title": "Konkrete Wirkung in der Stellung", "text": concrete_text},
-            {
-                "title": "Warum nicht die naheliegende Alternative?",
-                "text": comparison_text
-                or "Für einen belastbaren Alternativenvergleich fehlen Engine-Kandidaten.",
-            },
-            {
-                "title": "Stockfish-Rechenwege",
-                "text": engine_lines_text or pv_text or quality_text,
-            },
+            {"title": "Mittel- und langfristiger Plan", "text": plan_section},
         ]
+        if deep:
+            explanation_sections.append(
+                {
+                    "title": "Was gegen mehrere Antworten stabil bleibt",
+                    "text": recurring_text
+                    or "Die geprüften Antworten führen zu unterschiedlichen Plänen. "
+                    "Stockfish zeigt hier kein wiederkehrendes Motiv, das eine sichere "
+                    "Langzeitbegründung tragen würde.",
+                }
+            )
+        if concrete_text:
+            explanation_sections.append(
+                {"title": "Konkrete Wirkung in der Stellung", "text": concrete_text}
+            )
+        explanation_sections.extend(
+            [
+                {
+                    "title": "Vergleich mit der besten Alternative",
+                    "text": comparison_text
+                    or "Für einen belastbaren Alternativenvergleich fehlen Engine-Kandidaten.",
+                },
+                {
+                    "title": "Stockfish-Rechenwege",
+                    "text": (
+                        _plan_branch_lines_text(plan_analysis)
+                        if deep and plan_analysis and plan_analysis.available
+                        else engine_lines_text or pv_text or quality_text
+                    ),
+                },
+            ]
+        )
         return fallback, answer_facts, explanation_sections
 
     def _play_coach_move(self, session: GameSession) -> dict[str, Any]:
@@ -1647,10 +1736,19 @@ def _concrete_board_changes(board: chess.Board, move: chess.Move) -> str:
                 projected.occupied_co[moving_color]
             )
             newly_reached = after - before
-            if newly_reached:
+            meaningful = chess.SquareSet(
+                target
+                for target in newly_reached
+                if target in chess.SquareSet(chess.BB_CENTER)
+                or (
+                    (target_piece := projected.piece_at(target)) is not None
+                    and target_piece.color != moving_color
+                )
+            )
+            if meaningful:
                 opened_lines.append(
                     f"{label} auf {chess.square_name(square)} bis "
-                    f"{_limited_square_list(newly_reached)}"
+                    f"{_limited_square_list(meaningful)}"
                 )
     if opened_lines:
         changes.append(
@@ -1855,6 +1953,97 @@ def _recurring_plan_text(board: chess.Board, comparison: MoveComparison) -> str:
     )
 
 
+def _cross_branch_plan_text(
+    board: chess.Board,
+    focus_move: chess.Move,
+    plan: MovePlanAnalysis,
+) -> str:
+    """Explain motifs that survive several plausible replies to the focus move."""
+    if not plan.available or len(plan.branches) < 2:
+        return ""
+    branch_count = len(plan.branches)
+    recurring_moves: Counter[str] = Counter()
+    focus_piece_relocations = 0
+    moving_piece = board.piece_at(focus_move.from_square)
+    for branch in plan.branches:
+        own_followups = set(branch.pv_san[2::2])
+        recurring_moves.update(
+            san for san in own_followups if "x" not in san and "+" not in san
+        )
+        if moving_piece and _focus_piece_moves_again(board, focus_move, branch.pv_san):
+            focus_piece_relocations += 1
+
+    stable = [
+        (san, count)
+        for san, count in recurring_moves.most_common()
+        if count >= 2
+    ][:3]
+    sentences = [
+        f"Stockfish hat nach {board.san(focus_move)} {branch_count} plausible gegnerische "
+        "Antworten getrennt geprüft."
+    ]
+    if stable:
+        descriptions = _join_descriptions(
+            [f"{san} in {count} von {branch_count} Varianten" for san, count in stable]
+        )
+        sentences.append(
+            f"Für deine Seite kehrt danach {descriptions} wieder. Das ist ein vorsichtiger "
+            "Hinweis auf einen robusten Folgeplan, keine erzwungene Zugfolge."
+        )
+    if focus_piece_relocations >= 2:
+        sentences.append(
+            f"In {focus_piece_relocations} von {branch_count} Varianten zieht dieselbe Figur "
+            "später noch einmal weiter; das Zielfeld ist daher eher eine Zwischenstation als "
+            "der endgültige Posten."
+        )
+    if len(sentences) == 1:
+        return ""
+    return " ".join(sentences)
+
+
+def _focus_piece_moves_again(
+    board: chess.Board, focus_move: chess.Move, pv_san: tuple[str, ...]
+) -> bool:
+    if not pv_san:
+        return False
+    replay = board.copy(stack=False)
+    tracked_square = focus_move.from_square
+    for index, san in enumerate(pv_san):
+        try:
+            move = replay.parse_san(san)
+        except (
+            chess.IllegalMoveError,
+            chess.InvalidMoveError,
+            chess.AmbiguousMoveError,
+            ValueError,
+        ):
+            return False
+        if index == 0:
+            if move != focus_move:
+                return False
+            tracked_square = move.to_square
+        elif replay.turn == board.turn and move.from_square == tracked_square:
+            return True
+        if move.to_square == tracked_square and replay.is_capture(move):
+            return False
+        replay.push(move)
+    return False
+
+
+def _plan_branch_lines_text(plan: MovePlanAnalysis) -> str:
+    if not plan.available or not plan.branches:
+        return plan.reason or "Keine vertieften Antwortvarianten verfügbar."
+    lines = []
+    for branch in plan.branches:
+        evaluation = _format_evaluation(branch.evaluation, branch.mate)
+        pv = " ".join(branch.pv_san[:8])
+        lines.append(f"Nach {branch.reply_san} ({evaluation}): {pv}.")
+    return (
+        "Bewertungen aus weißer Sicht; + bedeutet Vorteil für Weiß. "
+        + " ".join(lines)
+    )
+
+
 def _parsed_candidate_line(
     board: chess.Board, candidate: CandidateAnalysis
 ) -> list[tuple[chess.Board, chess.Move]]:
@@ -1880,6 +2069,8 @@ def _candidate_comparison_text(
     focus_move: chess.Move,
     focus_analysis: MoveAnalysis,
     comparison: MoveComparison,
+    *,
+    preferred_alternative: chess.Move | None = None,
 ) -> str:
     if not comparison.available or not comparison.candidates:
         return ""
@@ -1901,7 +2092,31 @@ def _candidate_comparison_text(
         return ""
 
     best = candidates[0]
-    if focus.move_uci == best.move_uci:
+    explicitly_requested = next(
+        (
+            candidate
+            for candidate in candidates
+            if preferred_alternative
+            and candidate.move_uci == preferred_alternative.uci()
+            and candidate.move_uci != focus.move_uci
+        ),
+        None,
+    )
+    if explicitly_requested is not None:
+        alternative = explicitly_requested
+        raw_gap = (
+            alternative.evaluation - focus.evaluation
+            if board.turn == chess.WHITE
+            else focus.evaluation - alternative.evaluation
+        )
+        gap = abs(round(raw_gap, 2))
+        relation = "stärker" if raw_gap > 0 else "schwächer" if raw_gap < 0 else "gleich"
+        comparison_intro = (
+            f"Der ausdrücklich genannte Vergleichszug {alternative.move_san} wird von "
+            f"Stockfish um {_format_pawns(gap)} Bauerneinheiten {relation} bewertet als "
+            f"{focus.move_san}."
+        )
+    elif focus.move_uci == best.move_uci:
         alternative = next(
             (candidate for candidate in candidates if candidate.move_uci != focus.move_uci),
             None,
@@ -2196,6 +2411,25 @@ def _format_pawns(value: float) -> str:
     return f"{value:.2f}".replace(".", ",")
 
 
+def _deduplicate_explanation_sections(
+    summary: str, sections: list[dict[str, str]]
+) -> list[dict[str, str]]:
+    """Keep the expanded layer from repeating the visible summary verbatim."""
+    normalized_summary = " ".join(summary.casefold().split())
+    result: list[dict[str, str]] = []
+    for section in sections:
+        section_text = section.get("text", "").strip()
+        normalized_section = " ".join(section_text.casefold().split())
+        if not normalized_section or normalized_section in normalized_summary:
+            continue
+        if section_text.startswith(summary):
+            section_text = section_text[len(summary) :].strip()
+            if not section_text:
+                continue
+        result.append({**section, "text": section_text})
+    return result
+
+
 def _has_supported_explanation(
     answer_facts: list[dict[str, Any]], sections: list[dict[str, str]]
 ) -> bool:
@@ -2203,7 +2437,10 @@ def _has_supported_explanation(
         section.get("title") in {"Mittel- und langfristiger Plan", "Buchgestützter Plan"}
         and bool(section.get("text"))
         and not section["text"].startswith(
-            "Die berechneten Varianten zeigen keinen einzelnen stabilen Langzeitplan"
+            (
+                "Die berechneten Varianten zeigen keinen einzelnen stabilen Langzeitplan",
+                "Aus den geprüften Varianten lässt sich kein einzelner stabiler Langzeitplan",
+            )
         )
         for section in sections
     )

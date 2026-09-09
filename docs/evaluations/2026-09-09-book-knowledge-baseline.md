@@ -118,3 +118,7 @@ accepted page-20 plan.
 - embeddings after FTS and aliases have a measured recall failure;
 - cloud processing of book excerpts, which is not authorized by the current
   privacy decision.
+
+This file remains the preserved pre-cycle baseline. The subsequent six-case
+implementation and rerun are documented in
+`2026-09-09-deep-explanation-quality-cycle.md`.

@@ -1215,3 +1215,64 @@ long-term purpose for `Bb5`. The coach retains the earlier board-derived
 defender explanation rather than laundering the prestige of a good book into an
 irrelevant answer. The next high-value increment is therefore contextual
 reconstruction of variation fragments, not a third book.
+
+### Closing the six-case explanation loop
+
+The learner approved all five proposed steps: checkpoint the two-book system,
+create a fixed quality corpus, reconstruct safe book context, deepen the
+explanation path, and rerun the same cases. Commit `44fb06c` first preserved the
+two-book compiler baseline before the new work began.
+
+The initial machine-readable corpus covers the reported `c3`, `Na2`, `a4`,
+`Nd5`, `Ra6`, and `Bb5` failures. Its first action was to reject two transcribed
+FENs because their focus moves were illegal. Correcting the fixtures rather than
+working around the failure became a small but important case-study lesson:
+evaluation evidence is not exempt from chess verification.
+
+The book compiler now understands a conservative subset of abbreviated
+variation fragments. It accepts a fragment only if a single position inside the
+nearest verified parent line has the correct move number and makes the complete
+fragment legal. Parent ID, inference method, start FEN, and absolute ply range
+are stored. A same-chunk Ruy Lopez line safely reconstructs `3...a6 4.Ba4` from
+the complete `1.e4 e5 2.Nf3 Nc6 3.Bb5` line. The full second-book import resolves
+79 fragments and increases final-position evidence from 55 to 61 anchors;
+3,437 context-dependent and 14 invalid lines remain unavailable. Diagram images
+are not promoted to FEN authority because reliable board recognition has not
+yet been built.
+
+The first real end-to-end run revealed a more important failure than a red test.
+The `c3` case had no recognized opening identity, so global move-token retrieval
+found a statement on PDF pages 719-720 saying that “this question” caused a
+major disagreement. Qwen translated it faithfully, the evidence links were
+valid, and the result was still irrelevant to the learner's position. `Nd5`
+found a similarly vague passage. Retrieval now allows broad move and question
+search only inside a recognized opening section; unidentified positions require
+an exact position anchor. This distinguishes provenance correctness from
+relevance correctness.
+
+Deep analysis now asks two independent engine questions. The root comparison
+measures the focus move against top and explicitly named alternatives under one
+search setting. A new post-move search checks three plausible opponent replies
+and reports own-side follow-ups only when they recur across branches. Inferior
+moves no longer inherit a supposed plan from a recovery line. The `Ra6` case now
+corrects the user's “best move” premise to `...b5` and admits that no supported
+long-term rook purpose is available. For `c3 versus Ba4`, the named `Ba4` is
+actually included in the consistent comparison instead of silently discussing
+another engine candidate.
+
+The local model remains a constrained teacher rather than a chess authority. It
+may select exactly one summary-eligible verified fact; it cannot invent prose in
+the no-book path. The expanded layer removes a verbatim summary, and mechanical
+newly opened lines such as a rook merely seeing an empty adjacent square are no
+longer presented as strategic teaching points.
+
+The final production-path benchmark used Stockfish 18,
+`qwen3.8:27b-mlx`, both books, and the actual service. All six cases passed every
+automated guardrail. Cold local runs took roughly 22-42 seconds when model
+synthesis was needed; a repeated cached `c3` run took 10.43 seconds. The browser's
+rolling estimate remains preferable to a false exact countdown. The result is
+recorded as regression success, not “solved chess pedagogy”: recurring moves are
+evidence for a robust follow-up, not proof of the unique reason for a move.
+
+The design choices and detailed results are recorded in ADR 0008 and
+`docs/evaluations/2026-09-09-deep-explanation-quality-cycle.md`.

@@ -6,9 +6,12 @@ import pytest
 from chess_coach.engine import (
     CandidateAnalysis,
     MoveComparison,
+    MovePlanAnalysis,
+    PlanBranch,
     StockfishService,
     classify_loss,
     comparison_from_json,
+    plan_from_json,
 )
 
 
@@ -32,8 +35,25 @@ def test_candidate_comparison_cache_payload_round_trip() -> None:
     assert restored == comparison
 
 
+def test_plan_branch_cache_payload_round_trip() -> None:
+    plan = MovePlanAnalysis(
+        True,
+        "Stockfish Test",
+        "e2e4",
+        "e4",
+        (PlanBranch("c7c5", "c5", 0.2, None, ("e4", "c5", "Nf3")),),
+    )
+
+    assert plan_from_json(json.dumps(asdict(plan))) == plan
+
+
 def test_local_stockfish_adapter_when_engine_is_installed() -> None:
-    engine = StockfishService(time_seconds=0.01, explanation_time_seconds=0.01, multipv=2)
+    engine = StockfishService(
+        time_seconds=0.01,
+        explanation_time_seconds=0.01,
+        deep_time_seconds=0.01,
+        multipv=2,
+    )
     if not engine.available:
         pytest.skip("Stockfish is not installed")
     try:
@@ -41,6 +61,7 @@ def test_local_stockfish_adapter_when_engine_is_installed() -> None:
         analysis = engine.analyze_move(board, chess.Move.from_uci("e2e4"))
         focus_move = chess.Move.from_uci("f2f3")
         comparison = engine.compare_moves(board, count=3, focus_move=focus_move)
+        plan = engine.analyze_plan_branches(board, chess.Move.from_uci("e2e4"), reply_count=2)
         best_move, best_analysis = engine.get_best_move(board)
     finally:
         engine.close()
@@ -61,3 +82,6 @@ def test_local_stockfish_adapter_when_engine_is_installed() -> None:
     assert best_analysis.available is True
     assert best_analysis.loss_pawns is not None
     assert best_analysis.loss_pawns < 0.15
+    assert plan.available is True
+    assert len(plan.branches) == 2
+    assert all(branch.pv_san[0] == "e4" for branch in plan.branches)

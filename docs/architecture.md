@@ -154,6 +154,14 @@ central posts that cannot immediately be challenged by a pawn, restrained pawn
 breaks, and verified exchanges. These are labeled as model plans, not forced
 continuations or reasons stated by Stockfish.
 
+The deep path adds a differently scoped search after the focus move. It checks
+three plausible opponent replies and keeps the learner's follow-up moves only
+when they recur in at least two branches. This distinguishes “better than
+another first move” from “still supports the same follow-up against different
+answers”. Explicit alternatives named in a question are forced into the root
+comparison. Recovery moves after an inferior focus move are not rebranded as
+the move's purpose.
+
 ## LLM grounding boundary
 
 Ollama never receives authority to produce the verdict. The core first creates a
@@ -181,9 +189,16 @@ The comparison layer also computes move deltas for the focus and nearest engine
 candidate: which attacked piece each move saves, which own pieces remain under
 attack, approximate material priority, new counterattacks, central-square
 control, captures in the first reply, checks, and newly opened slider lines.
+Only newly opened lines that reach a central square or opposing piece are kept;
+seeing a merely empty adjacent square is not promoted as a teaching point.
 Interpretive wording is deliberately qualified: these visible differences can
 explain part of an evaluation gap, but the number does not prove one exclusive
 strategic cause.
+
+The model may select exactly one summary-eligible atomic fact. The expanded
+layer removes a verbatim copy of that summary. Book retrieval never performs a
+global SAN-only search when the current opening is unknown: a token such as
+`c3` has too many meanings without an exact position anchor.
 
 The initial real-world test justified this boundary: `qwen3.8:27b-mlx`, running
 through Ollama, incorrectly called `1...g6` a King's Gambit line. An integration
@@ -250,20 +265,23 @@ PDF
 ```
 
 Every claim retains book, PDF page, span, section, and chunk provenance. Dotted
-PGN and typeset leading tables such as `1 e4 e5 2 Nf3` are normalized, but only
-lines starting from the standard initial position are reconstructed. One leading
-displayed line anchors its final position, not every prefix position. Legal
-embedded comparisons remain searchable without becoming position anchors.
-Natural-language move descriptions, contextual fragments, statistics, and
-unpositioned SAN claims are retained as issues and excluded from runtime
-evidence until separately verified.
+PGN and typeset leading tables such as `1 e4 e5 2 Nf3` are normalized. A
+contextual fragment may be reconstructed only from one unique legal position in
+the nearest verified parent line; its parent ID, method, and absolute ply range
+remain auditable. One leading displayed line anchors its final position, not
+every prefix position. Legal embedded comparisons remain searchable without
+becoming position anchors. Natural-language move descriptions, unresolved
+contextual fragments, statistics, and unpositioned SAN claims remain issues and
+are excluded from runtime evidence until separately verified.
 
 Question retrieval tries the position after the focused move, then the current
 position, the exact opening section, a focused move, and finally full-text
 question matches. Exact-position facts stop the broadening step. Section-wide
 opening matches may contribute general plans but not local recommendations or
-warnings. The runtime returns at most a few short safe claims. It never sends the
-entire book to a model and never exposes a local filesystem path to the browser.
+warnings. Without a recognized opening, move-token and question broadening are
+disabled because SAN alone is not a position identity. The runtime returns at
+most a few short safe claims. It never sends the entire book to a model and
+never exposes a local filesystem path to the browser.
 
 Grounded synthesis is intentionally asymmetric. A `source_only` book statement
 is always attributed as something the book or author describes. An

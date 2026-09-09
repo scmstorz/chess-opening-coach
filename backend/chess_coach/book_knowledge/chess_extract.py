@@ -135,9 +135,40 @@ def validate_pgn_candidate(candidate: PGNCandidate) -> ValidatedLine:
             "The line does not start from White's first move",
         )
 
-    board = chess.Board()
+    return validate_pgn_candidate_from_board(candidate, chess.Board(), status="valid")
+
+
+def candidate_start_signature(candidate: PGNCandidate) -> tuple[int, chess.Color] | None:
+    """Return the full-move number and side required before a fragment starts."""
+    first_number = MOVE_NUMBER_RE.search(candidate.raw_text)
+    if first_number is None:
+        return None
+    return (
+        int(first_number.group("number")),
+        chess.BLACK if first_number.group("black") else chess.WHITE,
+    )
+
+
+def validate_pgn_candidate_from_board(
+    candidate: PGNCandidate,
+    start_board: chess.Board,
+    *,
+    status: str = "context_resolved",
+) -> ValidatedLine:
+    """Validate a numbered book fragment from one already verified position."""
+    signature = candidate_start_signature(candidate)
+    if signature is None:
+        return _invalid(candidate, "invalid", "No move number found")
+    expected_number, expected_turn = signature
+    if (
+        start_board.fullmove_number != expected_number
+        or start_board.turn != expected_turn
+    ):
+        return _invalid(candidate, "context_mismatch", "The context has the wrong move number")
+
+    board = start_board.copy(stack=False)
     start_fen = board.fen(en_passant="legal")
-    positions = [_state(board, 0, None, None)]
+    positions = [_state(board, board.ply(), None, None)]
     san_moves: list[str] = []
     uci_moves: list[str] = []
     for token_match in SAN_TOKEN_RE.finditer(candidate.raw_text):
@@ -161,7 +192,7 @@ def validate_pgn_candidate(candidate: PGNCandidate) -> ValidatedLine:
         board.push(move)
         san_moves.append(canonical_san)
         uci_moves.append(uci)
-        positions.append(_state(board, len(san_moves), canonical_san, uci))
+        positions.append(_state(board, board.ply(), canonical_san, uci))
 
     if len(san_moves) < 2:
         return ValidatedLine(
@@ -186,7 +217,7 @@ def validate_pgn_candidate(candidate: PGNCandidate) -> ValidatedLine:
         tuple(san_moves),
         tuple(uci_moves),
         tuple(positions),
-        "valid",
+        status,
         None,
     )
 

@@ -153,6 +153,13 @@ class OllamaTutor:
             for item in facts.get("answer_facts", [])
             if item.get("required") and item.get("id") in answer_facts
         ]
+        summary_eligible_ids = {
+            str(item["id"])
+            for item in facts.get("answer_facts", [])
+            if item.get("summary_eligible") and item.get("id") in answer_facts
+        }
+        if not summary_eligible_ids:
+            summary_eligible_ids = set(answer_facts)
         payload = {
             "model": self.model,
             "stream": False,
@@ -163,7 +170,8 @@ class OllamaTutor:
                         "Wähle für einen Schachschüler die verifizierten answer_facts aus, die "
                         "seine user_question am direktesten beantworten. Antworte nur mit den "
                         "IDs vorhandener Fakten. Schreibe und ergänze keinerlei Schachtext. "
-                        "Nutze für summary 1 bis 2 zentrale IDs und für details 1 bis 4 weitere "
+                        "Nutze für summary genau 1 ID mit summary_eligible=true und für details "
+                        "1 bis 4 weitere "
                         "hilfreiche IDs. Wiederhole keine ID. Antworte ausschließlich als "
                         'JSON-Objekt der Form {"summary_fact_ids":["id"],'
                         '"detail_fact_ids":["id"]}.'
@@ -181,10 +189,11 @@ class OllamaTutor:
             detail_ids = [str(item) for item in content["detail_fact_ids"]]
             selected_ids = summary_ids + detail_ids
             if (
-                not summary_ids
+                len(summary_ids) != 1
                 or not detail_ids
                 or len(selected_ids) != len(set(selected_ids))
                 or any(fact_id not in answer_facts for fact_id in selected_ids)
+                or any(fact_id not in summary_eligible_ids for fact_id in summary_ids)
             ):
                 raise ValueError("Ollama selected invalid or duplicate fact IDs")
             detail_ids.extend(

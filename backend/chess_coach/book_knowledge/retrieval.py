@@ -250,10 +250,11 @@ class BookKnowledgeBase:
                        b.source_path, c.title, c.section_path, c.page_start,
                        c.page_end, c.text, 0.0 AS score
                 FROM book_position_evidence pe
-                JOIN book_lines l ON l.id = pe.line_id AND pe.ply = l.ply_count
+                JOIN book_lines l ON l.id = pe.line_id
                 JOIN chunks c ON c.id = pe.chunk_id
                 JOIN books b ON b.id = c.book_id
                 WHERE pe.position_key = ?
+                  AND l.validation_status IN ('valid', 'context_resolved')
                 ORDER BY c.source_ref
                 LIMIT ?
                 """,
@@ -274,21 +275,20 @@ class BookKnowledgeBase:
                 if normalize_text(row["title"]) == normalize_text(opening.name)
             ]
             add(exact_title_rows or opening_rows, 2, "opening")
-        if focus_move:
+        if focus_move and opening:
             san = board.san(focus_move).rstrip("+#")
-            move_query = f"{opening.name} {san}" if opening else f"{san} {focus_move.uci()}"
+            move_query = f"{opening.name} {san}"
             move_rows = search_chunks(connection, move_query, limit=fetch_limit)
-            if opening:
-                opening_term = normalize_text(opening.name)
-                move_rows = [
-                    row
-                    for row in move_rows
-                    if opening_term
-                    in normalize_text(f"{row['title']} {row['section_path']}")
-                ]
+            opening_term = normalize_text(opening.name)
+            move_rows = [
+                row
+                for row in move_rows
+                if opening_term
+                in normalize_text(f"{row['title']} {row['section_path']}")
+            ]
             add(move_rows, 3, "move")
-        question_rows = search_chunks(connection, question, limit=fetch_limit)
         if opening:
+            question_rows = search_chunks(connection, question, limit=fetch_limit)
             opening_term = normalize_text(opening.name)
             question_rows = [
                 row
@@ -296,7 +296,7 @@ class BookKnowledgeBase:
                 if opening_term
                 in normalize_text(f"{row['title']} {row['section_path']}")
             ]
-        add(question_rows, 4, "question")
+            add(question_rows, 4, "question")
         return sorted(
             results.values(),
             key=lambda row: (

@@ -774,3 +774,23 @@ daneben weiterhin erscheinen. Die Wissenslücke darf jedoch weder durch eine
 allgemeine Schachfloskel noch durch eine frei erzeugte strategische Behauptung
 verdeckt werden. Dieser Fall benötigt einen eigenen maschinenlesbaren
 Fallback-Grund und einen Regressionstest.
+
+## 28. Implementierungsnachtrag: kontextuelle Linien und Relevanzgrenze
+
+Der erste Zwei-Bücher-Qualitätslauf ergänzt zwei verbindliche Regeln:
+
+1. Eine abgekürzte Linie darf nur aus genau einer legalen Position der nächsten
+   bereits verifizierten Elternlinie rekonstruiert werden. Eltern-ID, Methode,
+   Start-FEN und absolute Ply-Grenzen bleiben gespeichert. Nur die Endposition
+   des rekonstruierten Fragments ist ein Evidenzanker. Diagramme bleiben ohne
+   unabhängig prüfbare FEN reine Inventardaten.
+2. Wenn keine Eröffnung erkannt wurde, sind globale SAN- und Fragesuchen
+   verboten. Ein Treffer zu `c3` in irgendeinem anderen Kapitel ist zwar
+   zitierbar, aber nicht relevant für die aktuelle Stellung. Dann ist nur ein
+   exakter Positionsanker zulässig.
+
+`benchmarks/fixtures/explanation_quality_cases.json` ist ab jetzt der minimale
+Abnahmekorpus für `c3`, `Na2`, `a4`, `Nd5`, `Ra6` und `Bb5`. Neue reale
+Beschwerden werden als weitere Fälle ergänzt. ADR 0008 und die Evaluation
+`2026-09-09-deep-explanation-quality-cycle.md` dokumentieren Methode, verworfene
+Optionen, Latenz und verbleibende Grenzen.

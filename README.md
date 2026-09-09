@@ -31,8 +31,8 @@ separate sources of information.
 - Non-playing `Zug vorschlagen` hint from opening theory or Stockfish, with source/target highlighting
 - Grounded follow-up questions about the current position or suggested move
 - Board-derived explanations of direct threats, controlled squares, and concrete engine lines
-- Optional `Tief erklären` analysis with four consistently rechecked candidates
-- Plan-oriented explanations that look for recurring follow-up ideas across engine lines
+- Optional `Tief erklären` analysis with consistently rechecked candidates and three opponent-reply branches
+- Plan-oriented explanations that retain only follow-up ideas recurring across independent reply branches
 - Expandable sections for long-term plan, concrete effects, alternatives, and engine lines
 - A local PDF knowledge compiler with page-level provenance, FTS retrieval, and explicit issue quarantine
 - Grounded German book synthesis with compact source metadata and an honest evidence fallback
@@ -137,11 +137,18 @@ line anchors the following commentary. Embedded comparison lines remain
 searchable but do not attach their whole paragraph to every position they pass
 through.
 
+Abbreviated continuations such as `3...a6 4.Ba4` are accepted only when one
+nearby, already verified parent line supplies a unique legal starting position.
+The inference method and parent are stored for audit; unresolved fragments stay
+quarantined. Without a recognized opening, bare move names never trigger a
+global book search.
+
 ## Verification
 
 ```bash
 .venv/bin/pytest
 .venv/bin/ruff check backend scripts
+.venv/bin/python benchmarks/explanation_quality.py
 npm run lint
 npm test
 git diff --check
@@ -179,3 +186,4 @@ license are retained in `data/openings/`.
 - [Architecture decisions](docs/decisions/)
 - [Local Ollama chess-model comparison](docs/evaluations/2026-08-29-ollama-chess-models.md)
 - [Kimi and DeepSeek explanation comparison](docs/evaluations/2026-09-08-cloud-chess-explanations.md)
+- [Six-case deep-explanation quality cycle](docs/evaluations/2026-09-09-deep-explanation-quality-cycle.md)

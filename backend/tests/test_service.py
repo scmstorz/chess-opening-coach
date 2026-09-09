@@ -1,7 +1,13 @@
 import random
 
 import chess
-from chess_coach.engine import CandidateAnalysis, MoveAnalysis, MoveComparison
+from chess_coach.engine import (
+    CandidateAnalysis,
+    MoveAnalysis,
+    MoveComparison,
+    MovePlanAnalysis,
+    PlanBranch,
+)
 from chess_coach.openings import OpeningBook, OpeningIdentity
 from chess_coach.service import CoachService
 from chess_coach.storage import SQLiteStore
@@ -44,6 +50,7 @@ class FakeEngine:
         *,
         count: int = 3,
         focus_move: chess.Move | None = None,
+        required_moves: tuple[chess.Move, ...] = (),
         stable: bool = False,
         deep: bool = False,
     ) -> MoveComparison:
@@ -59,15 +66,18 @@ class FakeEngine:
                     pv_san=(board.san(move),),
                 )
             )
-        if focus_move and all(candidate.move_uci != focus_move.uci() for candidate in candidates):
+        requested = tuple(move for move in (focus_move, *required_moves) if move)
+        for requested_move in requested:
+            if any(candidate.move_uci == requested_move.uci() for candidate in candidates):
+                continue
             candidates.append(
                 CandidateAnalysis(
-                    move_uci=focus_move.uci(),
-                    move_san=board.san(focus_move),
+                    move_uci=requested_move.uci(),
+                    move_san=board.san(requested_move),
                     evaluation=0.1,
                     mate=None,
                     loss_pawns=0.1,
-                    pv_san=(board.san(focus_move),),
+                    pv_san=(board.san(requested_move),),
                 )
             )
         return MoveComparison(True, self.name, tuple(candidates))
@@ -300,8 +310,14 @@ def test_na2_question_corrects_the_generic_center_development_template() -> None
             )
 
         def compare_moves(
-            self, board: chess.Board, *, count: int = 3, focus_move: chess.Move | None = None
+            self,
+            board: chess.Board,
+            *,
+            count: int = 3,
+            focus_move: chess.Move | None = None,
+            required_moves: tuple[chess.Move, ...] = (),
         ) -> MoveComparison:
+            del board, focus_move, required_moves
             candidates = (
                 CandidateAnalysis(
                     "c3a2",
@@ -356,7 +372,7 @@ def test_na2_question_corrects_the_generic_center_development_template() -> None
     assert [section["title"] for section in sections] == [
         "Mittel- und langfristiger Plan",
         "Konkrete Wirkung in der Stellung",
-        "Warum nicht die naheliegende Alternative?",
+        "Vergleich mit der besten Alternative",
         "Stockfish-Rechenwege",
     ]
     assert "Nb1 (-0,06, 0,49 Bauerneinheiten hinter Platz 1)" in sections[3]["text"]
@@ -406,6 +422,24 @@ def test_question_about_suggestion_is_grounded_without_playing_the_move() -> Non
 
 def test_deep_question_marks_mode_and_adds_cross_line_plan_section() -> None:
     coach = service()
+    class PlanEngine(FakeEngine):
+        def analyze_plan_branches(
+            self, board: chess.Board, focus_move: chess.Move, *, reply_count: int = 3
+        ) -> MovePlanAnalysis:
+            del board, reply_count
+            return MovePlanAnalysis(
+                True,
+                self.name,
+                focus_move.uci(),
+                "e4",
+                (
+                    PlanBranch("c7c5", "c5", 0.2, None, ("e4", "c5", "Nf3")),
+                    PlanBranch("e7e5", "e5", 0.2, None, ("e4", "e5", "Nf3")),
+                    PlanBranch("e7e6", "e6", 0.2, None, ("e4", "e6", "d4")),
+                ),
+            )
+
+    coach.engine = PlanEngine()
     session = coach.create_session("white")
 
     response = coach.answer_question(
@@ -419,11 +453,17 @@ def test_deep_question_marks_mode_and_adds_cross_line_plan_section() -> None:
     assert message["analysis_mode"] == "deep"
     assert [section["title"] for section in message["explanation_sections"]] == [
         "Mittel- und langfristiger Plan",
-        "Was mehrere Varianten gemeinsam zeigen",
+        "Was gegen mehrere Antworten stabil bleibt",
         "Konkrete Wirkung in der Stellung",
-        "Warum nicht die naheliegende Alternative?",
+        "Vergleich mit der besten Alternative",
         "Stockfish-Rechenwege",
     ]
+    stable = next(
+        section["text"]
+        for section in message["explanation_sections"]
+        if section["title"] == "Was gegen mehrere Antworten stabil bleibt"
+    )
+    assert "Nf3 in 2 von 3 Varianten" in stable
 
 
 def test_first_identified_opening_is_introduced_instead_of_continued() -> None:

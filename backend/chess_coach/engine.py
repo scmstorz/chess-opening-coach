@@ -55,6 +55,25 @@ class MoveComparison:
     reason: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class PlanBranch:
+    reply_uci: str
+    reply_san: str
+    evaluation: float
+    mate: int | None
+    pv_san: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class MovePlanAnalysis:
+    available: bool
+    engine_name: str | None
+    focus_move_uci: str
+    focus_move_san: str
+    branches: tuple[PlanBranch, ...]
+    reason: str | None = None
+
+
 class StockfishService:
     def __init__(
         self,
@@ -185,6 +204,7 @@ class StockfishService:
         *,
         count: int = 3,
         focus_move: chess.Move | None = None,
+        required_moves: tuple[chess.Move, ...] = (),
         stable: bool = False,
         deep: bool = False,
     ) -> MoveComparison:
@@ -217,6 +237,7 @@ class StockfishService:
                         "depth": depth,
                         "multipv": requested_count,
                         "focus_move": focus_move.uci() if focus_move else None,
+                        "required_moves": [move.uci() for move in required_moves],
                     },
                     sort_keys=True,
                 )
@@ -231,8 +252,13 @@ class StockfishService:
 
                 if deep:
                     root_moves = [info["pv"][0] for info in infos if info.get("pv")]
-                    if focus_move and focus_move not in root_moves:
-                        root_moves.append(focus_move)
+                    for required in (focus_move, *required_moves):
+                        if (
+                            required
+                            and required in board.legal_moves
+                            and required not in root_moves
+                        ):
+                            root_moves.append(required)
                     raw_infos = engine.analyse(
                         board,
                         limit,
@@ -261,25 +287,28 @@ class StockfishService:
                             pv_san=_pv_san(board, pv),
                         )
                     )
-                if not deep and focus_move and all(
-                    candidate.move_uci != focus_move.uci() for candidate in candidates
-                ):
-                    focus_info = engine.analyse(
-                        board,
-                        limit,
-                        root_moves=[focus_move],
+                missing_moves = [
+                    required
+                    for required in (focus_move, *required_moves)
+                    if required
+                    and required in board.legal_moves
+                    and all(
+                        candidate.move_uci != required.uci() for candidate in candidates
                     )
-                    focus_evaluation, focus_mate = _white_score(focus_info)
+                ]
+                for required in missing_moves if not deep else ():
+                    required_info = engine.analyse(board, limit, root_moves=[required])
+                    required_evaluation, required_mate = _white_score(required_info)
                     candidates.append(
                         CandidateAnalysis(
-                            move_uci=focus_move.uci(),
-                            move_san=board.san(focus_move),
-                            evaluation=focus_evaluation,
-                            mate=focus_mate,
+                            move_uci=required.uci(),
+                            move_san=board.san(required),
+                            evaluation=required_evaluation,
+                            mate=required_mate,
                             loss_pawns=_loss_for_turn(
-                                board.turn, best_evaluation, focus_evaluation
+                                board.turn, best_evaluation, required_evaluation
                             ),
-                            pv_san=_pv_san(board, focus_info.get("pv", [])),
+                            pv_san=_pv_san(board, required_info.get("pv", [])),
                         )
                     )
                 comparison = MoveComparison(
@@ -293,6 +322,84 @@ class StockfishService:
                 return comparison
             except (OSError, chess.engine.EngineError, KeyError) as exc:
                 return unavailable_comparison(str(exc))
+
+    def analyze_plan_branches(
+        self,
+        board: chess.Board,
+        focus_move: chess.Move,
+        *,
+        reply_count: int = 3,
+    ) -> MovePlanAnalysis:
+        """Analyze several plausible replies after one focus move.
+
+        This is intentionally separate from root-move comparison: it answers
+        which follow-up ideas survive different opponent responses instead of
+        pretending that one principal variation is a human explanation.
+        """
+        focus_san = board.san(focus_move) if focus_move in board.legal_moves else focus_move.uci()
+        if not self.executable:
+            return unavailable_plan(focus_move, focus_san, "Stockfish wurde nicht gefunden")
+        if focus_move not in board.legal_moves:
+            return unavailable_plan(focus_move, focus_san, "Der Bezugszug ist nicht legal")
+        projected = board.copy(stack=False)
+        projected.push(focus_move)
+        legal_count = projected.legal_moves.count()
+        if legal_count == 0:
+            return unavailable_plan(
+                focus_move, focus_san, "Nach dem Zug ist die Partie beendet"
+            )
+        requested_count = max(1, min(reply_count, legal_count))
+        with self._lock:
+            try:
+                engine = self._start()
+                cache_key = json.dumps(
+                    {
+                        "kind": "move_plan_branches",
+                        "fen": position_key(board),
+                        "focus_move": focus_move.uci(),
+                        "engine": self._name,
+                        "time": self.deep_time_seconds,
+                        "depth": 24,
+                        "multipv": requested_count,
+                    },
+                    sort_keys=True,
+                )
+                if self.cache and (cached := self.cache.get_analysis(cache_key)):
+                    return plan_from_json(cached)
+                raw_infos = engine.analyse(
+                    projected,
+                    chess.engine.Limit(time=self.deep_time_seconds, depth=24),
+                    multipv=requested_count,
+                )
+                infos = raw_infos if isinstance(raw_infos, list) else [raw_infos]
+                branches: list[PlanBranch] = []
+                for info in infos:
+                    pv = info.get("pv", [])
+                    if not pv:
+                        continue
+                    evaluation, mate = _white_score(info)
+                    branches.append(
+                        PlanBranch(
+                            reply_uci=pv[0].uci(),
+                            reply_san=projected.san(pv[0]),
+                            evaluation=evaluation,
+                            mate=mate,
+                            pv_san=(focus_san, *_pv_san(projected, pv)),
+                        )
+                    )
+                result = MovePlanAnalysis(
+                    available=bool(branches),
+                    engine_name=self._name,
+                    focus_move_uci=focus_move.uci(),
+                    focus_move_san=focus_san,
+                    branches=tuple(branches),
+                    reason=None if branches else "Stockfish lieferte keine Antwortvarianten",
+                )
+                if self.cache:
+                    self.cache.put_analysis(cache_key, json.dumps(asdict(result)))
+                return result
+            except (OSError, chess.engine.EngineError, KeyError) as exc:
+                return unavailable_plan(focus_move, focus_san, str(exc))
 
     @staticmethod
     def analysis_from_comparison(
@@ -374,6 +481,19 @@ def unavailable_comparison(reason: str) -> MoveComparison:
     )
 
 
+def unavailable_plan(
+    focus_move: chess.Move, focus_san: str, reason: str
+) -> MovePlanAnalysis:
+    return MovePlanAnalysis(
+        available=False,
+        engine_name=None,
+        focus_move_uci=focus_move.uci(),
+        focus_move_san=focus_san,
+        branches=(),
+        reason=reason,
+    )
+
+
 def analysis_from_json(payload: str) -> MoveAnalysis:
     data = json.loads(payload)
     data["best_pv_san"] = tuple(data["best_pv_san"])
@@ -393,6 +513,20 @@ def comparison_from_json(payload: str) -> MoveComparison:
         for candidate in data.get("candidates", [])
     )
     return MoveComparison(**data)
+
+
+def plan_from_json(payload: str) -> MovePlanAnalysis:
+    data = json.loads(payload)
+    data["branches"] = tuple(
+        PlanBranch(
+            **{
+                **branch,
+                "pv_san": tuple(branch["pv_san"]),
+            }
+        )
+        for branch in data.get("branches", [])
+    )
+    return MovePlanAnalysis(**data)
 
 
 def _white_score(info: chess.engine.InfoDict) -> tuple[float, int | None]:

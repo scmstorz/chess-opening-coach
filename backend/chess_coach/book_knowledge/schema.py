@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -149,7 +149,12 @@ CREATE TABLE IF NOT EXISTS book_lines (
     uci_line TEXT,
     ply_count INTEGER NOT NULL DEFAULT 0,
     validation_status TEXT NOT NULL,
-    error TEXT
+    error TEXT,
+    start_offset INTEGER NOT NULL DEFAULT 0,
+    context_method TEXT,
+    context_parent_line_id INTEGER REFERENCES book_lines(id) ON DELETE SET NULL,
+    absolute_start_ply INTEGER,
+    absolute_end_ply INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS book_position_evidence (
@@ -238,6 +243,9 @@ def initialize(connection: sqlite3.Connection) -> None:
     current = connection.execute(
         "SELECT value FROM knowledge_meta WHERE key = 'schema_version'"
     ).fetchone()
+    if current and current["value"] == "1":
+        _migrate_v1_to_v2(connection)
+        current = None
     if current and current["value"] != SCHEMA_VERSION:
         raise IncompatibleKnowledgeDatabase(
             f"Knowledge database schema {current['value']} is incompatible with {SCHEMA_VERSION}"
@@ -247,6 +255,23 @@ def initialize(connection: sqlite3.Connection) -> None:
         (SCHEMA_VERSION,),
     )
     connection.commit()
+
+
+def _migrate_v1_to_v2(connection: sqlite3.Connection) -> None:
+    """Add auditable context fields without discarding a compiled local corpus."""
+    columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(book_lines)")
+    }
+    additions = (
+        ("start_offset", "INTEGER NOT NULL DEFAULT 0"),
+        ("context_method", "TEXT"),
+        ("context_parent_line_id", "INTEGER REFERENCES book_lines(id) ON DELETE SET NULL"),
+        ("absolute_start_ply", "INTEGER"),
+        ("absolute_end_ply", "INTEGER"),
+    )
+    for name, declaration in additions:
+        if name not in columns:
+            connection.execute(f"ALTER TABLE book_lines ADD COLUMN {name} {declaration}")
 
 
 def assert_compatible(connection: sqlite3.Connection) -> None:
@@ -327,4 +352,3 @@ def integrity_report(connection: sqlite3.Connection) -> dict[str, Any]:
         "position_query_uses_index": any("USING INDEX" in str(row[3]) for row in position_plan),
         "issue_query_uses_index": any("USING INDEX" in str(row[3]) for row in issue_plan),
     }
-

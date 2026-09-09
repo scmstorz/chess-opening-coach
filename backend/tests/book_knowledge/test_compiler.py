@@ -110,3 +110,60 @@ def test_claim_extraction_quarantines_unpositioned_san_and_matches_whole_words()
 
     assert any(status == "unverified" for _, _, _, status in san_claims)
     assert false_warning == ()
+
+
+def test_compiler_resolves_one_unambiguous_local_variation_fragment(
+    tmp_path: Path, monkeypatch
+) -> None:
+    pdf = tmp_path / "Context Book.pdf"
+    pdf.write_bytes(b"fake-pdf")
+    database = tmp_path / "knowledge.db"
+    extraction = PDFExtraction(
+        metadata=PDFMetadata("Context Book", "Author", 2026, 2, 8, {}),
+        pages=(
+            ExtractedPage(
+                1,
+                612,
+                792,
+                (TextBlock(1, 0, "Context Book", 72, 80, 220, 105),),
+            ),
+            ExtractedPage(
+                2,
+                612,
+                792,
+                (
+                    TextBlock(2, 0, "Ruy Lopez", 72, 80, 220, 105),
+                    TextBlock(
+                        2,
+                        1,
+                        "1. e4 e5 2. Nf3 Nc6 3. Bb5. 3...a6 4. Ba4.",
+                        72,
+                        120,
+                        540,
+                        180,
+                    ),
+                ),
+            ),
+        ),
+        images=(),
+    )
+    monkeypatch.setattr(compiler, "extract_pdf", lambda _: extraction)
+
+    compiler.compile_pdf(pdf, database)
+
+    connection = sqlite3.connect(database)
+    connection.row_factory = sqlite3.Row
+    lines = connection.execute(
+        """SELECT id, validation_status, context_method, context_parent_line_id,
+                  absolute_start_ply, absolute_end_ply
+           FROM book_lines ORDER BY id"""
+    ).fetchall()
+    assert [row["validation_status"] for row in lines] == ["valid", "context_resolved"]
+    assert lines[1]["context_parent_line_id"] == lines[0]["id"]
+    assert lines[1]["context_method"] == "same_chunk_verified_parent"
+    assert (lines[1]["absolute_start_ply"], lines[1]["absolute_end_ply"]) == (5, 7)
+    assert connection.execute(
+        """SELECT count(*) FROM issues
+           WHERE issue_type = 'invalid_or_contextual_book_line' AND status = 'open'"""
+    ).fetchone()[0] == 0
+    connection.close()

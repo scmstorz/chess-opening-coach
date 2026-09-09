@@ -41,8 +41,15 @@ class FixtureEngine:
         )
 
     def compare_moves(
-        self, board: chess.Board, *, count: int = 3, focus_move: chess.Move | None = None
+        self,
+        board: chess.Board,
+        *,
+        count: int = 3,
+        focus_move: chess.Move | None = None,
+        required_moves: tuple[chess.Move, ...] = (),
+        deep: bool = False,
     ) -> MoveComparison:
+        del board, count, focus_move, required_moves, deep
         candidates = tuple(
             CandidateAnalysis(
                 move_uci=item[0],

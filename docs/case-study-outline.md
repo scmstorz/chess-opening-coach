@@ -74,11 +74,23 @@
 26. The second book produces both a positive result (`2...e6` gains a grounded
     centre-and-development explanation) and an honest negative result (its Ruy
     Lopez introduction still does not directly explain the purpose of `Bb5`).
+27. The first six-case runner rejects two incorrectly transcribed FEN fixtures
+    before Stockfish starts, demonstrating that evaluation data needs the same
+    legality boundary as production input.
+28. Conservative parent-line reconstruction resolves 79 contextual fragments
+    and adds six position anchors, while leaving 3,451 invalid or unresolved
+    lines blocked. The low coverage is accepted as the price of trustworthy RAG.
+29. A seemingly grounded `c3` answer cites an unrelated book discussion because
+    SAN-only retrieval has no position identity. Disabling global move-token
+    search without an opening turns a fluent error into a tested retrieval rule.
+30. The final local Stockfish/Qwen run passes all six executable guardrail cases.
+    The report explicitly distinguishes regression success from subjective
+    teaching quality and invites every future learner complaint into the corpus.
 
 ## Evidence already captured
 
 - Complete discovery decisions and rationale in `project-journal.md`
-- Six architecture decision records
+- Eight architecture decision records
 - Exact opening-data provenance and license
 - Dependency locks for Python and JavaScript
 - Automated backend, rendered-page, lint, and build checks
@@ -109,6 +121,10 @@
   that removed it
 - A successful grounded answer sourced from the exact `2...e6` Queen's Gambit
   position, plus a documented negative Ruy Lopez result
+- A six-case end-to-end quality runner using the actual local engine, model, and
+  two-book retrieval path
+- Cold and cached latency observations for reply-robust deep explanations
+- An auditable contextual-line parent relation with conservative yield metrics
 
 ## Questions for later evaluation
 

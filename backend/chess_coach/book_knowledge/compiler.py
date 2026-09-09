@@ -11,11 +11,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+import chess
+
 from chess_coach.book_knowledge.chess_extract import (
+    PGNCandidate,
+    candidate_start_signature,
     find_natural_move_mentions,
     find_pgn_candidates,
     find_san_mentions,
     validate_pgn_candidate,
+    validate_pgn_candidate_from_board,
 )
 from chess_coach.book_knowledge.models import CompileStats, ExtractedPage
 from chess_coach.book_knowledge.pdf_extract import extract_pdf
@@ -26,7 +31,7 @@ from chess_coach.book_knowledge.schema import (
     transaction,
 )
 
-EXTRACTION_VERSION = "coach-book-4/poppler-bbox-final-position-v4"
+EXTRACTION_VERSION = "coach-book-5/poppler-bbox-context-lines-v5"
 
 ALIASES: tuple[tuple[str, str, str], ...] = (
     ("ruy lopez", "Ruy Lopez", "en"),
@@ -488,6 +493,7 @@ def compile_pdf(
             span_levels,
             max_chunk_chars=max_chunk_chars,
         )
+        _resolve_contextual_lines(connection, book_id)
     connection.execute("PRAGMA optimize")
     connection.commit()
     counts = _counts(connection, book_id)
@@ -694,8 +700,9 @@ def _compile_lines(
             INSERT INTO book_lines(
                 book_id, chunk_id, page_number, raw_text, normalized_pgn,
                 start_fen, end_fen, san_line, uci_line, ply_count,
-                validation_status, error
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                validation_status, error, start_offset, absolute_start_ply,
+                absolute_end_ply
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 book_id,
@@ -710,6 +717,9 @@ def _compile_lines(
                 len(line.san_moves),
                 line.status,
                 line.error,
+                candidate.start_offset,
+                line.positions[0].ply if line.positions else None,
+                line.positions[-1].ply if line.positions else None,
             ),
         )
         line_id = int(cursor.lastrowid)
@@ -781,6 +791,170 @@ def _compile_lines(
         )
 
 
+def _line_positions(start_fen: str, uci_line: str) -> tuple[chess.Board, ...]:
+    board = chess.Board(start_fen)
+    positions = [board.copy(stack=False)]
+    for uci in uci_line.split():
+        move = chess.Move.from_uci(uci)
+        if move not in board.legal_moves:
+            return ()
+        board.push(move)
+        positions.append(board.copy(stack=False))
+    return tuple(positions)
+
+
+def _resolve_contextual_lines(connection: sqlite3.Connection, book_id: str) -> None:
+    """Resolve abbreviated lines only from an unambiguous nearby verified parent.
+
+    Chess books routinely continue with fragments such as ``3...a6 4.Ba4``.
+    We accept such a fragment only when exactly one position inside the nearest
+    verified line in the same chunk (or a directly adjacent chunk in the same
+    section) has the required move number and makes the whole fragment legal.
+    """
+    rows = connection.execute(
+        """
+        SELECT l.*, c.section_path, c.ordinal AS chunk_ordinal
+        FROM book_lines l
+        JOIN chunks c ON c.id = l.chunk_id
+        WHERE l.book_id = ?
+        ORDER BY l.id
+        """,
+        (book_id,),
+    ).fetchall()
+    resolved_rows: list[sqlite3.Row] = []
+    for row in rows:
+        if row["validation_status"] == "valid":
+            resolved_rows.append(row)
+            continue
+        if row["validation_status"] != "requires_start_position":
+            continue
+        found = find_pgn_candidates(str(row["raw_text"]))
+        if len(found) != 1:
+            continue
+        raw_candidate = found[0]
+        candidate = PGNCandidate(
+            raw_candidate.raw_text,
+            int(row["start_offset"]),
+            int(row["start_offset"]) + len(raw_candidate.raw_text),
+        )
+        signature = candidate_start_signature(candidate)
+        if signature is None:
+            continue
+
+        parent = _nearest_context_parent(row, resolved_rows)
+        if parent is None or not parent["start_fen"] or not parent["uci_line"]:
+            continue
+        positions = _line_positions(str(parent["start_fen"]), str(parent["uci_line"]))
+        valid_contexts = []
+        for context in positions:
+            if (context.fullmove_number, context.turn) != signature:
+                continue
+            line = validate_pgn_candidate_from_board(candidate, context)
+            if line.status == "context_resolved":
+                valid_contexts.append(line)
+        distinct_contexts = {line.start_fen: line for line in valid_contexts}
+        if len(distinct_contexts) != 1:
+            if len(distinct_contexts) > 1:
+                connection.execute(
+                    """
+                    INSERT INTO issues(
+                        book_id, chunk_id, page_number, issue_type,
+                        severity, message, context
+                    ) VALUES(?, ?, ?, 'ambiguous_contextual_book_line', 'info', ?, ?)
+                    """,
+                    (
+                        book_id,
+                        row["chunk_id"],
+                        row["page_number"],
+                        "Context fragment has multiple legal verified parent positions",
+                        row["raw_text"],
+                    ),
+                )
+            continue
+        line = next(iter(distinct_contexts.values()))
+        method = (
+            "same_chunk_verified_parent"
+            if row["chunk_id"] == parent["chunk_id"]
+            else "adjacent_chunk_same_section_parent"
+        )
+        connection.execute(
+            """
+            UPDATE book_lines
+            SET normalized_pgn = ?, start_fen = ?, end_fen = ?, san_line = ?,
+                uci_line = ?, ply_count = ?, validation_status = 'context_resolved',
+                error = NULL, context_method = ?, context_parent_line_id = ?,
+                absolute_start_ply = ?, absolute_end_ply = ?
+            WHERE id = ?
+            """,
+            (
+                line.normalized_pgn,
+                line.start_fen,
+                line.end_fen,
+                " ".join(line.san_moves),
+                " ".join(line.uci_moves),
+                len(line.san_moves),
+                method,
+                parent["id"],
+                line.positions[0].ply,
+                line.positions[-1].ply,
+                row["id"],
+            ),
+        )
+        connection.execute(
+            """
+            UPDATE issues SET status = 'dismissed'
+            WHERE book_id = ? AND chunk_id = ? AND page_number = ?
+              AND issue_type = 'invalid_or_contextual_book_line' AND context = ?
+            """,
+            (book_id, row["chunk_id"], row["page_number"], row["raw_text"]),
+        )
+        if int(row["start_offset"]) <= 80:
+            final_state = line.positions[-1]
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO book_position_evidence(
+                    position_key, line_id, book_id, chunk_id, page_number,
+                    ply, incoming_san, incoming_uci
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    final_state.position_key,
+                    row["id"],
+                    book_id,
+                    row["chunk_id"],
+                    row["page_number"],
+                    final_state.ply,
+                    final_state.incoming_san,
+                    final_state.incoming_uci,
+                ),
+            )
+        refreshed = connection.execute(
+            """
+            SELECT l.*, c.section_path, c.ordinal AS chunk_ordinal
+            FROM book_lines l JOIN chunks c ON c.id = l.chunk_id WHERE l.id = ?
+            """,
+            (row["id"],),
+        ).fetchone()
+        resolved_rows.append(refreshed)
+
+
+def _nearest_context_parent(
+    row: sqlite3.Row, resolved_rows: list[sqlite3.Row]
+) -> sqlite3.Row | None:
+    for parent in reversed(resolved_rows):
+        if int(parent["id"]) >= int(row["id"]):
+            continue
+        if parent["chunk_id"] == row["chunk_id"]:
+            return parent
+        same_section = parent["section_path"] == row["section_path"]
+        adjacent_chunk = int(row["chunk_ordinal"]) - int(parent["chunk_ordinal"]) <= 1
+        nearby_page = int(row["page_number"]) - int(parent["page_number"]) <= 1
+        if same_section and adjacent_chunk and nearby_page:
+            return parent
+        break
+    return None
+
+
 def _counts(connection: sqlite3.Connection, book_id: str) -> dict[str, int]:
     tables = ("spans", "sections", "chunks", "claims", "issues")
     counts = {
@@ -790,11 +964,13 @@ def _counts(connection: sqlite3.Connection, book_id: str) -> dict[str, int]:
         for table in tables
     }
     counts["valid_lines"] = connection.execute(
-        "SELECT count(*) FROM book_lines WHERE book_id = ? AND validation_status = 'valid'",
+        """SELECT count(*) FROM book_lines
+           WHERE book_id = ? AND validation_status IN ('valid', 'context_resolved')""",
         (book_id,),
     ).fetchone()[0]
     counts["flagged_lines"] = connection.execute(
-        "SELECT count(*) FROM book_lines WHERE book_id = ? AND validation_status != 'valid'",
+        """SELECT count(*) FROM book_lines
+           WHERE book_id = ? AND validation_status NOT IN ('valid', 'context_resolved')""",
         (book_id,),
     ).fetchone()[0]
     counts["positions"] = connection.execute(

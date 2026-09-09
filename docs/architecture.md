@@ -172,7 +172,8 @@ text.
 
 Expanded move details are intentionally a separate information layer, not a
 longer copy of the summary. Pawn explanations enumerate their verified before-
-and-after controlled squares. When the best engine move relocates an already
+and-after controlled squares, support of an existing pawn, and newly freed
+bishop development. When the best engine move relocates an already
 attacked piece and the played move leaves it attacked, the service derives that
 contrast from `python-chess`. Short principal variations then show the engine's
 concrete calculation. The active Ollama model may make these facts easier to
@@ -187,8 +188,12 @@ answer of its causal explanation.
 
 The comparison layer also computes move deltas for the focus and nearest engine
 candidate: which attacked piece each move saves, which own pieces remain under
-attack, approximate material priority, new counterattacks, central-square
-control, captures in the first reply, checks, and newly opened slider lines.
+attack, approximate material priority, new counterattacks, captures in the first
+reply, checks, and newly opened slider lines. A generic list of differently
+controlled central squares is no longer rendered as an explanation: it was
+correct geometry but repeatedly failed to answer the learner's strategic
+question. If the first checked reply captures the focused piece, its temporary
+destination attacks are suppressed rather than advertised as a lasting benefit.
 Only newly opened lines that reach a central square or opposing piece are kept;
 seeing a merely empty adjacent square is not promoted as a teaching point.
 Interpretive wording is deliberately qualified: these visible differences can
@@ -216,9 +221,19 @@ unchanged session position. An explicitly named legal SAN/UCI move in the
 question takes precedence over the highlighted move; otherwise the service uses
 the same theory-first, Stockfish-after-theory selection as the visible hint.
 
+Questions may also refer to an accepted learner move after the coach has already
+replied. The service replays accepted transition messages, resolves the named or
+last learner move, and changes only the analysis context to the verified board
+immediately before that move. The live session board, undo stack, and learner log
+remain unchanged. Replay currently fails closed for any future session that does
+not begin at the normal initial position. A legal move rejected by the active
+correction loop is still legal on the unchanged current board and takes
+precedence over historical replay.
+
 ```text
-user question + current FEN + optional highlighted move
+user question + current FEN + verified transition history + optional highlighted move
   -> resolve and validate one legal move with python-chess
+  -> when necessary, reconstruct the historical pre-move board
   -> check local theory membership and resulting opening identity
   -> run standard MultiPV, or a two-pass depth-24 comparison in deep mode
   -> compare concrete board effects and principal variations
@@ -277,8 +292,9 @@ are excluded from runtime evidence until separately verified.
 Question retrieval tries the position after the focused move, then the current
 position, the exact opening section, a focused move, and finally full-text
 question matches. Exact-position facts stop the broadening step. Section-wide
-opening matches may contribute general plans but not local recommendations or
-warnings. Without a recognized opening, move-token and question broadening are
+opening, move-token, and question matches may contribute general plans but not
+local recommendations or warnings; those require an exact reconstructed
+position. Without a recognized opening, move-token and question broadening are
 disabled because SAN alone is not a position identity. The runtime returns at
 most a few short safe claims. It never sends the entire book to a model and
 never exposes a local filesystem path to the browser.

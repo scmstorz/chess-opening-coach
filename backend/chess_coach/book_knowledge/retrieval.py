@@ -369,10 +369,14 @@ class BookKnowledgeBase:
             for claim in claims:
                 if section_counts.get(section_key, 0) >= 2:
                     break
-                if row["match_kind"] == "opening" and claim["claim_type"] != "plan":
-                    # A section-wide match is too broad for variation-specific
-                    # recommendations and warnings. Only general plans survive
-                    # without an exact position or move match.
+                if row["match_kind"] not in {"position", "position_after_move"} and (
+                    claim["claim_type"] != "plan"
+                ):
+                    # FTS matches for an opening name, SAN token, or question can
+                    # come from a different sub-variation in the same section.
+                    # Recommendations and warnings therefore require an exact
+                    # reconstructed position. Only general plans survive broad
+                    # contextual matches.
                     continue
                 claim_key = (*section_key, str(claim["claim_type"]))
                 if claim_key in section_claim_types:

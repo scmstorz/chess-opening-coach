@@ -86,6 +86,18 @@
 30. The final local Stockfish/Qwen run passes all six executable guardrail cases.
     The report explicitly distinguishes regression success from subjective
     teaching quality and invites every future learner complaint into the corpus.
+31. Before importing a third book, the agent dogfoods both colors and discovers
+    a new truth boundary: a fully grounded answer can still be wrong when it is
+    grounded in the current position instead of the learner's historical one.
+32. Replaying verified move transitions fixes the reference error, while a
+    second run shows the next pedagogical gap: `d3` needs the concrete support of
+    `e4` and freed `c1` bishop development, not merely an evaluation comparison.
+33. Specific causal facts replace duplicate piece geometry, and temporary
+    attacks are suppressed when the main line immediately removes the moved
+    piece.
+34. An unrelated Schliemann citation from a broad Ruy Lopez text match proves
+    that provenance and relevance are different checks; variation-specific book
+    advice now requires an exact position.
 
 ## Evidence already captured
 
@@ -125,6 +137,12 @@
   two-book retrieval path
 - Cold and cached latency observations for reply-robust deep explanations
 - An auditable contextual-line parent relation with conservative yield metrics
+- A documented white/black production-path dogfooding session covering hints,
+  deep questions, corrections, historical questions, and complete-turn undo
+- A regression showing the same past-move question before and after historical
+  position reconstruction
+- A retrieval example where a legitimate citation is removed because it belongs
+  to the wrong sub-variation
 
 ## Questions for later evaluation
 

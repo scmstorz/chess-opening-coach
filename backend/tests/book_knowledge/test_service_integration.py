@@ -86,7 +86,7 @@ def test_question_adds_german_book_synthesis_and_path_free_reference() -> None:
     )["message"]
 
     assert message["source"] == "ollama-book-grounded"
-    assert message["summary"].startswith("Die Buchquelle beschreibt")
+    assert message["summary"].startswith("Ich beziehe deine Frage auf e4")
     assert message["knowledge"]["status"] == "grounded"
     assert message["references"] == [
         {
@@ -104,7 +104,10 @@ def test_question_adds_german_book_synthesis_and_path_free_reference() -> None:
         }
     ]
     assert "/private/" not in str(message)
-    assert message["explanation_sections"][0]["title"] == "Buchgestützter Plan"
+    assert message["explanation_sections"][0] == {
+        "title": "Buchgestützter Plan",
+        "text": "Die Buchquelle beschreibt Druck auf das Zentrum als langfristige Idee.",
+    }
 
 
 def test_question_states_knowledge_boundary_when_no_causal_reason_is_supported() -> None:

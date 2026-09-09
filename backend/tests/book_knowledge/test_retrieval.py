@@ -47,7 +47,7 @@ def _knowledge_database(path: Path) -> None:
             text, text_sha256, char_count, token_estimate, source_ref
         ) VALUES(
             'book_test', 2, 'Ruy Lopez', 'Openings > Ruy Lopez', 30, 31,
-            'A broad and unrelated plan.', 'broad-hash', 27, 7,
+            'Bb5. A broad and unrelated plan.', 'broad-hash', 32, 8,
             'book_test:p30-p31:c0002'
         )
         """
@@ -58,7 +58,7 @@ def _knowledge_database(path: Path) -> None:
             broad_chunk.lastrowid,
             "Ruy Lopez",
             "Openings > Ruy Lopez",
-            "A broad and unrelated plan.",
+            "Bb5. A broad and unrelated plan.",
         ),
     )
     connection.execute(
@@ -68,6 +68,16 @@ def _knowledge_database(path: Path) -> None:
             confidence, extraction_method, validation_status
         ) VALUES('book_test', ?, 30, 'plan', 'A broad and unrelated plan.',
                  0.9, 'fixture', 'source_only')
+        """,
+        (broad_chunk.lastrowid,),
+    )
+    connection.execute(
+        """
+        INSERT INTO claims(
+            book_id, chunk_id, page_number, claim_type, text,
+            confidence, extraction_method, validation_status
+        ) VALUES('book_test', ?, 30, 'recommendation',
+                 'Play a risky unrelated gambit.', 0.9, 'fixture', 'source_only')
         """,
         (broad_chunk.lastrowid,),
     )
@@ -186,3 +196,25 @@ def test_unidentified_position_does_not_use_ambiguous_san_only_book_matches(
     )
 
     assert evidence.facts == ()
+
+
+def test_broad_move_match_does_not_admit_variation_specific_recommendation(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "knowledge.db"
+    _knowledge_database(database)
+    knowledge = BookKnowledgeBase(database)
+    board = chess.Board()
+    for san in ("e4", "e5", "Nf3", "Nc6"):
+        board.push_san(san)
+
+    evidence = knowledge.retrieve(
+        question="Warum ist Bb5 gut?",
+        board=board,
+        opening=OpeningIdentity("C60", "Ruy Lopez"),
+        focus_move=board.parse_san("Bb5"),
+    )
+
+    assert evidence.facts
+    assert {fact.claim_type for fact in evidence.facts} == {"plan"}
+    assert all("risky unrelated gambit" not in fact.text for fact in evidence.facts)

@@ -36,6 +36,16 @@ class TurnSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class HistoricalMoveContext:
+    """A learner move together with the position in which it was played."""
+
+    board: chess.Board
+    move: chess.Move
+    opening: OpeningIdentity | None
+    phase: str
+
+
+@dataclass(frozen=True, slots=True)
 class OpeningEndEvidence:
     likely: bool
     headline: str
@@ -355,22 +365,37 @@ class CoachService:
                         "Der Vorschlag stammt deshalb direkt aus der aktuellen Engine-Analyse."
                     )
 
+            response_context = _move_response_context(session.board, move)
+            defender_context = _defender_pressure_context(session.board, move)
+            development_context = _development_context(session.board, move)
+            concept_context = _useful_move_concept(
+                session.board,
+                move,
+                analysis,
+                defender_pressure_text=defender_context,
+            )
+
             return {
                 "move_uci": move.uci(),
                 "move_san": san,
                 "basis": basis,
                 "opening": asdict(opening) if opening else None,
                 "summary": summary,
-                "details": (
-                    f"{_move_concept(session.board, move)} "
-                    f"{_move_response_context(session.board, move)} "
-                    f"{_defender_pressure_context(session.board, move)} "
-                    f"{_heuristic_context(session.board, move)} "
-                    f"{_concrete_board_changes(session.board, move)} "
-                    f"{_continuation_context(session.board, move, analysis)} "
-                    f"{source_detail} "
-                    "Der Zug wird nur auf dem Brett markiert; du spielst ihn selbst."
-                ).replace("  ", " "),
+                "details": " ".join(
+                    part
+                    for part in (
+                        response_context,
+                        defender_context,
+                        _heuristic_context(session.board, move),
+                        development_context,
+                        concept_context,
+                        _concrete_board_changes(session.board, move),
+                        _continuation_context(session.board, move, analysis),
+                        source_detail,
+                        "Der Zug wird nur auf dem Brett markiert; du spielst ihn selbst.",
+                    )
+                    if part
+                ),
                 "engine": asdict(analysis),
             }
 
@@ -390,15 +415,39 @@ class CoachService:
                 raise ValueError("Bitte gib eine Frage ein")
 
             board = session.board
+            context_opening = session.opening
+            question_phase = session.phase
             book_evidence = BookEvidence((), "none", False)
             knowledge_status = "no_evidence"
             knowledge_reason: str | None = None
             used_evidence_ids: tuple[str, ...] = ()
             answer_facts: list[dict[str, Any]] = []
             selection_facts: dict[str, Any] | None = None
-            mentioned_moves = self._mentioned_legal_moves(board, clean_question)
-            move = mentioned_moves[0] if mentioned_moves else None
+            current_mentions = self._mentioned_legal_moves(board, clean_question)
+            recent_attempt = (
+                self._recent_unaccepted_learner_move(session)
+                if not current_mentions and self._refers_to_own_past_move(clean_question)
+                else None
+            )
+            historical_focus = (
+                self._historical_learner_focus(session, clean_question)
+                if not current_mentions and recent_attempt is None
+                else None
+            )
+            if historical_focus is not None and not focus_move_uci:
+                board = historical_focus.board
+                context_opening = historical_focus.opening
+                question_phase = historical_focus.phase
+
+            mentioned_moves = (
+                current_mentions
+                if historical_focus is None
+                else self._mentioned_legal_moves(board, clean_question)
+            )
+            move = mentioned_moves[0] if mentioned_moves else recent_attempt
             comparison_move = mentioned_moves[1] if len(mentioned_moves) > 1 else None
+            if move is None and historical_focus is not None and not focus_move_uci:
+                move = historical_focus.move
             if move is None and focus_move_uci:
                 try:
                     focused = chess.Move.from_uci(focus_move_uci)
@@ -411,7 +460,7 @@ class CoachService:
             precomputed_analysis: MoveAnalysis | None = None
             if move is None:
                 try:
-                    if session.phase == "middlegame":
+                    if question_phase == "middlegame":
                         move, precomputed_analysis = self.engine.get_best_move(board)
                     else:
                         move, precomputed_analysis, _, _ = self._select_suggestion(board)
@@ -441,7 +490,7 @@ class CoachService:
             else:
                 san = board.san(move)
                 theory_moves = (
-                    () if session.phase == "middlegame" else self.openings.theory_moves(board)
+                    () if question_phase == "middlegame" else self.openings.theory_moves(board)
                 )
                 theory_match = move.uci() in {candidate.uci for candidate in theory_moves}
                 comparison = (
@@ -467,7 +516,7 @@ class CoachService:
                     analysis = precomputed_analysis or self.engine.analyze_move(board, move)
                 projected = board.copy(stack=False)
                 projected.push(move)
-                opening = self.openings.identify(projected, session.opening)
+                opening = self.openings.identify(projected, context_opening)
                 fallback, answer_facts, explanation_sections = self._question_fallback(
                     board,
                     san,
@@ -508,6 +557,9 @@ class CoachService:
                 opening=opening,
                 focus_move=move,
             )
+            if selection_facts is not None:
+                text = self.tutor.answer_question(selection_facts, text)
+
             synthesis = self.tutor.synthesize_book_explanation(
                 question=clean_question,
                 verified_facts=_book_synthesis_facts(answer_facts),
@@ -528,10 +580,8 @@ class CoachService:
             if synthesis.text:
                 book_text = synthesis.text
                 text = TutorText(
-                    summary=book_text.summary,
-                    details=" ".join(
-                        part for part in (book_text.details, text.details) if part
-                    ),
+                    summary=text.summary,
+                    details=text.details,
                     source=book_text.source,
                     model=book_text.model,
                 )
@@ -539,14 +589,13 @@ class CoachService:
                     0,
                     {
                         "title": "Buchgestützter Plan",
-                        "text": " ".join(
-                            part for part in (book_text.summary, book_text.details) if part
-                        ),
+                        # The deterministic sections already contain the verified
+                        # board effects. Keep the book layer to its actual source
+                        # idea instead of repeating those effects a second time.
+                        "text": book_text.summary,
                     },
                 )
             else:
-                if selection_facts is not None:
-                    text = self.tutor.answer_question(selection_facts, text)
                 if not _has_supported_explanation(answer_facts, explanation_sections):
                     limitation = (
                         "Ich kann den Zug schachlich bewerten, habe aber noch keine ausreichend "
@@ -666,6 +715,104 @@ class CoachService:
         moves = CoachService._mentioned_legal_moves(board, question)
         return moves[0] if moves else None
 
+    def _historical_learner_focus(
+        self, session: GameSession, question: str
+    ) -> HistoricalMoveContext | None:
+        """Resolve questions about an already played learner move.
+
+        The live board is normally two plies beyond the learner's move because the
+        coach has already replied. A SAN token such as ``b3`` is therefore no
+        longer legal on the live board. Replaying the verified transition messages
+        lets the question be analysed in the position where the move was actually
+        made instead of silently falling back to an unrelated current suggestion.
+        """
+
+        replay = chess.Board()
+        opening: OpeningIdentity | None = None
+        phase = "opening"
+        explicit_matches: list[tuple[int, HistoricalMoveContext]] = []
+        last_learner: HistoricalMoveContext | None = None
+        for message in session.message_history:
+            if (
+                message.get("kind") == "phase"
+                and "Mittelspiel" in str(message.get("summary") or "")
+            ):
+                phase = "middlegame"
+            move_uci = message.get("move_uci")
+            fen_after = message.get("fen_after")
+            if not move_uci or not fen_after:
+                continue
+            try:
+                move = chess.Move.from_uci(str(move_uci))
+            except (chess.InvalidMoveError, ValueError):
+                continue
+            if move not in replay.legal_moves:
+                # Sessions normally start from the initial position. If a future
+                # training mode starts from a custom FEN, fail closed instead of
+                # associating the question with the wrong historical position.
+                continue
+            before = replay.copy(stack=False)
+            context = HistoricalMoveContext(before, move, opening, phase)
+            if message.get("actor") == "learner":
+                last_learner = context
+                labels = {
+                    str(message.get("move") or "").rstrip("+#"),
+                    move.uci(),
+                    before.san(move).rstrip("+#"),
+                }
+                for label in labels - {""}:
+                    match = re.search(
+                        rf"(?<![A-Za-z0-9]){re.escape(label)}(?![A-Za-z0-9])",
+                        question,
+                        re.I,
+                    )
+                    if match:
+                        explicit_matches.append((match.start(), context))
+                        break
+            replay.push(move)
+            opening = self.openings.identify(replay, opening)
+
+        if explicit_matches:
+            return min(explicit_matches, key=lambda item: item[0])[1]
+
+        return last_learner if self._refers_to_own_past_move(question) else None
+
+    @staticmethod
+    def _refers_to_own_past_move(question: str) -> bool:
+        return bool(
+            re.search(
+            r"\b(?:mein(?:e|en|em|er)?\s+(?:(?:letzte|letzten|letzter|vorige|vorigen|"
+            r"voriger)\s+)?zug|(?:letzte|letzten|letzter|vorige|vorigen|voriger)\s+zug|"
+            r"warum\s+war\b|ungena[uü]igkeit|mein(?:e|en)?\s+fehler)\b",
+            question,
+            re.I,
+            )
+        )
+
+    @staticmethod
+    def _recent_unaccepted_learner_move(session: GameSession) -> chess.Move | None:
+        """Return the latest legal retry move while the board is still unchanged."""
+
+        for message in reversed(session.message_history):
+            if message.get("actor") != "learner":
+                continue
+            if message.get("fen_after"):
+                return None
+            san = str(message.get("move") or "")
+            if not san:
+                continue
+            try:
+                move = session.board.parse_san(san)
+            except (
+                chess.IllegalMoveError,
+                chess.InvalidMoveError,
+                chess.AmbiguousMoveError,
+                ValueError,
+            ):
+                continue
+            return move if move in session.board.legal_moves else None
+        return None
+
     def _question_fallback(
         self,
         board: chess.Board,
@@ -701,9 +848,15 @@ class CoachService:
         opening_text = (
             f"Nach dem Zug ist die Stellung als {opening.name} eingeordnet. " if opening else ""
         )
-        concept_text = _move_concept(board, move)
         response_text = _move_response_context(board, move)
         defender_pressure_text = _defender_pressure_context(board, move)
+        development_text = _development_context(board, move)
+        concept_text = _useful_move_concept(
+            board,
+            move,
+            analysis,
+            defender_pressure_text=defender_pressure_text,
+        )
         heuristic_text = _heuristic_context(board, move)
         board_changes_text = _concrete_board_changes(board, move)
         continuation_text = _continuation_context(board, move, analysis)
@@ -772,6 +925,7 @@ class CoachService:
             ("direct_threat", response_text, True),
             ("defender_pressure", defender_pressure_text, True),
             ("heuristic", heuristic_text, True),
+            ("development", development_text, True),
             ("board_changes", board_changes_text, True),
             ("continuation", continuation_text, True),
             ("contrast", contrast_text, True),
@@ -787,7 +941,7 @@ class CoachService:
                 "text": text,
                 "required": required,
                 "summary_eligible": fact_id
-                in {"verdict", "plan", "direct_threat", "heuristic"},
+                in {"verdict", "plan", "direct_threat", "heuristic", "development"},
             }
             for fact_id, text, required in fact_values
             if text
@@ -800,6 +954,7 @@ class CoachService:
                     response_text,
                     defender_pressure_text,
                     heuristic_text,
+                    development_text,
                     plan_text,
                     recurring_text,
                     concept_text,
@@ -822,6 +977,7 @@ class CoachService:
                 response_text,
                 defender_pressure_text,
                 heuristic_text,
+                development_text,
                 concept_text,
                 board_changes_text,
                 continuation_text,
@@ -829,7 +985,7 @@ class CoachService:
             )
             if part
         )
-        plan_section = plan_text or (
+        plan_section = plan_text or development_text or (
             "Aus den geprüften Varianten lässt sich kein einzelner stabiler Langzeitplan "
             "belegen. Ich beschränke mich deshalb auf die konkreten Folgen unten."
         )
@@ -1111,14 +1267,23 @@ class CoachService:
         )
 
     def _move_details(self, board: chess.Board, move: chess.Move, analysis: MoveAnalysis) -> str:
+        response_text = _move_response_context(board, move)
+        defender_pressure_text = _defender_pressure_context(board, move)
+        development_text = _development_context(board, move)
         return " ".join(
             part
             for part in (
-                _move_response_context(board, move),
-                _defender_pressure_context(board, move),
+                response_text,
+                defender_pressure_text,
                 _heuristic_context(board, move),
+                development_text,
                 _single_line_plan_context(board, move, analysis),
-                _move_concept(board, move),
+                _useful_move_concept(
+                    board,
+                    move,
+                    analysis,
+                    defender_pressure_text=defender_pressure_text,
+                ),
                 _concrete_board_changes(board, move),
                 _continuation_context(board, move, analysis),
                 _tactical_contrast(board, move, analysis),
@@ -1558,6 +1723,94 @@ def _move_concept(board: chess.Board, move: chess.Move) -> str:
     return f"Der {piece_name} zieht nach {target}.{center_text}{attack_text}"
 
 
+def _development_context(board: chess.Board, move: chess.Move) -> str:
+    """Explain pawn support and newly freed bishop development from board facts."""
+
+    piece = board.piece_at(move.from_square)
+    if piece is None or piece.piece_type != chess.PAWN:
+        return ""
+    projected = board.copy(stack=False)
+    projected.push(move)
+    san = board.san(move)
+    supported_pawns = [
+        chess.square_name(square)
+        for square in projected.attacks(move.to_square)
+        if projected.piece_at(square) == chess.Piece(chess.PAWN, board.turn)
+    ]
+    sentences: list[str] = []
+    if supported_pawns:
+        pawns = _join_descriptions(
+            [f"den eigenen Bauern auf {square}" for square in supported_pawns]
+        )
+        sentences.append(f"{san} stützt {pawns}.")
+
+    opened_bishops: list[str] = []
+    for square in board.pieces(chess.BISHOP, board.turn):
+        before = board.attacks(square)
+        after = projected.attacks(square)
+        newly_reached = after - before - chess.SquareSet([move.from_square])
+        useful = [target for target in newly_reached if projected.piece_at(target) is None]
+        if useful:
+            opened_bishops.append(chess.square_name(square))
+    if opened_bishops:
+        bishops = _join_descriptions(
+            [f"dem Läufer auf {square}" for square in opened_bishops]
+        )
+        sentences.append(f"Der Zug öffnet {bishops} neue Entwicklungsfelder.")
+    return " ".join(sentences)
+
+
+def _useful_move_concept(
+    board: chess.Board,
+    move: chess.Move,
+    analysis: MoveAnalysis,
+    *,
+    defender_pressure_text: str,
+) -> str:
+    """Keep generic geometry only when it adds information that survives the reply."""
+
+    piece = board.piece_at(move.from_square)
+    if piece is None:
+        return ""
+    if _first_reply_captures_focus_piece(board, move, analysis.played_pv_san):
+        # A transient square-control list is actively misleading when the main
+        # line removes the moved piece immediately. The capture/recapture belongs
+        # in the concrete and comparison layers instead.
+        return ""
+    if defender_pressure_text and piece.piece_type != chess.KNIGHT:
+        # The defender-pressure explanation already states the attacked piece
+        # and, unlike a generic move description, explains why that attack matters.
+        return ""
+    return _move_concept(board, move)
+
+
+def _first_reply_captures_focus_piece(
+    board: chess.Board, move: chess.Move, pv_san: tuple[str, ...]
+) -> bool:
+    if len(pv_san) < 2:
+        return False
+    replay = board.copy(stack=False)
+    try:
+        first = replay.parse_san(pv_san[0])
+        if first != move:
+            return False
+        replay.push(first)
+        reply = replay.parse_san(pv_san[1])
+    except (
+        chess.IllegalMoveError,
+        chess.InvalidMoveError,
+        chess.AmbiguousMoveError,
+        ValueError,
+    ):
+        return False
+    if not replay.is_capture(reply):
+        return False
+    capture_square = reply.to_square
+    if replay.is_en_passant(reply):
+        capture_square += -8 if replay.turn == chess.WHITE else 8
+    return capture_square == move.to_square
+
+
 def _square_list(squares: chess.SquareSet) -> str:
     names = [chess.square_name(square) for square in squares]
     if not names:
@@ -1811,6 +2064,15 @@ def _strategic_plan_text(
     projected = board.copy(stack=False)
     projected.push(focus_move)
     reasons: list[str] = []
+
+    if _first_reply_captures_focus_piece(board, focus_move, focus.pv_san):
+        reasons.append(
+            f"Stockfish rechnet unmittelbar mit {focus.pv_san[0]} {focus.pv_san[1]}; "
+            "die gezogene Figur wird dabei sofort geschlagen. Der Nutzen des Zuges muss "
+            "deshalb in der entstehenden Stellung liegen, nicht in einer dauerhaften "
+            f"Wirkung vom Feld {chess.square_name(focus_move.to_square)}."
+        )
+        return " ".join(reasons)
 
     if piece.piece_type == chess.PAWN:
         controlled = projected.attacks(focus_move.to_square)
@@ -2137,6 +2399,9 @@ def _candidate_comparison_text(
         )
 
     focus_effects = _move_effects(board, focus_move)
+    if _first_reply_captures_focus_piece(board, focus_move, focus.pv_san):
+        focus_effects["new_targets"] = ""
+        focus_effects["central_squares"] = ""
     try:
         alternative_move = chess.Move.from_uci(alternative.move_uci)
     except (chess.InvalidMoveError, ValueError):
@@ -2146,6 +2411,13 @@ def _candidate_comparison_text(
         if alternative_move is not None and alternative_move in board.legal_moves
         else None
     )
+    if (
+        alternative_effects is not None
+        and alternative_move is not None
+        and _first_reply_captures_focus_piece(board, alternative_move, alternative.pv_san)
+    ):
+        alternative_effects["new_targets"] = ""
+        alternative_effects["central_squares"] = ""
 
     differences: list[str] = []
     if alternative_effects:
@@ -2193,14 +2465,6 @@ def _candidate_comparison_text(
                 f"{focus.move_san} greift neu {focus_targets or 'keine Figur'} an; "
                 f"{alternative.move_san} dagegen {alternative_targets or 'keine Figur'}."
             )
-        focus_center = focus_effects["central_squares"]
-        alternative_center = alternative_effects["central_squares"]
-        if focus_center != alternative_center:
-            differences.append(
-                f"Direkte Zentrumsfelder nach {focus.move_san}: {focus_center or 'keine'}; "
-                f"nach {alternative.move_san}: {alternative_center or 'keine'}."
-            )
-
     focus_reply = _first_reply_event(board, focus)
     alternative_reply = _first_reply_event(board, alternative)
     if focus_reply:
@@ -2414,20 +2678,42 @@ def _format_pawns(value: float) -> str:
 def _deduplicate_explanation_sections(
     summary: str, sections: list[dict[str, str]]
 ) -> list[dict[str, str]]:
-    """Keep the expanded layer from repeating the visible summary verbatim."""
-    normalized_summary = " ".join(summary.casefold().split())
+    """Keep expanded sections from repeating the summary or one another."""
+
+    seen_sentences = {
+        _normalized_explanation_sentence(sentence)
+        for sentence in _explanation_sentences(summary)
+        if sentence.strip()
+    }
     result: list[dict[str, str]] = []
     for section in sections:
         section_text = section.get("text", "").strip()
-        normalized_section = " ".join(section_text.casefold().split())
-        if not normalized_section or normalized_section in normalized_summary:
-            continue
-        if section_text.startswith(summary):
-            section_text = section_text[len(summary) :].strip()
-            if not section_text:
+        unique_sentences: list[str] = []
+        for sentence in _explanation_sentences(section_text):
+            normalized = _normalized_explanation_sentence(sentence)
+            if not normalized or normalized in seen_sentences:
                 continue
-        result.append({**section, "text": section_text})
+            seen_sentences.add(normalized)
+            unique_sentences.append(sentence.strip())
+        if unique_sentences:
+            result.append({**section, "text": " ".join(unique_sentences)})
     return result
+
+
+def _explanation_sentences(text: str) -> list[str]:
+    return re.split(r"(?<=[.!?])\s+", text.strip()) if text.strip() else []
+
+
+def _normalized_explanation_sentence(text: str) -> str:
+    normalized = text.casefold()
+    for word, digit in {
+        "eins": "1",
+        "zwei": "2",
+        "drei": "3",
+        "vier": "4",
+    }.items():
+        normalized = re.sub(rf"\b{word}\b", digit, normalized)
+    return " ".join(re.sub(r"[^a-z0-9äöüß]+", " ", normalized).split())
 
 
 def _has_supported_explanation(
@@ -2450,6 +2736,7 @@ def _has_supported_explanation(
         "direct_threat",
         "defender_pressure",
         "heuristic",
+        "development",
         "continuation",
         "contrast",
     }
@@ -2465,6 +2752,7 @@ def _book_synthesis_facts(answer_facts: list[dict[str, Any]]) -> list[dict[str, 
         "direct_threat",
         "defender_pressure",
         "heuristic",
+        "development",
         "board_changes",
         "continuation",
         "contrast",

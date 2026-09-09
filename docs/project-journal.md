@@ -1276,3 +1276,79 @@ evidence for a robust follow-up, not proof of the unique reason for a move.
 
 The design choices and detailed results are recorded in ADR 0008 and
 `docs/evaluations/2026-09-09-deep-explanation-quality-cycle.md`.
+
+### Dogfooding before adding a third book
+
+When the next step appeared to be another source import, the learner proposed
+that the agent should play the product itself. This changed the immediate
+priority. A third book could increase coverage, but it could not reveal whether
+the end-to-end interaction was asking Stockfish and RAG about the right
+position. The planned import was therefore deferred in favor of a white game, a
+black game, intentional inaccuracies, suggestions, deep questions, and undo.
+
+The local Browser-control skill was selected because this was a local web-app
+test. Its bundled runtime failed during setup: it imported `node:process`, which
+the current browser-control execution environment rejects. This is external to
+the Chess Coach; the frontend and API health checks remained good. The test
+continued through the same FastAPI requests used by the page. Consequently the
+move and explanation paths are production-path evidence, while visual
+drag-and-drop and scrolling are explicitly not claimed as revalidated.
+
+The first white game exposed a severe semantic reference bug. After the learner
+played `b3` and the coach replied, “Why was `b3` inaccurate?” returned a deep,
+cited explanation of `Bxc6`. Every downstream fact was legal and grounded, but
+the question resolver had used the live board. Since `b3` was no longer legal
+there, it silently selected a current theory suggestion. This is a distinct
+truth boundary: grounding requires the correct historical position, not merely
+a valid current one.
+
+Accepted transition messages now reconstruct the position immediately before a
+named past learner move. “My last move” language uses the last accepted learner
+transition. The historical analysis leaves the live board and undo state
+unchanged and fails closed if replay cannot prove the position. Automated tests
+cover both explicit `b3` and implicit last-move questions. A separate regression
+covers a legal move rejected into the correction loop: because the board has not
+advanced, “my last move” must resolve to that current retry, not the last
+accepted historical move.
+
+The first corrected question then showed why dogfooding must continue past the
+first bug. The coach discussed `d3` but could not state why it was sensible.
+`python-chess` can prove two useful causal facts without prose generation: the
+pawn on `d3` supports the pawn on `e4`, and vacating `d2` frees development
+squares for the bishop on `c1`. Those facts now appear in ordinary and deep
+feedback. A real repeated run made them the visible two-sentence answer while
+retaining the small engine preference for `Nf3` in the comparison layer.
+
+The Ruy Lopez suggestion had repeated the c6-knight attack in a specific
+defender explanation and a generic bishop-geometry template. Specific causal
+facts now suppress a redundant generic template. Sentence-level deduplication
+also runs across expanded sections. Generic central-square deltas were removed
+from alternative comparisons because the learner had repeatedly identified
+them as technically true but strategically unhelpful. When the main line
+immediately captures a moved piece, the coach suppresses temporary attacks from
+that destination and explains that any benefit must lie in the resulting
+position.
+
+The final `Bb5` run uncovered a subtler citation issue. Retrieval returned a
+Schliemann/Jaenisch recommendation from the same Ruy Lopez section, and its
+reference appeared even though the visible synthesis used another general plan.
+The broad FTS match had provenance but insufficient variation context.
+Recommendations and warnings now require an exact position match; broad
+opening, move, and question matches may contribute only general plans. The same
+database query now returns the one general Ruy Lopez plan and omits the unrelated
+Schliemann claim.
+
+The black-side run started with coach `1.e4`, accepted theoretical `1...c5`, and
+continued with `2.Nf3`. Undo removed the learner move and coach reply together,
+restored Black to move after `1.e4`, and preserved the initial coach message.
+The first coach move correctly introduced the opening rather than claiming to
+continue one.
+
+Deep local calls varied from roughly 28 seconds to more than one minute when the
+book synthesis or critic retried. The rolling countdown remains the honest UI
+choice. The completed change set passes 67 backend tests plus lint, production
+build, and the rendered-shell test. ADR 0009 and
+`docs/evaluations/2026-09-09-dogfooding-session.md` preserve the decision and
+full observations. If source expansion follows, John Emms' *Discovering Chess
+Openings* is the leading local candidate because it adds principle-oriented
+teaching rather than another encyclopedic catalogue.

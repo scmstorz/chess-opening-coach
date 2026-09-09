@@ -420,6 +420,98 @@ def test_question_about_suggestion_is_grounded_without_playing_the_move() -> Non
     assert alternative["message"]["move"] == "d4"
 
 
+def test_question_about_played_learner_move_uses_its_historical_position() -> None:
+    coach = service()
+    response = coach.create_session("white")
+    active = coach.sessions[response["session_id"]]
+    replay = chess.Board()
+    active.move_history = []
+    active.message_history = []
+    for index, san in enumerate(
+        ("e4", "e5", "Nf3", "Nc6", "Bb5", "Nf6", "b3", "Bc5")
+    ):
+        move = replay.parse_san(san)
+        actor = "learner" if index % 2 == 0 else "coach"
+        replay.push(move)
+        active.move_history.append({"actor": actor, "san": san})
+        active.message_history.append(
+            {
+                "actor": actor,
+                "move": san,
+                "move_uci": move.uci(),
+                "fen_after": replay.fen(),
+                "summary": "Test",
+                "details": "Test",
+                "source": "deterministic",
+                "model": None,
+                "attempt": None,
+                "engine": None,
+            }
+        )
+    active.board = replay
+    active.opening = OpeningIdentity("C65", "Ruy Lopez: Berlin Defense")
+    current_fen = active.board.fen()
+
+    explicit = coach.answer_question(
+        response["session_id"],
+        "Warum war b3 eine Ungenauigkeit? Was fehlt mir danach im Plan?",
+    )["message"]
+    implicit = coach.answer_question(
+        response["session_id"],
+        "Was war an meinem letzten Zug problematisch?",
+    )["message"]
+
+    assert explicit["move"] == "b3"
+    assert explicit["engine"]["played_pv_san"][0] == "b3"
+    assert implicit["move"] == "b3"
+    assert active.board.fen() == current_fen
+
+
+def test_question_about_rejected_retry_uses_the_unchanged_current_position() -> None:
+    coach = service()
+    session = coach.create_session("white")
+
+    rejected = coach.play_learner_move(session["session_id"], "f2", "f3")
+    answer = coach.answer_question(
+        session["session_id"],
+        "Warum war mein letzter Zug schlecht?",
+    )["message"]
+
+    assert rejected["correction"]["active"] is True
+    assert answer["move"] == "f3"
+    assert answer["engine"]["played_pv_san"][0] == "f3"
+    assert coach.sessions[session["session_id"]].board.fen() == session["fen"]
+
+
+def test_specific_defender_explanation_replaces_duplicate_piece_geometry() -> None:
+    coach = service()
+    board = chess.Board()
+    for san in ("e4", "e5", "Nf3", "Nc6"):
+        board.push_san(san)
+    move = board.parse_san("Bb5")
+    analysis = coach.engine.analyze_move(board, move)
+
+    details = coach._move_details(board, move, analysis)
+
+    assert details.count("greift den gegnerischen Springer auf c6 an") == 1
+    assert "Diese Figur deckt zugleich den Bauern auf e5" in details
+    assert "Der Läufer zieht nach b5" not in details
+
+
+def test_pawn_move_explains_support_and_freed_bishop_development() -> None:
+    coach = service()
+    board = chess.Board()
+    for san in ("e4", "e5"):
+        board.push_san(san)
+    move = board.parse_san("d3")
+    analysis = coach.engine.analyze_move(board, move)
+
+    details = coach._move_details(board, move, analysis)
+
+    assert "d3 stützt den eigenen Bauern auf e4" in details
+    assert "öffnet dem Läufer auf c1 neue Entwicklungsfelder" in details
+
+
 def test_deep_question_marks_mode_and_adds_cross_line_plan_section() -> None:
     coach = service()
     class PlanEngine(FakeEngine):

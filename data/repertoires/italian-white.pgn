@@ -1,0 +1,34 @@
+[Event "Italian Game White Guided Lesson"]
+[Site "Local"]
+[Date "2026.09.10"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C50"]
+[Opening "Italian Game"]
+[LessonId "italian-white-pianissimo"]
+[LessonTitle "Italienisches Spiel mit Weiß"]
+[TrainingSide "White"]
+[LessonGoal "Zentrum, schnelle Entwicklung, Rochade und den d4-Vorstoß vorbereiten"]
+
+1. e4 {Du besetzt das Zentrum und öffnest Dame und Läufer Wege ins Spiel. [%hint1 Suche einen Zug, der das Zentrum besetzt und zugleich Linien für zwei Figuren öffnet.] [%hint2 Der gesuchte Zug wird mit dem Bauern vor deinem König gespielt.]}
+1... e5 {Schwarz beansprucht ebenfalls das Zentrum und begrenzt deinen e4-Bauern.}
+2. Nf3 {Du entwickelst den Königsspringer und greifst gleichzeitig den schwarzen e5-Bauern an. [%hint1 Entwickle eine Figur so, dass sie zugleich Druck auf e5 macht.] [%hint2 Der Springer auf dem Königsflügel soll ins Spiel kommen.]}
+2... Nc6 {Schwarz entwickelt den Damenspringer und deckt damit den angegriffenen e5-Bauern.}
+3. Bc4 {Der Läufer entwickelt sich mit Blick auf f7, das zu Beginn nur vom schwarzen König gedeckt wird. [%hint1 Entwickle einen Läufer auf eine aktive Diagonale gegen die schwarze Königsstellung.] [%hint2 Der weißfeldrige Läufer soll in Richtung f7 schauen.]}
+3... Bc5 {Schwarz entwickelt spiegelbildlich und richtet den Läufer auf deinen empfindlichen Punkt f2.}
+4. d3 {Der d-Bauer stützt e4 und hält den Aufbau stabil, während die übrigen Figuren entwickelt werden. [%hint1 Sichere zuerst deinen e4-Bauern, ohne das Zentrum sofort zu öffnen.] [%hint2 Nutze dafür den Bauern vor deiner Dame.]}
+4... Nf6 {Schwarz entwickelt den zweiten Springer und erhöht den Druck auf e4.}
+5. O-O {Mit der kurzen Rochade bringst du den König in Sicherheit und den Turm näher zur Mitte. [%hint1 Deine Zentralstellung steht; kümmere dich jetzt um die Königssicherheit.] [%hint2 Gesucht ist kein normaler Figurenzug, sondern die kurze Rochade.]}
+5... d6 {Schwarz stabilisiert e5 und schafft dem Läufer auf c8 Entwicklungsmöglichkeiten.}
+6. c3 {Der c-Bauer bereitet den späteren Vorstoß d4 vor und gibt dem Läufer auf c4 bei Bedarf das Rückzugsfeld c2. [%hint1 Bereite den thematischen Bauernvorstoß d4 vor.] [%hint2 Der Nachbarbauer links vom d-Bauern schafft die nötige Unterstützung.]}
+6... O-O {Schwarz schließt die eigene Entwicklung mit der kurzen Rochade ab und sichert den König.}
+7. Re1 {Der Turm stützt e4; dadurch kann Weiß den d4-Vorstoß später besser vorbereiten. [%hint1 Verbessere eine bereits entwickelte Figur und verstärke zugleich e4.] [%hint2 Welcher Turm kann nach der Rochade auf die e-Linie ziehen?]}
+7... a6 {Schwarz bereitet ...b5 vor, um deinen Läufer auf c4 mit Raumgewinn zu befragen.}
+8. Bb3 {Der Läufer weicht dem vorbereiteten ...b5 aus und behält die Diagonale nach f7. [%hint1 Reagiere vorbeugend auf den geplanten Bauernvorstoß ...b5.] [%hint2 Bewahre den Läufer und seine Diagonale nach f7.]}
+8... Ba7 {Schwarz erhält den eigenen Läufer und bewahrt dessen Diagonale in Richtung f2.}
+9. Nbd2 {Der Damenspringer wird entwickelt, unterstützt e4 und kann später über f1 nach g3 manövrieren. [%hint1 Bringe nun auch deine letzte unentwickelte Leichtfigur ins Spiel.] [%hint2 Der Springer auf b1 soll sich entwickeln, ohne den c-Bauern zurückzustellen.]}
+9... Re8 {Schwarz stellt den Turm hinter den e5-Bauern und erhöht damit den Druck im Zentrum.}
+10. h3 {Der Zug verhindert ...Bg4 und gibt deinem König ein Luftfeld, ohne den zentralen Aufbau zu verändern. [%hint1 Verhindere, dass der Läufer auf c8 eine Figur auf f3 fesselt.] [%hint2 Ein Randbauer kann dem Feld g4 die Kontrolle entziehen.]}
+10... h6 {Schwarz nimmt dem weißen Läufer oder Springer das Feld g5 und schafft ebenfalls ein Luftfeld.} *

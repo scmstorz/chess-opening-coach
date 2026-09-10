@@ -20,7 +20,8 @@ from chess_coach.engine import (
     MovePlanAnalysis,
     StockfishService,
 )
-from chess_coach.openings import OpeningBook, OpeningIdentity, TheoryMove
+from chess_coach.guided import GuidedLesson, GuidedLessonBook, GuidedMove
+from chess_coach.openings import OpeningBook, OpeningIdentity, TheoryMove, position_key
 from chess_coach.storage import SQLiteStore
 from chess_coach.tutor import OllamaTutor, TutorText
 
@@ -34,6 +35,7 @@ class TurnSnapshot:
     interaction_id: int | None
     phase: str
     opening_end: OpeningEndEvidence | None
+    lesson_ply: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +84,9 @@ class GameSession:
     opening_end: OpeningEndEvidence | None = None
     opening_summary: dict[str, Any] | None = None
     pending_move_clarification: MoveNotationClarification | None = None
+    training_mode: str = "free"
+    lesson: GuidedLesson | None = None
+    lesson_ply: int = 0
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -97,16 +102,29 @@ class CoachService:
         *,
         rng: random.Random | None = None,
         book_knowledge: BookKnowledgeBase | NullBookKnowledgeBase | None = None,
+        guided_lessons: GuidedLessonBook | None = None,
     ) -> None:
         self.openings = opening_book
         self.engine = engine
         self.tutor = tutor
         self.store = store
         self.book_knowledge = book_knowledge or NullBookKnowledgeBase()
+        self.guided_lessons = guided_lessons or GuidedLessonBook()
         self.rng = rng or random.Random()
         self.sessions: dict[str, GameSession] = {}
 
-    def create_session(self, requested_color: str) -> dict[str, Any]:
+    def create_session(
+        self,
+        requested_color: str,
+        *,
+        training_mode: str = "free",
+        lesson_id: str | None = None,
+    ) -> dict[str, Any]:
+        if training_mode not in {"free", "guided"}:
+            raise ValueError("Unbekannter Trainingsmodus")
+        lesson = self.guided_lessons.get(lesson_id) if training_mode == "guided" else None
+        if lesson is not None:
+            requested_color = "white" if lesson.learner_color == chess.WHITE else "black"
         if requested_color == "random":
             requested_color = self.rng.choice(["white", "black"])
         learner_color = chess.WHITE if requested_color == "white" else chess.BLACK
@@ -114,10 +132,14 @@ class CoachService:
             session_id=str(uuid.uuid4()),
             board=chess.Board(),
             learner_color=learner_color,
+            training_mode=training_mode,
+            lesson=lesson,
         )
         self.sessions[session.session_id] = session
-        messages: list[dict[str, Any]] = []
-        if learner_color == chess.BLACK:
+        messages: list[dict[str, Any]] = (
+            [self._guided_prompt_message(session)] if lesson is not None else []
+        )
+        if learner_color == chess.BLACK and lesson is None:
             messages.append(self._play_coach_move(session))
         return self._response(session, messages=messages)
 
@@ -155,8 +177,23 @@ class CoachService:
             )
             theory_match = move.uci() in {candidate.uci for candidate in theory_moves}
             analysis = self.engine.analyze_move(session.board, move)
+            guided_step = self._guided_expected_move(session)
+            repertoire_match = (
+                move.uci() == guided_step.move_uci if guided_step is not None else None
+            )
+            if guided_step is not None and not repertoire_match:
+                return self._handle_guided_miss(
+                    session,
+                    fen_before=fen_before,
+                    attempted_move=move,
+                    attempted_san=san,
+                    expected=guided_step,
+                    theory_match=theory_match,
+                    analysis=analysis,
+                )
             needs_correction = bool(
-                analysis.available
+                guided_step is None
+                and analysis.available
                 and analysis.loss_pawns is not None
                 and analysis.loss_pawns >= self.correction_threshold
             )
@@ -212,20 +249,28 @@ class CoachService:
             projected = session.board.copy(stack=False)
             projected.push(move)
             next_opening = self.openings.identify(projected, session.opening)
-            message = self._accepted_message(
-                session,
-                move,
-                san,
-                theory_match,
-                theory_moves,
-                analysis,
-                next_opening,
+            message = (
+                self._guided_accepted_message(
+                    session, guided_step, analysis, next_opening
+                )
+                if guided_step is not None
+                else self._accepted_message(
+                    session,
+                    move,
+                    san,
+                    theory_match,
+                    theory_moves,
+                    analysis,
+                    next_opening,
+                )
             )
             self._save_turn_snapshot(session)
             session.board.push(move)
             self._attach_transition(message, move, session.board)
             session.move_history.append({"actor": "learner", "san": san})
             session.opening = next_opening
+            if guided_step is not None:
+                session.lesson_ply += 1
             self._record(
                 session, fen_before, "learner", move, True, True, theory_match, analysis, message
             )
@@ -235,10 +280,103 @@ class CoachService:
                 messages.append(self._play_coach_move(session))
             return self._response(session, messages=messages)
 
+    def _handle_guided_miss(
+        self,
+        session: GameSession,
+        *,
+        fen_before: str,
+        attempted_move: chess.Move,
+        attempted_san: str,
+        expected: GuidedMove,
+        theory_match: bool,
+        analysis: MoveAnalysis,
+    ) -> dict[str, Any]:
+        session.attempts_at_position += 1
+        attempt = session.attempts_at_position
+        if attempt < 3:
+            message = self._guided_retry_message(
+                session, attempted_san, expected, analysis, attempt
+            )
+            self._record(
+                session,
+                fen_before,
+                "learner",
+                attempted_move,
+                True,
+                False,
+                theory_match,
+                analysis,
+                message,
+            )
+            return self._response(
+                session,
+                messages=[message],
+                correction=self._correction(session, analysis),
+            )
+
+        # Preserve the third failed attempt as learner evidence, then advance the
+        # lesson with its authored move. The two records keep the attempted move
+        # separate from the move placed on the board by the correction flow.
+        hidden_attempt = self._guided_retry_message(
+            session, attempted_san, expected, analysis, attempt
+        )
+        hidden_attempt["summary"] = (
+            f"{attempted_san} war der dritte legale Versuch, aber nicht der Zug "
+            "dieser Trainingslinie. Danach wurde die Lösung gezeigt."
+        )
+        hidden_attempt["details"] = (
+            "Der Versuch bleibt als Lernsignal gespeichert; er wurde nicht auf dem Brett "
+            "ausgeführt."
+        )
+        self._record(
+            session,
+            fen_before,
+            "learner",
+            attempted_move,
+            True,
+            False,
+            theory_match,
+            analysis,
+            hidden_attempt,
+        )
+        expected_move = chess.Move.from_uci(expected.move_uci)
+        if expected_move not in session.board.legal_moves:
+            raise ValueError("Die Trainingslinie passt nicht mehr zur aktuellen Stellung")
+        expected_analysis = self.engine.analyze_move(session.board, expected_move)
+        projected = session.board.copy(stack=False)
+        projected.push(expected_move)
+        next_opening = self.openings.identify(projected, session.opening)
+        message = self._guided_solution_message(
+            session, expected, attempted_san, expected_analysis, next_opening
+        )
+        self._save_turn_snapshot(session)
+        session.board.push(expected_move)
+        self._attach_transition(message, expected_move, session.board)
+        session.move_history.append({"actor": "learner", "san": expected.move_san})
+        session.opening = next_opening
+        session.lesson_ply += 1
+        self._record(
+            session,
+            fen_before,
+            "learner",
+            expected_move,
+            True,
+            True,
+            expected_move.uci()
+            in {candidate.uci for candidate in self.openings.theory_moves(chess.Board(fen_before))},
+            expected_analysis,
+            message,
+        )
+        session.attempts_at_position = 0
+        messages = [message]
+        if not session.board.is_game_over():
+            messages.append(self._play_coach_move(session))
+        return self._response(session, messages=messages)
+
     def undo_last_turn(self, session_id: str) -> dict[str, Any]:
         session = self._session(session_id)
         with session.lock:
-            if session.phase == "complete":
+            if session.phase == "complete" and session.lesson is None:
                 raise ValueError("Die abgeschlossene Auswertung kann nicht zurückgenommen werden")
             if not session.undo_stack:
                 raise ValueError("Es gibt noch keinen vollständigen Zug zum Zurücknehmen")
@@ -249,7 +387,9 @@ class CoachService:
             session.opening = snapshot.opening
             session.phase = snapshot.phase
             session.opening_end = snapshot.opening_end
+            session.lesson_ply = snapshot.lesson_ply
             session.opening_summary = None
+            self.store.delete_session_summary(session.session_id)
             del session.move_history[snapshot.move_history_length :]
             del session.message_history[snapshot.message_history_length :]
             session.attempts_at_position = 0
@@ -331,6 +471,38 @@ class CoachService:
                 raise ValueError("Diese Eröffnungseinheit ist bereits abgeschlossen")
             if session.board.turn != session.learner_color:
                 raise ValueError("Der Coach ist am Zug")
+
+            guided_step = self._guided_expected_move(session)
+            if guided_step is not None:
+                move = chess.Move.from_uci(guided_step.move_uci)
+                if move not in session.board.legal_moves:
+                    raise ValueError("Die Trainingslinie passt nicht mehr zur aktuellen Stellung")
+                analysis = self.engine.analyze_move(session.board, move)
+                return {
+                    "move_uci": move.uci(),
+                    "move_san": guided_step.move_san,
+                    "basis": "repertoire",
+                    "opening": {
+                        "eco": session.lesson.eco,
+                        "name": session.lesson.opening_name,
+                    }
+                    if session.lesson
+                    else None,
+                    "summary": (
+                        f"Für diese Italienisch-Lektion ist {guided_step.move_san} der "
+                        "gesuchte Repertoirezug."
+                    ),
+                    "details": " ".join(
+                        part
+                        for part in (
+                            guided_step.explanation,
+                            self._engine_details(analysis),
+                            "Der Zug wird nur markiert; du spielst ihn selbst.",
+                        )
+                        if part
+                    ),
+                    "engine": asdict(analysis),
+                }
 
             if session.phase == "middlegame":
                 move, analysis = self.engine.get_best_move(session.board)
@@ -517,7 +689,14 @@ class CoachService:
             precomputed_analysis: MoveAnalysis | None = None
             if move is None:
                 try:
-                    if question_phase == "middlegame":
+                    guided_focus = (
+                        self._guided_expected_move(session)
+                        if board.fen() == session.board.fen()
+                        else None
+                    )
+                    if guided_focus is not None:
+                        move = chess.Move.from_uci(guided_focus.move_uci)
+                    elif question_phase == "middlegame":
                         move, precomputed_analysis = self.engine.get_best_move(board)
                     else:
                         move, precomputed_analysis, _, _ = self._select_suggestion(board)
@@ -586,6 +765,31 @@ class CoachService:
                     preferred_alternative=comparison_move,
                     deep=deep,
                 )
+                lesson_move = (
+                    session.lesson.find_move(board, move) if session.lesson is not None else None
+                )
+                if lesson_move is not None:
+                    answer_facts.append(
+                        {
+                            "id": "guided_repertoire_plan",
+                            "text": lesson_move.explanation,
+                            "required": True,
+                            "summary_eligible": True,
+                        }
+                    )
+                    fallback = TutorText(
+                        summary=lesson_move.explanation,
+                        details=fallback.details,
+                        source="guided-repertoire",
+                        model=None,
+                    )
+                    explanation_sections.insert(
+                        0,
+                        {
+                            "title": "Plan der Trainingslinie",
+                            "text": lesson_move.explanation,
+                        },
+                    )
                 selection_facts = {
                     "task": (
                         "Erkläre den mittel- und langfristigen Nutzen des Zuges anhand einer "
@@ -1271,7 +1475,16 @@ class CoachService:
         fen_before = board.fen()
         theory_moves = () if session.phase == "middlegame" else self.openings.theory_moves(board)
         analysis: MoveAnalysis | None = None
-        if session.phase == "middlegame":
+        guided_step = self._guided_expected_move(session)
+        if guided_step is not None:
+            if guided_step.color == session.learner_color:
+                raise ValueError("Die Trainingslinie erwartet jetzt einen Zug des Lernenden")
+            move = chess.Move.from_uci(guided_step.move_uci)
+            if move not in board.legal_moves:
+                raise ValueError("Die Trainingslinie passt nicht mehr zur aktuellen Stellung")
+        elif session.lesson is not None:
+            raise ValueError("Die Trainingslinie enthält keine weitere Coach-Antwort")
+        elif session.phase == "middlegame":
             move, analysis = self.engine.get_best_move(board)
         else:
             move = self._weighted_theory_move(theory_moves)
@@ -1280,7 +1493,8 @@ class CoachService:
             move = self.rng.choice(legal)
         analysis = analysis or self.engine.analyze_move(board, move)
         if (
-            analysis.available
+            guided_step is None
+            and analysis.available
             and analysis.loss_pawns is not None
             and analysis.loss_pawns >= 0.40
             and analysis.best_move_uci
@@ -1292,11 +1506,19 @@ class CoachService:
         projected = board.copy(stack=False)
         projected.push(move)
         next_opening = self.openings.identify(projected, session.opening)
-        message = self._coach_message(session, move, san, theory_match, analysis, next_opening)
+        message = (
+            self._guided_coach_message(session, guided_step, analysis, next_opening)
+            if guided_step is not None
+            else self._coach_message(
+                session, move, san, theory_match, analysis, next_opening
+            )
+        )
         board.push(move)
         self._attach_transition(message, move, board)
         session.move_history.append({"actor": "coach", "san": san})
         session.opening = next_opening
+        if guided_step is not None:
+            session.lesson_ply += 1
         self._record(
             session, fen_before, "coach", move, True, True, theory_match, analysis, message
         )
@@ -1307,6 +1529,152 @@ class CoachService:
             return None
         selected = self.rng.choices(moves, weights=[max(1, move.weight) for move in moves], k=1)[0]
         return chess.Move.from_uci(selected.uci)
+
+    @staticmethod
+    def _guided_expected_move(session: GameSession) -> GuidedMove | None:
+        if session.lesson is None:
+            return None
+        expected = session.lesson.move_at(session.lesson_ply)
+        if expected is None:
+            return None
+        if expected.position_key != position_key(session.board):
+            raise ValueError("Die Trainingslinie passt nicht mehr zur aktuellen Stellung")
+        return expected
+
+    @staticmethod
+    def _guided_prompt_message(session: GameSession) -> dict[str, Any]:
+        if session.lesson is None:
+            raise ValueError("Für diese Sitzung ist keine Trainingslektion gewählt")
+        color = "Weiß" if session.learner_color == chess.WHITE else "Schwarz"
+        return {
+            "kind": "prompt",
+            "actor": "coach",
+            "move": None,
+            "summary": f"Du spielst {color}. Was ist dein erster Zug?",
+            "details": (
+                f"Ziel dieser Lektion: {session.lesson.goal}. "
+                "Spiele direkt auf dem Brett; der Zug wird vorher nicht gezeigt."
+            ),
+            "source": "guided-repertoire",
+            "model": None,
+            "attempt": None,
+            "engine": None,
+            "repertoire_match": None,
+        }
+
+    def _guided_accepted_message(
+        self,
+        session: GameSession,
+        step: GuidedMove,
+        analysis: MoveAnalysis,
+        opening_after: OpeningIdentity | None,
+    ) -> dict[str, Any]:
+        return {
+            "kind": "move",
+            "actor": "learner",
+            "move": step.move_san,
+            "summary": f"Richtig: {step.move_san}. {step.explanation}",
+            "details": self._engine_details(analysis),
+            "source": "guided-repertoire",
+            "model": None,
+            "attempt": None,
+            "engine": asdict(analysis),
+            "opening": asdict(opening_after) if opening_after else None,
+            "repertoire_match": True,
+        }
+
+    def _guided_coach_message(
+        self,
+        session: GameSession,
+        step: GuidedMove,
+        analysis: MoveAnalysis,
+        opening_after: OpeningIdentity | None,
+    ) -> dict[str, Any]:
+        del session
+        return {
+            "kind": "move",
+            "actor": "coach",
+            "move": step.move_san,
+            "summary": f"Ich spiele {step.move_san}. {step.explanation}",
+            "details": self._engine_details(analysis),
+            "source": "guided-repertoire",
+            "model": None,
+            "attempt": None,
+            "engine": asdict(analysis),
+            "opening": asdict(opening_after) if opening_after else None,
+            "repertoire_match": True,
+        }
+
+    def _guided_retry_message(
+        self,
+        session: GameSession,
+        attempted_san: str,
+        expected: GuidedMove,
+        analysis: MoveAnalysis,
+        attempt: int,
+    ) -> dict[str, Any]:
+        hint_index = min(max(attempt - 1, 0), max(len(expected.hints) - 1, 0))
+        hint = (
+            expected.hints[hint_index]
+            if expected.hints
+            else "Prüfe Zentrum, Entwicklung und Königssicherheit noch einmal."
+        )
+        if analysis.available and analysis.loss_pawns is not None:
+            quality = (
+                "Stockfish hält deinen Zug objektiv für gut spielbar."
+                if analysis.loss_pawns < 0.40
+                else "Stockfish sieht dabei zusätzlich einen spürbaren Nachteil."
+            )
+        else:
+            quality = "Die objektive Engine-Bewertung ist gerade nicht verfügbar."
+        return {
+            "kind": "move",
+            "actor": "learner",
+            "move": attempted_san,
+            "summary": (
+                f"{attempted_san} ist legal, aber nicht der gesuchte Zug dieser Lektion. "
+                f"Hinweis {attempt} von 2: {hint}"
+            ),
+            "details": (
+                f"{quality} Repertoiretreue und objektive Zugqualität bleiben getrennt: "
+                "Wir üben hier gezielt "
+                f"{session.lesson.title if session.lesson else 'diese Linie'}."
+            ),
+            "source": "guided-repertoire+stockfish",
+            "model": None,
+            "attempt": attempt,
+            "engine": asdict(analysis),
+            "repertoire_match": False,
+        }
+
+    def _guided_solution_message(
+        self,
+        session: GameSession,
+        expected: GuidedMove,
+        attempted_san: str,
+        analysis: MoveAnalysis,
+        opening_after: OpeningIdentity | None,
+    ) -> dict[str, Any]:
+        del session
+        return {
+            "kind": "move",
+            "actor": "learner",
+            "move": expected.move_san,
+            "summary": (
+                f"Gesucht war {expected.move_san}; ich setze den Zug jetzt aufs Brett. "
+                f"{expected.explanation}"
+            ),
+            "details": (
+                f"Dein dritter Versuch war {attempted_san}. "
+                f"{self._engine_details(analysis)}"
+            ),
+            "source": "guided-repertoire",
+            "model": None,
+            "attempt": 3,
+            "engine": asdict(analysis),
+            "opening": asdict(opening_after) if opening_after else None,
+            "repertoire_match": True,
+        }
 
     def _accepted_message(
         self,
@@ -1559,6 +1927,13 @@ class CoachService:
                 "legal": int(legal),
                 "accepted": int(accepted),
                 "theory_match": None if theory_match is None else int(theory_match),
+                "training_mode": session.training_mode,
+                "lesson_id": session.lesson.lesson_id if session.lesson else None,
+                "repertoire_match": (
+                    None
+                    if message.get("repertoire_match") is None
+                    else int(bool(message["repertoire_match"]))
+                ),
                 "opening_eco": session.opening.eco if session.opening else None,
                 "opening_name": session.opening.name if session.opening else None,
                 "engine_evaluation": analysis.evaluation_played if analysis else None,
@@ -1593,6 +1968,7 @@ class CoachService:
                 interaction_id=self.store.latest_interaction_id(session.session_id),
                 phase=session.phase,
                 opening_end=session.opening_end,
+                lesson_ply=session.lesson_ply,
             )
         )
 
@@ -1603,13 +1979,53 @@ class CoachService:
         messages: list[dict[str, Any]],
         correction: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        guided_complete = bool(
+            session.lesson is not None
+            and session.lesson_ply >= len(session.lesson.moves)
+            and correction is None
+        )
+        if guided_complete and session.phase != "complete":
+            summary = self._build_opening_summary(session)
+            summary["lesson"] = {
+                "lesson_id": session.lesson.lesson_id,
+                "title": session.lesson.title,
+                "goal": session.lesson.goal,
+            }
+            session.opening_summary = self.store.record_session_summary(
+                session_id=session.session_id,
+                opening_eco=session.lesson.eco,
+                opening_name=session.lesson.opening_name,
+                final_fen=session.board.fen(),
+                move_count=len(session.move_history),
+                summary=summary,
+            )
+            session.phase = "complete"
+            messages.append(
+                {
+                    "kind": "summary",
+                    "actor": "coach",
+                    "move": None,
+                    "summary": "Geschafft: Du hast die Italienisch-Einheit vollständig gespielt.",
+                    "details": session.opening_summary["takeaway"],
+                    "source": "verified-session-data",
+                    "model": None,
+                    "attempt": None,
+                    "engine": None,
+                    "repertoire_match": None,
+                }
+            )
         completed_turn = any(
             message.get("actor") == "coach" and message.get("move_uci") for message in messages
         )
         should_check_phase = completed_turn or (
             session.board.is_game_over() and any(message.get("move_uci") for message in messages)
         )
-        if session.phase == "opening" and correction is None and should_check_phase:
+        if (
+            session.lesson is None
+            and session.phase == "opening"
+            and correction is None
+            and should_check_phase
+        ):
             evidence = self._opening_end_evidence(session)
             if evidence.likely:
                 session.phase = "transition"
@@ -1620,6 +2036,43 @@ class CoachService:
         session.message_history.extend(messages)
         opening = asdict(session.opening) if session.opening else None
         legal_moves = [move.uci() for move in session.board.legal_moves]
+        lesson = (
+            {
+                "lesson_id": session.lesson.lesson_id,
+                "title": session.lesson.title,
+                "opening_name": session.lesson.opening_name,
+                "eco": session.lesson.eco,
+                "goal": session.lesson.goal,
+                "total_learner_moves": session.lesson.learner_move_count,
+            }
+            if session.lesson
+            else None
+        )
+        learner_moves_completed = (
+            sum(
+                move.color == session.learner_color
+                for move in session.lesson.moves[: session.lesson_ply]
+            )
+            if session.lesson
+            else 0
+        )
+        training_progress = (
+            {
+                "current": min(
+                    learner_moves_completed + 1, session.lesson.learner_move_count
+                ),
+                "completed": learner_moves_completed,
+                "total": session.lesson.learner_move_count,
+                "question": (
+                    "Was ist dein erster Zug?"
+                    if learner_moves_completed == 0
+                    else "Was spielst du als Nächstes?"
+                ),
+                "goal": session.lesson.goal,
+            }
+            if session.lesson and session.phase != "complete"
+            else None
+        )
         return {
             "session_id": session.session_id,
             "fen": session.board.fen(),
@@ -1638,6 +2091,9 @@ class CoachService:
             if session.phase == "transition" and session.opening_end
             else None,
             "opening_summary": session.opening_summary,
+            "training_mode": session.training_mode,
+            "lesson": lesson,
+            "training_progress": training_progress,
         }
 
     def _opening_end_evidence(self, session: GameSession) -> OpeningEndEvidence:

@@ -30,6 +30,8 @@ operator.
 - Stable local URL at `http://localhost:53687/` with explicit port overrides
 - White, Black, and random learner color
 - Immediately playable White game on page load; choosing a color starts a fresh game
+- Guided Italian practice from White with immediate recall, two hints, and a third-attempt reveal
+- Separate guided and free-play modes; free play retains White, Black, and random color choice
 - Progressive opening recognition across 3,810 local Lichess opening entries
 - Theory-aware and Stockfish-checked coach moves
 - Non-playing `Zug vorschlagen` hint from opening theory or Stockfish, with source/target highlighting
@@ -59,8 +61,8 @@ operator.
 - Responsive layout and keyboard-focusable board squares
 
 The first milestone intentionally does not yet include deliberate opponent
-inaccuracies, PGN export, cross-session review prompts, targeted repertoire
-training, or timed 10+0 simulation.
+inaccuracies, PGN export, cross-session review prompts, repertoire variations,
+or timed 10+0 simulation.
 
 ## Prerequisites
 
@@ -117,6 +119,7 @@ STOCKFISH_DEEP_TIME=5.0
 STOCKFISH_MULTIPV=3
 CHESS_COACH_DATABASE=/absolute/path/to/coach.db
 CHESS_COACH_OPENINGS=/absolute/path/to/opening-tsv-directory
+CHESS_COACH_GUIDED_LESSONS=/absolute/path/to/guided-pgn-directory
 ```
 
 `CHESS_COACH_RUNTIME_PROFILE=local` permits the explicitly enabled private
@@ -225,6 +228,7 @@ app/                         React browser interface
 backend/chess_coach/         verified chess and tutor services
 backend/tests/               backend unit and API tests
 data/openings/               local CC0 opening source data
+data/repertoires/            authored guided lessons in annotated PGN
 data/books/                  local, Git-ignored owned PDF sources
 docs/                        journal, architecture, ADRs, case-study material
 scripts/start_local.py       stable-port local launcher

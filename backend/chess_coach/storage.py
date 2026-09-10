@@ -33,6 +33,9 @@ class SQLiteStore:
                     legal INTEGER NOT NULL,
                     accepted INTEGER NOT NULL,
                     theory_match INTEGER,
+                    training_mode TEXT NOT NULL DEFAULT 'free',
+                    lesson_id TEXT,
+                    repertoire_match INTEGER,
                     opening_eco TEXT,
                     opening_name TEXT,
                     engine_evaluation REAL,
@@ -87,8 +90,27 @@ class SQLiteStore:
                 ON explanation_feedback(rating, updated_at DESC);
                 """
             )
+            self._ensure_columns(
+                "interactions",
+                {
+                    "training_mode": "TEXT NOT NULL DEFAULT 'free'",
+                    "lesson_id": "TEXT",
+                    "repertoire_match": "INTEGER",
+                },
+            )
             self.connection.execute("PRAGMA optimize")
             self.connection.commit()
+
+    def _ensure_columns(self, table: str, columns: dict[str, str]) -> None:
+        """Add forward-compatible columns to databases created by older builds."""
+
+        existing = {
+            str(row["name"])
+            for row in self.connection.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        for name, declaration in columns.items():
+            if name not in existing:
+                self.connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
 
     def record(self, values: dict[str, Any]) -> int:
         columns = (
@@ -101,6 +123,9 @@ class SQLiteStore:
             "legal",
             "accepted",
             "theory_match",
+            "training_mode",
+            "lesson_id",
+            "repertoire_match",
             "opening_eco",
             "opening_name",
             "engine_evaluation",
@@ -110,7 +135,11 @@ class SQLiteStore:
             "feedback_summary",
             "llm_model",
         )
-        row = {"created_at": datetime.now(UTC).isoformat(), **values}
+        row = {
+            "created_at": datetime.now(UTC).isoformat(),
+            "training_mode": "free",
+            **values,
+        }
         placeholders = ", ".join("?" for _ in columns)
         with self._lock:
             cursor = self.connection.execute(
@@ -193,6 +222,13 @@ class SQLiteStore:
                 "SELECT payload FROM session_summaries WHERE session_id = ?", (session_id,)
             ).fetchone()
         return json.loads(row["payload"]) if row else None
+
+    def delete_session_summary(self, session_id: str) -> None:
+        with self._lock:
+            self.connection.execute(
+                "DELETE FROM session_summaries WHERE session_id = ?", (session_id,)
+            )
+            self.connection.commit()
 
     def get_analysis(self, cache_key: str) -> str | None:
         with self._lock:

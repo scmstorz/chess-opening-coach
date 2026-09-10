@@ -8,6 +8,7 @@ type Piece = {
 };
 
 type PlayerColor = "white" | "black" | "random";
+type TrainingMode = "free" | "guided";
 
 type EngineInfo = {
   available: boolean;
@@ -76,7 +77,7 @@ type FeedbackReviewRecord = ExplanationFeedback & {
 
 type CoachMessage = {
   message_id?: string;
-  kind?: "move" | "question" | "clarification" | "phase" | "summary";
+  kind?: "move" | "question" | "clarification" | "phase" | "summary" | "prompt";
   actor: "learner" | "coach";
   question?: string;
   move: string | null;
@@ -159,12 +160,28 @@ type SessionState = {
   phase: "opening" | "transition" | "middlegame" | "complete";
   opening_end: OpeningEnd | null;
   opening_summary: OpeningSummary | null;
+  training_mode: TrainingMode;
+  lesson: {
+    lesson_id: string;
+    title: string;
+    opening_name: string;
+    eco: string;
+    goal: string;
+    total_learner_moves: number;
+  } | null;
+  training_progress: {
+    current: number;
+    completed: number;
+    total: number;
+    question: string;
+    goal: string;
+  } | null;
 };
 
 type MoveSuggestion = {
   move_uci: string;
   move_san: string;
-  basis: "theory" | "engine";
+  basis: "theory" | "engine" | "repertoire";
   opening: { eco: string; name: string } | null;
   summary: string;
   details: string;
@@ -492,6 +509,7 @@ function ExplanationFeedbackControl({
 
 export default function Home() {
   const [requestedColor, setRequestedColor] = useState<PlayerColor>("white");
+  const [requestedMode, setRequestedMode] = useState<TrainingMode>("guided");
   const [session, setSession] = useState<SessionState | null>(null);
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
@@ -528,7 +546,7 @@ export default function Home() {
     initialSessionRequestedRef.current = true;
     api<SessionState>("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ color: "white" }),
+      body: JSON.stringify({ color: "white", training_mode: "guided" }),
     }).then((next) => {
       setSession(next);
       setMessages(next.message_history);
@@ -678,8 +696,12 @@ export default function Home() {
     setAnimatingSequence(false);
   }
 
-  async function startSession(color: PlayerColor = requestedColor) {
+  async function startSession(
+    color: PlayerColor = requestedColor,
+    trainingMode: TrainingMode = requestedMode,
+  ) {
     setRequestedColor(color);
+    setRequestedMode(trainingMode);
     setLoading(true);
     setError(null);
     setSuggestion(null);
@@ -689,7 +711,7 @@ export default function Home() {
     try {
       const next = await api<SessionState>("/api/sessions", {
         method: "POST",
-        body: JSON.stringify({ color }),
+        body: JSON.stringify({ color, training_mode: trainingMode }),
       });
       setSession(next);
       setMessages(next.message_history);
@@ -909,22 +931,48 @@ export default function Home() {
         <div className="board-column">
           <div className="session-toolbar">
             <div>
-              <p className="eyebrow">Freies Eröffnungsspiel</p>
+              <p className="eyebrow">
+                {requestedMode === "guided" ? "Geführtes Repertoiretraining" : "Freies Eröffnungsspiel"}
+              </p>
               <h1>Eröffnungen</h1>
             </div>
-            <div className="color-picker" aria-label="Farbe wählen">
-              {(["white", "black", "random"] as PlayerColor[]).map((color) => (
+            <div className="session-options">
+              <div className="mode-picker" aria-label="Trainingsmodus wählen">
                 <button
-                  className={requestedColor === color ? "color-option active" : "color-option"}
+                  aria-pressed={requestedMode === "guided"}
+                  className={requestedMode === "guided" ? "mode-option active" : "mode-option"}
                   disabled={interactionLocked || phaseDecisionPending}
-                  key={color}
-                  onClick={() => void startSession(color)}
-                  aria-pressed={requestedColor === color}
+                  onClick={() => void startSession("white", "guided")}
                   type="button"
                 >
-                  {color === "white" ? "Weiß" : color === "black" ? "Schwarz" : "Zufällig"}
+                  Italienisch üben
                 </button>
-              ))}
+                <button
+                  aria-pressed={requestedMode === "free"}
+                  className={requestedMode === "free" ? "mode-option active" : "mode-option"}
+                  disabled={interactionLocked || phaseDecisionPending}
+                  onClick={() => void startSession(requestedColor, "free")}
+                  type="button"
+                >
+                  Freies Spiel
+                </button>
+              </div>
+              {requestedMode === "free" && (
+                <div className="color-picker" aria-label="Farbe wählen">
+                  {(["white", "black", "random"] as PlayerColor[]).map((color) => (
+                    <button
+                      className={requestedColor === color ? "color-option active" : "color-option"}
+                      disabled={interactionLocked || phaseDecisionPending}
+                      key={color}
+                      onClick={() => void startSession(color, "free")}
+                      aria-pressed={requestedColor === color}
+                      type="button"
+                    >
+                      {color === "white" ? "Weiß" : color === "black" ? "Schwarz" : "Zufällig"}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -934,6 +982,16 @@ export default function Home() {
               <div className="evaluation-track"><span style={{ width: `${evaluationWidth}%` }} /></div>
               <p className="evaluation-help">+ bedeutet Vorteil für Weiß · − bedeutet Vorteil für Schwarz</p>
             </div>
+
+            {session?.training_progress && (
+              <section className="lesson-prompt" aria-live="polite">
+                <div>
+                  <span>Zug {session.training_progress.current} von {session.training_progress.total}</span>
+                  <strong>{session.training_progress.question}</strong>
+                </div>
+                <small>{session.training_progress.goal}</small>
+              </section>
+            )}
 
             <div className={`board-frame${interactionLocked && !animatingSequence ? " thinking" : ""}`}>
               <div className="chessboard" aria-disabled={!session || boardInteractionLocked} aria-label="Interaktives Schachbrett">
@@ -994,8 +1052,8 @@ export default function Home() {
               <div className="opening-chip">
                 <span className="opening-icon" aria-hidden="true">◎</span>
                 <span>
-                  <small>{session?.opening?.eco ? `Eröffnung · ${session.opening.eco}` : "Eröffnung"}</small>
-                  <strong>{session?.opening?.name ?? "Noch nicht erkannt"}</strong>
+                  <small>{session?.lesson ? `Trainingslinie · ${session.lesson.eco}` : session?.opening?.eco ? `Eröffnung · ${session.opening.eco}` : "Eröffnung"}</small>
+                  <strong>{session?.lesson?.title ?? session?.opening?.name ?? "Noch nicht erkannt"}</strong>
                 </span>
               </div>
               <div className="board-actions">
@@ -1029,7 +1087,7 @@ export default function Home() {
               <div className="suggestion-banner" role="status">
                 <span aria-hidden="true">✦</span>
                 <div>
-                  <strong>{suggestion.basis === "engine" ? "Engine-Vorschlag" : "Eröffnungsvorschlag"} · {suggestion.move_san}</strong>
+                  <strong>{suggestion.basis === "engine" ? "Engine-Vorschlag" : suggestion.basis === "repertoire" ? "Zug der Trainingslinie" : "Eröffnungsvorschlag"} · {suggestion.move_san}</strong>
                   <p>{suggestion.summary}</p>
                   <details><summary>Warum dieser Zug?</summary><p>{suggestion.details}</p></details>
                   <button
@@ -1117,7 +1175,7 @@ export default function Home() {
             {session?.correction && (
               <div className="correction-banner" role="status">
                 <strong>Versuch {session.correction.attempt} von 3</strong>
-                <span>Die Stellung wurde zurückgesetzt. Probiere einen besseren Zug.</span>
+                <span>{session.training_mode === "guided" ? "Der Zug wurde nicht ausgeführt. Nutze den Hinweis und versuche den Zug dieser Trainingslinie noch einmal." : "Die Stellung wurde zurückgesetzt. Probiere einen besseren Zug."}</span>
               </div>
             )}
             {error && <div className="error-banner" role="alert">{error}</div>}
@@ -1138,7 +1196,7 @@ export default function Home() {
             <div className="coach-avatar" aria-hidden="true">♟</div>
             <div>
               <p className="eyebrow">Dein Coach</p>
-              <h2>{sessionComplete ? "Eröffnung ausgewertet" : phaseDecisionPending ? "Zeit für eine Entscheidung" : session?.phase === "middlegame" ? "Wir sind im Mittelspiel" : session ? "Wir sind in der Partie" : "Bereit für den ersten Zug"}</h2>
+              <h2>{sessionComplete ? "Eröffnung ausgewertet" : phaseDecisionPending ? "Zeit für eine Entscheidung" : session?.training_mode === "guided" ? "Italienisch mit Weiß" : session?.phase === "middlegame" ? "Wir sind im Mittelspiel" : session ? "Wir sind in der Partie" : "Bereit für den ersten Zug"}</h2>
             </div>
           </div>
 
@@ -1156,7 +1214,7 @@ export default function Home() {
                 <article className={`coach-message ${message.actor}${message.kind === "question" || message.kind === "clarification" ? " question-answer" : ""}`} key={`${index}-${message.move}-${message.question ?? message.summary}`}>
                   <span className="message-index">{String(index + 1).padStart(2, "0")}</span>
                   <div>
-                    <small className="message-author">{message.kind === "clarification" ? "Rückfrage zum Zug" : message.kind === "question" ? "Antwort zur Frage" : message.kind === "phase" ? "Phasenwechsel" : message.kind === "summary" ? "Lernbilanz" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
+                    <small className="message-author">{message.kind === "prompt" ? "Trainingsfrage" : message.kind === "clarification" ? "Rückfrage zum Zug" : message.kind === "question" ? "Antwort zur Frage" : message.kind === "phase" ? "Phasenwechsel" : message.kind === "summary" ? "Lernbilanz" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
                     {message.question && <blockquote className="question-quote">„{message.question}“</blockquote>}
                     <p>{message.summary}</p>
                     <details>
@@ -1188,7 +1246,7 @@ export default function Home() {
                         </div>
                       )}
                     </details>
-                    {session && message.message_id && message.kind !== "clarification" && (
+                    {session && message.message_id && message.kind !== "clarification" && message.kind !== "prompt" && (
                       <ExplanationFeedbackControl
                         key={message.message_id}
                         message={message}

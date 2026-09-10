@@ -401,6 +401,32 @@ expectations. A local review/export step must first determine whether the cause
 was factual error, weak pedagogy, missing evidence, wrong position resolution,
 or simply a learner preference.
 
+## Guided repertoire practice
+
+Guided practice is a separate session mode rather than a flag on broad theory
+matching. An annotated PGN supplies one authored move sequence, explanations for
+both sides, and two hints for every learner move. The service validates that PGN
+up front and exposes only lesson metadata and progress; it never exposes the
+next expected move until the learner explicitly requests a suggestion or
+reaches the third failed attempt.
+
+```text
+active lesson position
+  -> learner plays a legal move
+  -> python-chess legality
+  -> exact lesson-position and move match
+     -> match: authored explanation -> fixed coach reply -> next question
+     -> no match: Stockfish quality + hint, board unchanged
+        -> third miss: record attempt -> play authored solution -> continue
+```
+
+Broad `theory_match`, exact `repertoire_match`, and engine loss remain distinct
+values. A lesson can deliberately teach a sound human move that is not
+Stockfish's current top-one choice. Turn snapshots include the lesson ply so one
+undo restores both half-moves, both explanations, and the previous question.
+The current implementation permits exactly one PGN main line; accepting and
+selecting among PGN variations is a later explicit design decision.
+
 ## Persistence
 
 SQLite stores interactions, cached Stockfish results, completed opening
@@ -419,7 +445,7 @@ a settled product requirement rather than an incidental implementation detail.
 
 - Single local learner
 - Standard chess only
-- Untimed free opening play
+- Untimed free opening play and one guided Italian lesson from White
 - No authentication or cloud persistence
 - No imported PGN analysis
 - No automatic network refresh

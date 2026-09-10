@@ -58,11 +58,12 @@ h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; margi
 h1 { font-size: clamp(31px, 4vw, 52px); letter-spacing: -0.045em; line-height: 0.98; max-width: 560px; }
 h2 { font-size: 25px; letter-spacing: -0.025em; }
 
-.color-picker { background: #e9e4d9; border-radius: 10px; display: flex; padding: 4px; }
-.color-option { background: transparent; border: 0; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 9px 13px; }
-.color-option.active { background: var(--surface); box-shadow: 0 2px 8px rgba(23, 33, 28, 0.1); }
-.color-option:focus-visible, .primary-action:focus-visible, .secondary-action:focus-visible, .square:focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
-.color-option:disabled { cursor: wait; opacity: .65; }
+.session-options { align-items: flex-end; display: grid; gap: 7px; justify-items: end; }
+.mode-picker, .color-picker { background: #e9e4d9; border-radius: 10px; display: flex; padding: 4px; }
+.mode-option, .color-option { background: transparent; border: 0; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 9px 13px; }
+.mode-option.active, .color-option.active { background: var(--surface); box-shadow: 0 2px 8px rgba(23, 33, 28, 0.1); }
+.mode-option:focus-visible, .color-option:focus-visible, .primary-action:focus-visible, .secondary-action:focus-visible, .square:focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
+.mode-option:disabled, .color-option:disabled { cursor: wait; opacity: .65; }
 
 .board-stage { background: rgba(255, 253, 248, 0.78); border: 1px solid rgba(23, 33, 28, 0.12); border-radius: 20px; box-shadow: 0 24px 70px rgba(43, 52, 46, 0.12); padding: clamp(13px, 2vw, 22px); }
 .evaluation { margin: 2px 0 13px; }
@@ -71,6 +72,11 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .evaluation-track { background: #26322b; border-radius: 99px; height: 6px; margin-top: 7px; overflow: hidden; }
 .evaluation-track span { background: #f7f4ec; display: block; height: 100%; transition: width 260ms ease; }
 .evaluation-help { color: var(--muted); font-size: 9px; margin: 6px 0 0; text-align: center; }
+.lesson-prompt { align-items: center; background: var(--green-soft); border: 1px solid #bed0c3; border-radius: 9px; display: flex; gap: 16px; justify-content: space-between; margin: 0 0 13px; padding: 10px 12px; }
+.lesson-prompt div { display: grid; gap: 2px; }
+.lesson-prompt span { color: var(--green); font-size: 9px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.lesson-prompt strong { font-family: Georgia, serif; font-size: 16px; font-weight: 600; }
+.lesson-prompt small { color: var(--muted); font-size: 10px; line-height: 1.4; max-width: 310px; text-align: right; }
 
 .board-frame { background: #384b40; border-radius: 8px; box-shadow: 0 12px 30px rgba(23, 33, 28, 0.2); overflow: hidden; padding: 8px; }
 .board-frame { position: relative; }
@@ -281,8 +287,10 @@ details p { color: var(--muted); font-family: inherit !important; font-size: 13p
   .review-list-action { font-size: 10px; padding: 7px 9px; }
   .workspace { padding: 28px 12px 44px; }
   .session-toolbar { align-items: flex-start; flex-direction: column; gap: 18px; }
-  .color-picker { width: 100%; }
-  .color-option { flex: 1; }
+  .session-options, .mode-picker, .color-picker { justify-items: stretch; width: 100%; }
+  .mode-option, .color-option { flex: 1; }
+  .lesson-prompt { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .lesson-prompt small { text-align: left; }
   .board-stage { border-radius: 13px; padding: 9px; }
   .board-frame { padding: 5px; }
   .piece { font-size: clamp(30px, 11vw, 55px); }

@@ -138,6 +138,20 @@
     Stockfish plan extraction, book RAG, or a multi-model ensemble.
 47. Three repetitive citation cards become one presentation aggregate per book,
     while claim-level references remain intact for audits and feedback.
+48. Free exploration and deliberate repertoire practice become two explicit
+    product modes instead of forcing one move policy to serve both learning jobs.
+49. The learner rejects an answer preview for the first Italian lesson. The
+    resulting loop tests recall immediately, gives two progressive hints, and
+    reveals the move only on the third miss or an explicit suggestion request.
+50. An annotated authored PGN wins over a new lesson DSL: it keeps legal moves,
+    coach replies, explanations, and future variations close to chess's standard
+    interchange format without placing private book content in the repository.
+51. Broad opening-theory membership, exact lesson membership, and engine quality
+    become separately persisted facts; a sound non-lesson move is no longer
+    mislabeled as an objective chess error.
+52. Real Stockfish ranks the defining `3.Bc4` slightly below its top choice under
+    shallow budgets, demonstrating why a human repertoire must not be rewritten
+    by volatile top-one engine output.
 
 ## Evidence already captured
 
@@ -211,6 +225,10 @@
 - A deterministic `Nxd4 ...Bxd1` queen-loss regression that bypasses book and LLM
   layers because immediate tactics have higher explanatory priority
 - A compact one-card-per-book source display that preserves internal references
+- A complete ten-move Italian White self-play through the production service,
+  plus engine-loss measurements for every authored half-move
+- An ADR connecting the learner's “ask immediately” preference to PGN-backed
+  recall, hint, correction, suggestion, persistence, and undo semantics
 
 ## Questions for later evaluation
 

@@ -1623,3 +1623,88 @@ The final checkpoint reports 83 passing backend tests plus Ruff, frontend lint,
 the rendered-page test, production build, and publication-safety scan. The scan
 covered 95 tracked and historical paths and compared the public code text with
 105 private-corpus variants without detecting a source leak.
+
+### From free exploration to the first deliberate repertoire lesson
+
+The next discussion returned to the product's central learning job. Free play
+can recognize many openings and explain what happened, but it does not ensure
+that one repeatable setup is learned. The learner wants both: exploratory play
+and deliberate practice of a selected opening. At roughly 700 rapid Elo and
+without a clock in the app, the practical target is to reach move ten with a
+safe, comprehensible position rather than accumulate encyclopedic variations.
+
+The first proposed slice was an Italian lesson from White. The Italian Game was
+chosen because its early moves make the basic relationships visible: claim the
+center, develop while creating a threat, castle, stabilize `e4`, and prepare
+`d4`. A quiet `d3`/`c3` setup avoids making trap memorization the first lesson.
+The learner selected White and authorized agent self-play for testing. When
+offered a preview-versus-recall choice, the learner explicitly chose immediate
+play: do not show the move first; ask for it.
+
+That choice changes the interface contract. Guided mode opens an already active
+board and immediately says “Was ist dein erster Zug?” There is no start gate and
+no discovery page. Only lesson title, goal, and 1/10 progress are visible. The
+answer is absent from the prompt, although the existing `Zug vorschlagen`
+control remains an intentional escape hatch. This separates an involuntary
+spoiler from a learner-requested hint.
+
+Four implementation options were considered. Reusing weighted moves from the
+large opening graph could drift away from the lesson. Asking Stockfish to create
+the line would confuse a volatile top choice with a human repertoire. A JSON
+lesson format would duplicate chess notation and future variation semantics.
+The selected option is one project-authored annotated PGN, parsed and validated
+with `python-chess`. It contains one main line, an explanation after every
+half-move, and two custom hint annotations on every White move. No prose from
+the private books is copied into the tracked file.
+
+The first line is `1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.d3 Nf6 5.O-O d6 6.c3 O-O
+7.Re1 a6 8.Bb3 Ba7 9.Nbd2 Re8 10.h3 h6`. Fixed Black replies are a deliberate
+property of retrieval practice, not an attempt to model every opponent. The
+free-play mode remains available for that exploration. PGN branches are deferred
+until the learner has tested whether this narrow lesson actually teaches the
+setup.
+
+A legal deviation now stays off the board. The first and second deviations
+produce progressively more specific hints; the third records the attempted move,
+reveals and places the lesson move, and then plays the fixed coach response. The
+feedback keeps two facts separate: the move did not match this lesson, and
+Stockfish may still judge it perfectly playable. The existing SQLite interaction
+table therefore gains `training_mode`, `lesson_id`, and `repertoire_match`
+instead of overloading `theory_match`. An in-place migration preserves existing
+local data.
+
+The same separation appears in the suggestion path. In guided mode a suggestion
+is explicitly labeled as the move of the training line; Stockfish data remains a
+quality check. Questions about that suggestion receive the authored lesson idea
+as a required verified fact. The generic book/LLM path may add only already
+grounded detail, while immediate tactical facts still outrank every strategic
+layer.
+
+Undo needed one further state dimension. A turn snapshot now includes the lesson
+ply, so taking back a turn removes the learner move and coach reply together and
+asks the previous lesson question again. The final half-move automatically
+creates a grounded summary. Unlike the older general completion state, this
+final guided turn may be undone; its stored summary is deleted and the tenth
+question reopens.
+
+Stockfish checked every half-move of the authored line at 0.5 seconds and MultiPV
+4. The largest measured loss was 0.16 pawns for `3.Bc4`; all other moves were at
+most 0.14. A second production-service self-play used the normal shorter budget
+and reported 0.22 for `Bc4`, while all other learner moves were no more than
+0.04 behind. The defining Italian move is therefore a useful case-study example:
+small shallow-search ranking changes must not rewrite a coherent, sound human
+repertoire.
+
+The agent then played the complete White lesson through the real production
+service. The session began with the unanswered prompt, advanced through all 20
+half-moves without the generic phase detector interrupting it, and completed
+after `10...h6` with the expected final FEN and a persisted summary. Dedicated
+tests also cover both hints, third-attempt revelation, suggestion without board
+mutation, an authored answer to “Warum ist dieser Zug gut?”, SQLite truth-layer
+fields, active undo, and undo after completion. ADR 0014 and the dated evaluation
+record the rationale and observed outputs for the case study.
+
+The final checkpoint reports 91 passing backend tests plus Ruff, frontend lint,
+the rendered-page test, production build, publication-safety scan, and a clean
+whitespace diff. The public safety scan still finds no tracked private PDF,
+compiled book database, or matching long passage from the local corpus.

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from chess_coach.book_knowledge import BookKnowledgeBase, NullBookKnowledgeBase
 from chess_coach.config import Settings
 from chess_coach.engine import StockfishService
+from chess_coach.guided import GuidedLessonBook
 from chess_coach.openings import OpeningBook
 from chess_coach.service import CoachService
 from chess_coach.storage import SQLiteStore
@@ -18,6 +19,8 @@ from chess_coach.tutor import OllamaTutor
 
 class NewSessionRequest(BaseModel):
     color: str = Field(pattern="^(white|black|random)$")
+    training_mode: Literal["free", "guided"] = "free"
+    lesson_id: str | None = Field(default=None, max_length=100)
 
 
 class MoveRequest(BaseModel):
@@ -64,6 +67,7 @@ def build_service(settings: Settings | None = None) -> CoachService:
         OllamaTutor(settings.ollama_url, settings.ollama_model),
         store,
         book_knowledge=book_knowledge,
+        guided_lessons=GuidedLessonBook(settings.guided_lessons_path),
     )
     service.runtime_profile = settings.runtime_profile
     return service
@@ -107,7 +111,14 @@ def create_app(service: CoachService | None = None) -> FastAPI:
 
     @app.post("/api/sessions")
     def new_session(request: NewSessionRequest) -> dict[str, Any]:
-        return coach.create_session(request.color)
+        try:
+            return coach.create_session(
+                request.color,
+                training_mode=request.training_mode,
+                lesson_id=request.lesson_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/sessions/{session_id}/moves")
     def play_move(

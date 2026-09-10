@@ -24,6 +24,11 @@ class Settings:
     opening_data_path: Path = Path(
         os.environ.get("CHESS_COACH_OPENINGS", PROJECT_ROOT / "data" / "openings")
     )
+    guided_lessons_path: Path = Path(
+        os.environ.get(
+            "CHESS_COACH_GUIDED_LESSONS", PROJECT_ROOT / "data" / "repertoires"
+        )
+    )
     book_database_path: Path = Path(
         os.environ.get(
             "CHESS_COACH_BOOK_DATABASE", PROJECT_ROOT / "data" / "book_knowledge.db"

@@ -8,9 +8,13 @@
 [ECO "C50"]
 [Opening "Italian Game"]
 [LessonId "italian-white-pianissimo"]
+[LessonFamily "italian-white"]
 [LessonTitle "Italienisches Spiel mit Weiß"]
 [TrainingSide "White"]
 [LessonGoal "Zentrum, schnelle Entwicklung, Rochade und den d4-Vorstoß vorbereiten"]
+[DrillStartPly "0"]
+[RealisticWeight "24"]
+[OpponentCategory "established"]
 
 1. e4 {Du besetzt das Zentrum und öffnest Dame und Läufer Wege ins Spiel. [%hint1 Suche einen Zug, der das Zentrum besetzt und zugleich Linien für zwei Figuren öffnet.] [%hint2 Der gesuchte Zug wird mit dem Bauern vor deinem König gespielt.]}
 1... e5 {Schwarz beansprucht ebenfalls das Zentrum und begrenzt deinen e4-Bauern.}
@@ -32,3 +36,343 @@
 9... Re8 {Schwarz stellt den Turm hinter den e5-Bauern und erhöht damit den Druck im Zentrum.}
 10. h3 {Der Zug verhindert ...Bg4 und gibt deinem König ein Luftfeld, ohne den zentralen Aufbau zu verändern. [%hint1 Verhindere, dass der Läufer auf c8 eine Figur auf f3 fesselt.] [%hint2 Ein Randbauer kann dem Feld g4 die Kontrolle entziehen.]}
 10... h6 {Schwarz nimmt dem weißen Läufer oder Springer das Feld g5 und schafft ebenfalls ein Luftfeld.} *
+
+[Event "Italian White: Sicilian switch"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "B50"]
+[Opening "Sicilian Defense: Modern Variations"]
+[LessonId "italian-white-vs-sicilian"]
+[LessonFamily "italian-white"]
+[LessonTitle "Wenn Schwarz Sizilianisch wählt"]
+[TrainingSide "White"]
+[LessonGoal "Erkennen, dass Italienisch nicht mehr möglich ist, und mit Entwicklung plus d4 reagieren"]
+[DrillStartPly "2"]
+[RealisticWeight "14"]
+[OpponentCategory "established"]
+
+1. e4 {Du besetzt das Zentrum und lässt offen, welche Verteidigung Schwarz wählt. [%hint1 Besetze das Zentrum und öffne Linien für Dame und Läufer.] [%hint2 Ziehe den Bauern vor deinem König zwei Felder.]}
+1... c5 {Schwarz wählt die Sizilianische Verteidigung und kontrolliert d4 von der Seite. Italienisch ist damit nicht mehr möglich.}
+2. Nf3 {Du entwickelst den Königsspringer und bereitest d4 vor, statt den c5-Bauern sofort zu jagen. [%hint1 Entwickle eine Figur und bereite zugleich den zentralen Vorstoß d4 vor.] [%hint2 Der Königsspringer gehört nach f3.]}
+2... d6 {Schwarz kontrolliert e5 und bereitet die Entwicklung des Königsspringers vor.}
+3. d4 {Du öffnest das Zentrum, bevor Schwarz seinen Raumvorteil am Damenflügel ausbauen kann. [%hint1 Stelle jetzt einen zweiten Bauern ins Zentrum.] [%hint2 Der d-Bauer soll den c5-Bauern angreifen.]}
+3... cxd4 {Schwarz tauscht den c-Bauern gegen deinen zentralen d-Bauern.}
+4. Nxd4 {Der entwickelte Springer nimmt zurück und steht aktiv im Zentrum, ohne die Dame früh herauszubringen. [%hint1 Nimm den Bauern mit einer bereits entwickelten Figur zurück.] [%hint2 Der Springer auf f3 kann nach d4 schlagen.]}
+4... Nf6 {Schwarz entwickelt mit Angriff auf e4.}
+5. Nc3 {Der zweite Springer entwickelt sich, deckt e4 und kontrolliert d5. [%hint1 Decke e4 und entwickle zugleich deine letzte Springerfigur.] [%hint2 Der Springer auf b1 gehört nach c3.]} *
+
+[Event "Italian White: French switch"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C11"]
+[Opening "French Defense: Classical Variation"]
+[LessonId "italian-white-vs-french"]
+[LessonFamily "italian-white"]
+[LessonTitle "Wenn Schwarz Französisch wählt"]
+[TrainingSide "White"]
+[LessonGoal "Mit d4 das breite Zentrum aufbauen und Raum sichern"]
+[DrillStartPly "2"]
+[RealisticWeight "8"]
+[OpponentCategory "established"]
+
+1. e4 {Du besetzt das Zentrum und öffnest Linien für Dame und Läufer. [%hint1 Besetze das Zentrum und öffne zwei Figurenlinien.] [%hint2 Ziehe den Bauern vor deinem König zwei Felder.]}
+1... e6 {Schwarz wählt die Französische Verteidigung und bereitet ...d5 gegen dein Zentrum vor. Italienisch ist damit nicht mehr möglich.}
+2. d4 {Du nutzt den Raum und baust mit e4 und d4 ein starkes Bauernzentrum auf. [%hint1 Besetze auch das zweite zentrale Feld mit einem Bauern.] [%hint2 Ziehe den Bauern vor deiner Dame zwei Felder.]}
+2... d5 {Schwarz greift sofort deinen e4-Bauern an.}
+3. Nc3 {Du entwickelst eine Figur und deckst e4, ohne die Spannung vorschnell aufzulösen. [%hint1 Decke e4 durch Entwicklung einer Figur.] [%hint2 Der Damenspringer kann nach c3.]}
+3... Nf6 {Schwarz erhöht den Druck auf e4.}
+4. e5 {Du gewinnst Raum und vertreibst den Springer, musst später aber deine Bauernkette stützen. [%hint1 Nutze deinen Raumvorteil und greife den Springer an.] [%hint2 Schiebe den angegriffenen e-Bauern ein Feld vor.]}
+4... Nfd7 {Der Springer weicht aus und bereitet Gegendruck mit ...c5 vor.}
+5. f4 {Du stützt e5 und stabilisierst die Spitze deiner Bauernkette. [%hint1 Stütze den weit vorgerückten Bauern auf e5.] [%hint2 Der f-Bauer kann diese Aufgabe übernehmen.]} *
+
+[Event "Italian White: Caro-Kann switch"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "B18"]
+[Opening "Caro-Kann Defense: Classical Variation"]
+[LessonId "italian-white-vs-caro-kann"]
+[LessonFamily "italian-white"]
+[LessonTitle "Wenn Schwarz Caro-Kann wählt"]
+[TrainingSide "White"]
+[LessonGoal "Das Zentrum besetzen und nach dem Tausch mit einer Figur zurücknehmen"]
+[DrillStartPly "2"]
+[RealisticWeight "8"]
+[OpponentCategory "established"]
+
+1. e4 {Du besetzt das Zentrum und öffnest Dame und Läufer. [%hint1 Besetze das Zentrum mit Tempo.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
+1... c6 {Schwarz wählt Caro-Kann und bereitet ...d5 vor. Italienisch ist damit nicht mehr möglich.}
+2. d4 {Du nimmst Raum und stellst zwei Bauern nebeneinander ins Zentrum. [%hint1 Ergänze e4 durch einen zweiten Zentralbauern.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+2... d5 {Schwarz greift dein Zentrum an und möchte den weißfeldrigen Läufer außerhalb der Bauernkette entwickeln.}
+3. Nc3 {Du entwickelst den Damenspringer und deckst den angegriffenen e4-Bauern. [%hint1 Verbinde Verteidigung des Bauern mit Figurenentwicklung.] [%hint2 Entwickle den Springer nach c3.]}
+3... dxe4 {Schwarz löst die Spannung und nimmt den e4-Bauern.}
+4. Nxe4 {Der Springer nimmt zentral zurück und bleibt aktiv. [%hint1 Nimm mit einer entwickelten Figur zurück.] [%hint2 Der Springer auf c3 kann nach e4 schlagen.]}
+4... Bf5 {Schwarz entwickelt den Läufer, bevor ...e6 die Diagonale schließt.}
+5. Ng3 {Du greifst den Läufer an und entwickelst den Springer mit Tempo weiter. [%hint1 Befrage den aktiven Läufer und halte deinen Springer sicher.] [%hint2 Der Springer auf e4 kann nach g3.]} *
+
+[Event "Italian White: Petroff switch"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C42"]
+[Opening "Petrov's Defense"]
+[LessonId "italian-white-vs-petroff"]
+[LessonFamily "italian-white"]
+[LessonTitle "Gegen die Russische Verteidigung"]
+[TrainingSide "White"]
+[LessonGoal "Den e5-Bauern vorübergehend nehmen, dann den Springer rechtzeitig zurückziehen"]
+[DrillStartPly "4"]
+[RealisticWeight "10"]
+[OpponentCategory "established"]
+
+1. e4 {Du besetzt das Zentrum und öffnest Dame und Läufer. [%hint1 Besetze ein zentrales Feld.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
+1... e5 {Schwarz beansprucht ebenfalls das Zentrum.}
+2. Nf3 {Du entwickelst mit Angriff auf e5. [%hint1 Entwickle eine Figur mit Angriff auf e5.] [%hint2 Der Königsspringer gehört nach f3.]}
+2... Nf6 {Schwarz wählt Russisch und greift spiegelbildlich deinen e4-Bauern an. Italienisch ist vorerst nicht möglich.}
+3. Nxe5 {Du gewinnst den e5-Bauern vorübergehend. Nach ...d6 ziehst du den Springer rechtzeitig zurück; erst danach stellt Schwarz das materielle Gleichgewicht wieder her. [%hint1 Prüfe, ob der angegriffene Zentralbauer wirklich gedeckt ist.] [%hint2 Der Springer auf f3 kann e5 nehmen.]}
+3... d6 {Schwarz greift deinen Springer an und öffnet dem Läufer auf c8 eine Linie.}
+4. Nf3 {Der Springer kehrt rechtzeitig zurück; den e4-Bauern erst jetzt zu verteidigen oder zurückzugewinnen ist Teil der Zugfolge. [%hint1 Rette den Springer auf ein sicheres Entwicklungsfeld.] [%hint2 Kehre nach f3 zurück.]}
+4... Nxe4 {Schwarz stellt materielles Gleichgewicht her und nimmt e4.}
+5. d4 {Du besetzt das Zentrum und öffnest dem Läufer c1 eine Linie, während der schwarze Springer auf e4 später befragt werden kann. [%hint1 Gewinne Raum im Zentrum und öffne deinen Damenläufer.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+5... d5 {Schwarz stützt den Springer und das Zentrum.}
+6. Bd3 {Du entwickelst mit Angriff auf den Springer e4. [%hint1 Entwickle eine Figur mit Tempo gegen den schwarzen Springer.] [%hint2 Der Läufer auf f1 kann nach d3.]} *
+
+[Event "Italian White: Philidor switch"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C41"]
+[Opening "Philidor Defense"]
+[LessonId "italian-white-vs-philidor"]
+[LessonFamily "italian-white"]
+[LessonTitle "Gegen die Philidor-Verteidigung"]
+[TrainingSide "White"]
+[LessonGoal "Den passiven schwarzen Aufbau mit einem breiten Zentrum beantworten"]
+[DrillStartPly "4"]
+[RealisticWeight "8"]
+[OpponentCategory "solid"]
+
+1. e4 {Du besetzt das Zentrum. [%hint1 Besetze ein zentrales Feld.] [%hint2 Ziehe den e-Bauern zwei Felder.]}
+1... e5 {Schwarz beansprucht ebenfalls das Zentrum.}
+2. Nf3 {Du entwickelst und greifst e5 an. [%hint1 Entwickle mit Angriff auf e5.] [%hint2 Spiele den Königsspringer nach f3.]}
+2... d6 {Schwarz wählt Philidor und stützt e5, entwickelt dabei aber noch keine Figur.}
+3. d4 {Du nutzt die Zeit für ein breites Zentrum und stellst die Struktur sofort infrage. [%hint1 Nutze den passiven gegnerischen Zug für mehr Raum im Zentrum.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+3... exd4 {Schwarz tauscht den e-Bauern gegen deinen d-Bauern.}
+4. Nxd4 {Der Springer nimmt zurück und steht aktiv im Zentrum. [%hint1 Nimm mit einer Figur zurück, die dabei zentralisiert wird.] [%hint2 Der Springer auf f3 kann nach d4 schlagen.]}
+4... Nf6 {Schwarz entwickelt und greift e4 an.}
+5. Nc3 {Du entwickelst den zweiten Springer und sicherst e4. [%hint1 Decke e4 durch weitere Entwicklung.] [%hint2 Der Springer auf b1 gehört nach c3.]} *
+
+[Event "Italian White: Damiano mistake"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C40"]
+[Opening "Damiano Defense"]
+[LessonId "italian-white-vs-damiano"]
+[LessonFamily "italian-white"]
+[LessonTitle "Den Damiano-Fehler erkennen"]
+[TrainingSide "White"]
+[LessonGoal "Einen frühen gegnerischen Schwächungszug konkret ausnutzen"]
+[DrillStartPly "4"]
+[RealisticWeight "1"]
+[OpponentCategory "mistake"]
+
+1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Ziehe den e-Bauern zwei Felder.]}
+1... e5 {Schwarz beansprucht ebenfalls das Zentrum.}
+2. Nf3 {Du entwickelst und greifst e5 an. [%hint1 Entwickle mit Angriff auf e5.] [%hint2 Der Königsspringer gehört nach f3.]}
+2... f6 {Schwarz deckt e5, schwächt aber die Königsdiagonale und nimmt dem Springer g8 sein natürliches Feld.}
+3. Nxe5 {Du nutzt die Schwächung sofort: Nach ...fxe5 kann Qh5+ den unrochierten König angreifen. [%hint1 Prüfe einen direkten Schlag auf den nur ungeschickt gedeckten e5-Bauern.] [%hint2 Der Springer auf f3 kann e5 nehmen.]} *
+
+[Event "Italian White: Two Knights"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C55"]
+[Opening "Italian Game: Two Knights Defense"]
+[LessonId "italian-white-two-knights"]
+[LessonFamily "italian-white"]
+[LessonTitle "Italienisch gegen die Zweispringer-Verteidigung"]
+[TrainingSide "White"]
+[LessonGoal "Mit d3 ruhig entwickeln, statt eine scharfe Variante auswendig zu lernen"]
+[DrillStartPly "6"]
+[RealisticWeight "18"]
+[OpponentCategory "established"]
+
+1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Ziehe den e-Bauern zwei Felder.]}
+1... e5 {Schwarz beansprucht ebenfalls das Zentrum.}
+2. Nf3 {Du entwickelst mit Angriff auf e5. [%hint1 Entwickle mit Angriff auf e5.] [%hint2 Spiele den Königsspringer nach f3.]}
+2... Nc6 {Schwarz entwickelt und deckt e5.}
+3. Bc4 {Der Läufer entwickelt sich mit Blick auf f7. [%hint1 Entwickle den weißfeldrigen Läufer gegen f7.] [%hint2 Der Läufer gehört nach c4.]}
+3... Nf6 {Schwarz wählt die Zweispringer-Verteidigung und greift e4 an.}
+4. d3 {Du stützt e4 und hältst die Stellung ruhig; Ng5 wäre eine bewusst schärfere Alternative. [%hint1 Sichere e4 und behalte einen ruhigen Aufbau.] [%hint2 Der d-Bauer kann e4 stützen.]}
+4... Bc5 {Schwarz entwickelt aktiv gegen f2.}
+5. O-O {Du sicherst den König, bevor du das Zentrum weiter vorbereitest. [%hint1 Bringe zuerst den König in Sicherheit.] [%hint2 Spiele die kurze Rochade.]}
+5... d6 {Schwarz stabilisiert e5 und öffnet den Damenläufer.}
+6. c3 {Du bereitest d4 vor und baust den vertrauten italienischen Plan auf. [%hint1 Bereite den zentralen Vorstoß d4 vor.] [%hint2 Nutze den c-Bauern als Unterstützung.]} *
+
+[Event "Italian White: Hungarian Defense"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C50"]
+[Opening "Italian Game: Hungarian Defense"]
+[LessonId "italian-white-hungarian"]
+[LessonFamily "italian-white"]
+[LessonTitle "Gegen die Ungarische Verteidigung"]
+[TrainingSide "White"]
+[LessonGoal "Den zurückhaltenden Läuferzug mit mehr Zentrum beantworten"]
+[DrillStartPly "6"]
+[RealisticWeight "3"]
+[OpponentCategory "solid"]
+
+1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Ziehe den e-Bauern zwei Felder.]}
+1... e5 {Schwarz beansprucht ebenfalls das Zentrum.}
+2. Nf3 {Du entwickelst mit Angriff auf e5. [%hint1 Entwickle mit Angriff auf e5.] [%hint2 Spiele Nf3.]}
+2... Nc6 {Schwarz entwickelt und deckt e5.}
+3. Bc4 {Der Läufer entwickelt sich gegen f7. [%hint1 Entwickle den Läufer gegen f7.] [%hint2 Spiele Bc4.]}
+3... Be7 {Schwarz wählt einen soliden, aber zurückhaltenden Aufbau und richtet keinen Druck auf f2.}
+4. d4 {Du nutzt den geringeren schwarzen Druck, um das Zentrum sofort weiter zu besetzen. [%hint1 Beanspruche mehr Raum im Zentrum.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+4... d6 {Schwarz stützt e5 und hält das Zentrum geschlossen.}
+5. d5 {Du nutzt den Raumvorteil und vertreibst den Springer von c6; weil Schwarz keinen Druck auf f2 aufgebaut hat, konntest du das Zentrum früher schließen. [%hint1 Gewinne Raum und befrage die einzige bereits entwickelte schwarze Figur am Damenflügel.] [%hint2 Schiebe den d-Bauern ein Feld vor.]} *
+
+[Event "Italian White: Rousseau Gambit"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C50"]
+[Opening "Italian Game: Rousseau Gambit"]
+[LessonId "italian-white-rousseau"]
+[LessonFamily "italian-white"]
+[LessonTitle "Gegen das Rousseau-Gambit"]
+[TrainingSide "White"]
+[LessonGoal "Den verfrühten Flügelangriff mit einem starken Zentrum beantworten"]
+[DrillStartPly "6"]
+[RealisticWeight "2"]
+[OpponentCategory "dubious"]
+
+1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Ziehe den e-Bauern zwei Felder.]}
+1... e5 {Schwarz beansprucht ebenfalls das Zentrum.}
+2. Nf3 {Du entwickelst mit Angriff auf e5. [%hint1 Entwickle mit Angriff auf e5.] [%hint2 Spiele Nf3.]}
+2... Nc6 {Schwarz entwickelt und deckt e5.}
+3. Bc4 {Der Läufer entwickelt sich gegen f7. [%hint1 Entwickle den Läufer gegen f7.] [%hint2 Spiele Bc4.]}
+3... f5 {Schwarz greift früh am Königsflügel an, schwächt dabei aber die eigene Königsstellung und vernachlässigt die Entwicklung.}
+4. d4 {Du reagierst im Zentrum, solange der schwarze König noch dort steht; das ist stärker als automatisch den f5-Bauern zu nehmen. [%hint1 Beantworte einen verfrühten Flügelangriff durch Spiel im Zentrum.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+4... exd4 {Schwarz löst die Spannung und nimmt deinen d-Bauern.}
+5. Nxd4 {Du nimmst mit Entwicklung und zentraler Aktivität zurück. [%hint1 Nimm mit einer aktiven Figur zurück.] [%hint2 Der Springer auf f3 kann nach d4 schlagen.]} *
+
+[Event "Italian White: Blackburne Shilling"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C50"]
+[Opening "Italian Game: Blackburne Shilling Gambit"]
+[LessonId "italian-white-blackburne-shilling"]
+[LessonFamily "italian-white"]
+[LessonTitle "Die Blackburne-Shilling-Falle vermeiden"]
+[TrainingSide "White"]
+[LessonGoal "Den ungewöhnlichen Springerzug einfach tauschen, statt dem vergifteten e5-Bauern nachzujagen"]
+[DrillStartPly "6"]
+[RealisticWeight "2"]
+[OpponentCategory "trap"]
+
+1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Ziehe den e-Bauern zwei Felder.]}
+1... e5 {Schwarz beansprucht ebenfalls das Zentrum.}
+2. Nf3 {Du entwickelst mit Angriff auf e5. [%hint1 Entwickle mit Angriff auf e5.] [%hint2 Spiele Nf3.]}
+2... Nc6 {Schwarz entwickelt und deckt e5.}
+3. Bc4 {Der Läufer entwickelt sich gegen f7. [%hint1 Entwickle den Läufer gegen f7.] [%hint2 Spiele Bc4.]}
+3... Nd4 {Schwarz zieht dieselbe Figur erneut und bietet scheinbar e5 an; dahinter können Angriffe auf c2 und die weiße Königsstellung stecken.}
+4. Nxd4 {Du entfernst den vorgerückten Springer sofort und vermeidest die Falle um den scheinbar freien e5-Bauern. [%hint1 Frage dich, ob du die weit vorgerückte Figur direkt tauschen kannst.] [%hint2 Der Springer auf f3 kann den Springer auf d4 schlagen.]}
+4... exd4 {Schwarz nimmt zurück, hat dafür aber den e-Bauern aus dem Zentrum gezogen.}
+5. O-O {Du sicherst den König und kannst den Bauern d4 später mit c3 angreifen. [%hint1 Sichere zuerst den König, bevor du den vorgerückten Bauern angreifst.] [%hint2 Spiele die kurze Rochade.]} *
+
+[Event "Italian White: slow h6"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C50"]
+[Opening "Italian Game"]
+[LessonId "italian-white-slow-h6"]
+[LessonFamily "italian-white"]
+[LessonTitle "Wenn Schwarz früh ...h6 spielt"]
+[TrainingSide "White"]
+[LessonGoal "Einen harmlosen Randbauernzug nicht überbestrafen, sondern den eigenen Plan fortsetzen"]
+[DrillStartPly "8"]
+[RealisticWeight "1"]
+[OpponentCategory "slow"]
+
+1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Spiele e4.]}
+1... e5 {Schwarz beansprucht ebenfalls das Zentrum.}
+2. Nf3 {Du entwickelst mit Angriff auf e5. [%hint1 Entwickle mit Angriff auf e5.] [%hint2 Spiele Nf3.]}
+2... Nc6 {Schwarz entwickelt und deckt e5.}
+3. Bc4 {Der Läufer entwickelt sich gegen f7. [%hint1 Entwickle den Läufer gegen f7.] [%hint2 Spiele Bc4.]}
+3... Bc5 {Schwarz entwickelt aktiv gegen f2.}
+4. d3 {Du stützt e4 und hältst den Aufbau stabil. [%hint1 Stütze e4.] [%hint2 Spiele d3.]}
+4... h6 {Schwarz nimmt g5 unter Kontrolle, entwickelt damit aber keine Figur und bedroht dich nicht unmittelbar.}
+5. O-O {Du bleibst beim wichtigen Plan und sicherst den König, statt den langsamen Zug erzwingen zu wollen. [%hint1 Reagiere nicht künstlich; erledige die wichtigste Entwicklungsaufgabe.] [%hint2 Spiele die kurze Rochade.]}
+5... Nf6 {Schwarz entwickelt und greift e4 an.}
+6. c3 {Du bereitest d4 vor und baust normal weiter auf. [%hint1 Bereite den zentralen Vorstoß d4 vor.] [%hint2 Spiele c3.]} *
+
+[Event "Italian White: slow a6"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C50"]
+[Opening "Italian Game"]
+[LessonId "italian-white-slow-a6"]
+[LessonFamily "italian-white"]
+[LessonTitle "Wenn Schwarz früh ...a6 spielt"]
+[TrainingSide "White"]
+[LessonGoal "Ruhig entwickeln und den möglichen Raumgewinn ...b5 einplanen"]
+[DrillStartPly "8"]
+[RealisticWeight "1"]
+[OpponentCategory "slow"]
+
+1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Spiele e4.]}
+1... e5 {Schwarz beansprucht ebenfalls das Zentrum.}
+2. Nf3 {Du entwickelst mit Angriff auf e5. [%hint1 Entwickle mit Angriff auf e5.] [%hint2 Spiele Nf3.]}
+2... Nc6 {Schwarz entwickelt und deckt e5.}
+3. Bc4 {Der Läufer entwickelt sich gegen f7. [%hint1 Entwickle den Läufer gegen f7.] [%hint2 Spiele Bc4.]}
+3... Bc5 {Schwarz entwickelt aktiv gegen f2.}
+4. d3 {Du stützt e4 und hältst den Aufbau stabil. [%hint1 Stütze e4.] [%hint2 Spiele d3.]}
+4... a6 {Schwarz bereitet ...b5 vor, bedroht den Läufer aber noch nicht direkt.}
+5. O-O {Du sicherst zuerst den König; auf ...b5 kannst du den Läufer später zurückziehen. [%hint1 Erledige die Königssicherheit, bevor die Stellung geöffnet wird.] [%hint2 Spiele die kurze Rochade.]}
+5... d6 {Schwarz stabilisiert e5.}
+6. c3 {Du bereitest d4 vor und gibst dem Läufer zusätzlich c2 als Rückzugsfeld. [%hint1 Bereite d4 vor und schaffe dem Läufer ein weiteres Feld.] [%hint2 Spiele c3.]} *

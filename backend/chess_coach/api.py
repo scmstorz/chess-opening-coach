@@ -21,6 +21,7 @@ class NewSessionRequest(BaseModel):
     color: str = Field(pattern="^(white|black|random)$")
     training_mode: Literal["free", "guided"] = "free"
     lesson_id: str | None = Field(default=None, max_length=100)
+    lesson_style: Literal["mainline", "branches", "realistic"] = "mainline"
 
 
 class MoveRequest(BaseModel):
@@ -116,6 +117,7 @@ def create_app(service: CoachService | None = None) -> FastAPI:
                 request.color,
                 training_mode=request.training_mode,
                 lesson_id=request.lesson_id,
+                lesson_style=request.lesson_style,
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

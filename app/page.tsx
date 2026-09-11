@@ -9,6 +9,7 @@ type Piece = {
 
 type PlayerColor = "white" | "black" | "random";
 type TrainingMode = "free" | "guided";
+type GuidedStyle = "mainline" | "branches" | "realistic";
 
 type EngineInfo = {
   available: boolean;
@@ -146,6 +147,7 @@ type SessionState = {
   opening: { eco: string; name: string } | null;
   legal_moves: string[];
   move_history: { actor: "learner" | "coach"; san: string }[];
+  context_history: { actor: "learner" | "coach"; san: string }[];
   messages: CoachMessage[];
   message_history: CoachMessage[];
   can_undo: boolean;
@@ -161,6 +163,7 @@ type SessionState = {
   opening_end: OpeningEnd | null;
   opening_summary: OpeningSummary | null;
   training_mode: TrainingMode;
+  lesson_style: GuidedStyle | null;
   lesson: {
     lesson_id: string;
     title: string;
@@ -510,6 +513,7 @@ function ExplanationFeedbackControl({
 export default function Home() {
   const [requestedColor, setRequestedColor] = useState<PlayerColor>("white");
   const [requestedMode, setRequestedMode] = useState<TrainingMode>("guided");
+  const [requestedStyle, setRequestedStyle] = useState<GuidedStyle>("realistic");
   const [session, setSession] = useState<SessionState | null>(null);
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
@@ -546,7 +550,11 @@ export default function Home() {
     initialSessionRequestedRef.current = true;
     api<SessionState>("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ color: "white", training_mode: "guided" }),
+      body: JSON.stringify({
+        color: "white",
+        training_mode: "guided",
+        lesson_style: "realistic",
+      }),
     }).then((next) => {
       setSession(next);
       setMessages(next.message_history);
@@ -699,9 +707,11 @@ export default function Home() {
   async function startSession(
     color: PlayerColor = requestedColor,
     trainingMode: TrainingMode = requestedMode,
+    lessonStyle: GuidedStyle = requestedStyle,
   ) {
     setRequestedColor(color);
     setRequestedMode(trainingMode);
+    setRequestedStyle(lessonStyle);
     setLoading(true);
     setError(null);
     setSuggestion(null);
@@ -711,7 +721,11 @@ export default function Home() {
     try {
       const next = await api<SessionState>("/api/sessions", {
         method: "POST",
-        body: JSON.stringify({ color, training_mode: trainingMode }),
+        body: JSON.stringify({
+          color,
+          training_mode: trainingMode,
+          lesson_style: lessonStyle,
+        }),
       });
       setSession(next);
       setMessages(next.message_history);
@@ -932,7 +946,9 @@ export default function Home() {
           <div className="session-toolbar">
             <div>
               <p className="eyebrow">
-                {requestedMode === "guided" ? "Geführtes Repertoiretraining" : "Freies Eröffnungsspiel"}
+                {requestedMode === "guided"
+                  ? `Geführtes Repertoiretraining · ${requestedStyle === "mainline" ? "Grundlinie" : requestedStyle === "branches" ? "Abweichung" : "Realistischer Gegner"}`
+                  : "Freies Eröffnungsspiel"}
               </p>
               <h1>Eröffnungen</h1>
             </div>
@@ -942,7 +958,7 @@ export default function Home() {
                   aria-pressed={requestedMode === "guided"}
                   className={requestedMode === "guided" ? "mode-option active" : "mode-option"}
                   disabled={interactionLocked || phaseDecisionPending}
-                  onClick={() => void startSession("white", "guided")}
+                  onClick={() => void startSession("white", "guided", requestedStyle)}
                   type="button"
                 >
                   Italienisch üben
@@ -951,20 +967,35 @@ export default function Home() {
                   aria-pressed={requestedMode === "free"}
                   className={requestedMode === "free" ? "mode-option active" : "mode-option"}
                   disabled={interactionLocked || phaseDecisionPending}
-                  onClick={() => void startSession(requestedColor, "free")}
+                  onClick={() => void startSession(requestedColor, "free", requestedStyle)}
                   type="button"
                 >
                   Freies Spiel
                 </button>
               </div>
-              {requestedMode === "free" && (
+              {requestedMode === "guided" ? (
+                <div className="guided-style-picker" aria-label="Form des Italienisch-Trainings wählen">
+                  {(["mainline", "branches", "realistic"] as GuidedStyle[]).map((style) => (
+                    <button
+                      aria-pressed={requestedStyle === style}
+                      className={requestedStyle === style ? "style-option active" : "style-option"}
+                      disabled={interactionLocked || phaseDecisionPending}
+                      key={style}
+                      onClick={() => void startSession("white", "guided", style)}
+                      type="button"
+                    >
+                      {style === "mainline" ? "Grundlinie" : style === "branches" ? "Abweichung üben" : "Realistischer Gegner"}
+                    </button>
+                  ))}
+                </div>
+              ) : (
                 <div className="color-picker" aria-label="Farbe wählen">
                   {(["white", "black", "random"] as PlayerColor[]).map((color) => (
                     <button
                       className={requestedColor === color ? "color-option active" : "color-option"}
                       disabled={interactionLocked || phaseDecisionPending}
                       key={color}
-                      onClick={() => void startSession(color, "free")}
+                      onClick={() => void startSession(color, "free", requestedStyle)}
                       aria-pressed={requestedColor === color}
                       type="button"
                     >
@@ -1052,8 +1083,8 @@ export default function Home() {
               <div className="opening-chip">
                 <span className="opening-icon" aria-hidden="true">◎</span>
                 <span>
-                  <small>{session?.lesson ? `Trainingslinie · ${session.lesson.eco}` : session?.opening?.eco ? `Eröffnung · ${session.opening.eco}` : "Eröffnung"}</small>
-                  <strong>{session?.lesson?.title ?? session?.opening?.name ?? "Noch nicht erkannt"}</strong>
+                  <small>{session?.lesson_style === "realistic" && session.opening ? `Eröffnung · ${session.opening.eco}` : session?.lesson ? `Trainingslinie${session.lesson.eco ? ` · ${session.lesson.eco}` : ""}` : session?.opening?.eco ? `Eröffnung · ${session.opening.eco}` : "Eröffnung"}</small>
+                  <strong>{session?.lesson_style === "realistic" && session.opening ? session.opening.name : session?.lesson?.title ?? session?.opening?.name ?? "Noch nicht erkannt"}</strong>
                 </span>
               </div>
               <div className="board-actions">
@@ -1078,7 +1109,7 @@ export default function Home() {
                   <span aria-hidden="true">✦</span>Zug vorschlagen
                 </button>
                 <button className="primary-action" onClick={() => void startSession()} disabled={interactionLocked || phaseDecisionPending} type="button">
-                  Neue Partie<span aria-hidden="true">→</span>
+                  {requestedMode === "free" ? "Neue Partie" : requestedStyle === "branches" ? "Neue Übung" : requestedStyle === "realistic" ? "Neuer Gegner" : "Neu beginnen"}<span aria-hidden="true">→</span>
                 </button>
               </div>
             </div>
@@ -1181,11 +1212,11 @@ export default function Home() {
             {error && <div className="error-banner" role="alert">{error}</div>}
           </div>
 
-          {session && session.move_history.length > 0 && (
+          {session && (session.context_history.length > 0 || session.move_history.length > 0) && (
             <div className="move-strip" aria-label="Zugliste">
-              <span>Zugliste</span>
-              {session.move_history.map((move, index) => (
-                <strong key={`${index}-${move.san}`}>{index % 2 === 0 ? `${Math.floor(index / 2) + 1}. ` : ""}{move.san}</strong>
+              <span>{session.context_history.length ? "Ausgangslage + deine Züge" : "Zugliste"}</span>
+              {[...session.context_history, ...session.move_history].map((move, index) => (
+                <strong className={index < session.context_history.length ? "context-move" : ""} key={`${index}-${move.san}`}>{index % 2 === 0 ? `${Math.floor(index / 2) + 1}. ` : ""}{move.san}</strong>
               ))}
             </div>
           )}
@@ -1196,7 +1227,7 @@ export default function Home() {
             <div className="coach-avatar" aria-hidden="true">♟</div>
             <div>
               <p className="eyebrow">Dein Coach</p>
-              <h2>{sessionComplete ? "Eröffnung ausgewertet" : phaseDecisionPending ? "Zeit für eine Entscheidung" : session?.training_mode === "guided" ? "Italienisch mit Weiß" : session?.phase === "middlegame" ? "Wir sind im Mittelspiel" : session ? "Wir sind in der Partie" : "Bereit für den ersten Zug"}</h2>
+              <h2>{sessionComplete ? "Eröffnung ausgewertet" : phaseDecisionPending ? "Zeit für eine Entscheidung" : session?.lesson_style === "branches" ? "Reagiere auf die Abweichung" : session?.lesson_style === "realistic" ? "Schwarz entscheidet auf dem Brett" : session?.training_mode === "guided" ? "Italienisch mit Weiß" : session?.phase === "middlegame" ? "Wir sind im Mittelspiel" : session ? "Wir sind in der Partie" : "Bereit für den ersten Zug"}</h2>
             </div>
           </div>
 

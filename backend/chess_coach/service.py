@@ -20,7 +20,13 @@ from chess_coach.engine import (
     MovePlanAnalysis,
     StockfishService,
 )
-from chess_coach.guided import GuidedLesson, GuidedLessonBook, GuidedMove
+from chess_coach.guided import (
+    GUIDED_STYLES,
+    ITALIAN_WHITE_LESSON_ID,
+    GuidedLesson,
+    GuidedLessonBook,
+    GuidedMove,
+)
 from chess_coach.openings import OpeningBook, OpeningIdentity, TheoryMove, position_key
 from chess_coach.storage import SQLiteStore
 from chess_coach.tutor import OllamaTutor, TutorText
@@ -86,7 +92,12 @@ class GameSession:
     pending_move_clarification: MoveNotationClarification | None = None
     training_mode: str = "free"
     lesson: GuidedLesson | None = None
+    lesson_style: str | None = None
+    lesson_start_ply: int = 0
     lesson_ply: int = 0
+    initial_fen: str = chess.STARTING_FEN
+    initial_opening: OpeningIdentity | None = None
+    context_history: list[dict[str, str]] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -119,10 +130,30 @@ class CoachService:
         *,
         training_mode: str = "free",
         lesson_id: str | None = None,
+        lesson_style: str = "mainline",
     ) -> dict[str, Any]:
         if training_mode not in {"free", "guided"}:
             raise ValueError("Unbekannter Trainingsmodus")
-        lesson = self.guided_lessons.get(lesson_id) if training_mode == "guided" else None
+        if lesson_style not in GUIDED_STYLES:
+            raise ValueError("Unbekannte Form des geführten Trainings")
+        lesson = (
+            self.guided_lessons.select(lesson_style, self.rng, lesson_id)
+            if training_mode == "guided"
+            else None
+        )
+        lesson_start_ply = (
+            lesson.drill_start_ply if lesson is not None and lesson_style == "branches" else 0
+        )
+        board, context_history = (
+            lesson.position_at(lesson_start_ply)
+            if lesson is not None
+            else (chess.Board(), ())
+        )
+        initial_opening = None
+        if lesson is not None and lesson_start_ply > 0:
+            initial_opening = self.openings.identify(board) or OpeningIdentity(
+                lesson.eco, lesson.opening_name
+            )
         if lesson is not None:
             requested_color = "white" if lesson.learner_color == chess.WHITE else "black"
         if requested_color == "random":
@@ -130,10 +161,17 @@ class CoachService:
         learner_color = chess.WHITE if requested_color == "white" else chess.BLACK
         session = GameSession(
             session_id=str(uuid.uuid4()),
-            board=chess.Board(),
+            board=board,
             learner_color=learner_color,
+            opening=initial_opening,
             training_mode=training_mode,
             lesson=lesson,
+            lesson_style=lesson_style if lesson is not None else None,
+            lesson_start_ply=lesson_start_ply,
+            lesson_ply=lesson_start_ply,
+            initial_fen=board.fen(),
+            initial_opening=initial_opening,
+            context_history=list(context_history),
         )
         self.sessions[session.session_id] = session
         messages: list[dict[str, Any]] = (
@@ -276,8 +314,7 @@ class CoachService:
             )
             session.attempts_at_position = 0
             messages = [message]
-            if not session.board.is_game_over():
-                messages.append(self._play_coach_move(session))
+            self._append_next_coach_move(session, messages)
             return self._response(session, messages=messages)
 
     def _handle_guided_miss(
@@ -369,8 +406,7 @@ class CoachService:
         )
         session.attempts_at_position = 0
         messages = [message]
-        if not session.board.is_game_over():
-            messages.append(self._play_coach_move(session))
+        self._append_next_coach_move(session, messages)
         return self._response(session, messages=messages)
 
     def undo_last_turn(self, session_id: str) -> dict[str, Any]:
@@ -489,7 +525,8 @@ class CoachService:
                     if session.lesson
                     else None,
                     "summary": (
-                        f"Für diese Italienisch-Lektion ist {guided_step.move_san} der "
+                        f"Für „{session.lesson.title if session.lesson else 'diese Übung'}“ "
+                        f"ist {guided_step.move_san} der "
                         "gesuchte Repertoirezug."
                     ),
                     "details": " ".join(
@@ -1153,8 +1190,8 @@ class CoachService:
         made instead of silently falling back to an unrelated current suggestion.
         """
 
-        replay = chess.Board()
-        opening: OpeningIdentity | None = None
+        replay = chess.Board(session.initial_fen)
+        opening = session.initial_opening
         phase = "opening"
         explicit_matches: list[tuple[int, HistoricalMoveContext]] = []
         last_learner: HistoricalMoveContext | None = None
@@ -1470,6 +1507,21 @@ class CoachService:
         )
         return fallback, answer_facts, explanation_sections
 
+    def _append_next_coach_move(
+        self, session: GameSession, messages: list[dict[str, Any]]
+    ) -> None:
+        if session.board.is_game_over():
+            return
+        if session.lesson is None:
+            messages.append(self._play_coach_move(session))
+            return
+        expected = self._guided_expected_move(session)
+        if expected is None:
+            return
+        if expected.color == session.learner_color:
+            raise ValueError("Die Trainingslinie enthält zwei Lernzüge ohne Coach-Antwort")
+        messages.append(self._play_coach_move(session))
+
     def _play_coach_move(self, session: GameSession) -> dict[str, Any]:
         board = session.board
         fen_before = board.fen()
@@ -1541,20 +1593,49 @@ class CoachService:
             raise ValueError("Die Trainingslinie passt nicht mehr zur aktuellen Stellung")
         return expected
 
+    def _realistic_lesson_revealed(self, session: GameSession) -> bool:
+        """Reveal a hidden scenario only after its first different reply was played."""
+
+        if session.lesson_style != "realistic" or session.lesson is None:
+            return False
+        divergence_ply = self.guided_lessons.first_divergence_ply(session.lesson)
+        return divergence_ply is not None and session.lesson_ply > divergence_ply
+
     @staticmethod
     def _guided_prompt_message(session: GameSession) -> dict[str, Any]:
         if session.lesson is None:
             raise ValueError("Für diese Sitzung ist keine Trainingslektion gewählt")
         color = "Weiß" if session.learner_color == chess.WHITE else "Schwarz"
+        if session.lesson_style == "branches":
+            last_move = session.context_history[-1]["san"] if session.context_history else ""
+            summary = f"Schwarz hat zuletzt {last_move} gespielt. Was spielst du jetzt?"
+            context = _format_move_history(session.context_history)
+            details = (
+                f"Ausgangszüge: {context}. Ziel: {session.lesson.goal}. "
+                "Der gesuchte Zug wird vorher nicht gezeigt."
+            )
+        elif session.lesson_style == "realistic":
+            summary = (
+                f"Du spielst {color}. Schwarz wählt seine Verteidigung diesmal variabel. "
+                "Was ist dein erster Zug?"
+            )
+            details = (
+                "Erkenne nach jedem schwarzen Zug, ob der italienische Plan noch passt, "
+                "ob die Eröffnung gewechselt hat oder ob Schwarz etwas Konkretes erlaubt. "
+                "Die Gegnerlinie bleibt verborgen, bis sie auf dem Brett erscheint."
+            )
+        else:
+            summary = f"Du spielst {color}. Was ist dein erster Zug?"
+            details = (
+                f"Ziel dieser Lektion: {session.lesson.goal}. "
+                "Spiele direkt auf dem Brett; der Zug wird vorher nicht gezeigt."
+            )
         return {
             "kind": "prompt",
             "actor": "coach",
             "move": None,
-            "summary": f"Du spielst {color}. Was ist dein erster Zug?",
-            "details": (
-                f"Ziel dieser Lektion: {session.lesson.goal}. "
-                "Spiele direkt auf dem Brett; der Zug wird vorher nicht gezeigt."
-            ),
+            "summary": summary,
+            "details": details,
             "source": "guided-repertoire",
             "model": None,
             "attempt": None,
@@ -1929,6 +2010,7 @@ class CoachService:
                 "theory_match": None if theory_match is None else int(theory_match),
                 "training_mode": session.training_mode,
                 "lesson_id": session.lesson.lesson_id if session.lesson else None,
+                "lesson_style": session.lesson_style,
                 "repertoire_match": (
                     None
                     if message.get("repertoire_match") is None
@@ -2000,12 +2082,19 @@ class CoachService:
                 summary=summary,
             )
             session.phase = "complete"
+            completion_label = (
+                "Abweichungsübung"
+                if session.lesson_style == "branches"
+                else "realistische Gegnerlinie"
+                if session.lesson_style == "realistic"
+                else "Italienisch-Grundlinie"
+            )
             messages.append(
                 {
                     "kind": "summary",
                     "actor": "coach",
                     "move": None,
-                    "summary": "Geschafft: Du hast die Italienisch-Einheit vollständig gespielt.",
+                    "summary": f"Geschafft: Du hast diese {completion_label} vollständig gespielt.",
                     "details": session.opening_summary["takeaway"],
                     "source": "verified-session-data",
                     "model": None,
@@ -2036,14 +2125,49 @@ class CoachService:
         session.message_history.extend(messages)
         opening = asdict(session.opening) if session.opening else None
         legal_moves = [move.uci() for move in session.board.legal_moves]
+        realistic_revealed = self._realistic_lesson_revealed(session)
+        public_lesson_title = (
+            session.lesson.title
+            if session.lesson and (session.lesson_style != "realistic" or realistic_revealed)
+            else "Realistischer Gegner"
+        )
+        public_lesson_goal = (
+            session.lesson.goal
+            if session.lesson and (session.lesson_style != "realistic" or realistic_revealed)
+            else (
+                "Erkennen, ob der italienische Plan noch passt oder eine andere "
+                "Eröffnungsantwort nötig ist"
+            )
+        )
+        public_total_learner_moves = (
+            self.guided_lessons.get(ITALIAN_WHITE_LESSON_ID).learner_move_count
+            if session.lesson
+            and session.lesson_style == "realistic"
+            and not realistic_revealed
+            else session.lesson.learner_move_count_from(session.lesson_start_ply)
+            if session.lesson
+            else 0
+        )
         lesson = (
             {
-                "lesson_id": session.lesson.lesson_id,
-                "title": session.lesson.title,
-                "opening_name": session.lesson.opening_name,
-                "eco": session.lesson.eco,
-                "goal": session.lesson.goal,
-                "total_learner_moves": session.lesson.learner_move_count,
+                "lesson_id": (
+                    session.lesson.lesson_id
+                    if session.lesson_style != "realistic" or realistic_revealed
+                    else "hidden-opponent-line"
+                ),
+                "title": public_lesson_title,
+                "opening_name": (
+                    session.lesson.opening_name
+                    if session.lesson_style != "realistic" or realistic_revealed
+                    else "Noch offen"
+                ),
+                "eco": (
+                    session.lesson.eco
+                    if session.lesson_style != "realistic" or realistic_revealed
+                    else ""
+                ),
+                "goal": public_lesson_goal,
+                "total_learner_moves": public_total_learner_moves,
             }
             if session.lesson
             else None
@@ -2051,7 +2175,9 @@ class CoachService:
         learner_moves_completed = (
             sum(
                 move.color == session.learner_color
-                for move in session.lesson.moves[: session.lesson_ply]
+                for move in session.lesson.moves[
+                    session.lesson_start_ply : session.lesson_ply
+                ]
             )
             if session.lesson
             else 0
@@ -2059,16 +2185,19 @@ class CoachService:
         training_progress = (
             {
                 "current": min(
-                    learner_moves_completed + 1, session.lesson.learner_move_count
+                    learner_moves_completed + 1,
+                    public_total_learner_moves,
                 ),
                 "completed": learner_moves_completed,
-                "total": session.lesson.learner_move_count,
+                "total": public_total_learner_moves,
                 "question": (
-                    "Was ist dein erster Zug?"
+                    "Was spielst du in dieser Stellung?"
+                    if learner_moves_completed == 0 and session.lesson_style == "branches"
+                    else "Was ist dein erster Zug?"
                     if learner_moves_completed == 0
                     else "Was spielst du als Nächstes?"
                 ),
-                "goal": session.lesson.goal,
+                "goal": public_lesson_goal,
             }
             if session.lesson and session.phase != "complete"
             else None
@@ -2081,6 +2210,7 @@ class CoachService:
             "opening": opening,
             "legal_moves": legal_moves,
             "move_history": session.move_history,
+            "context_history": session.context_history,
             "messages": messages,
             "message_history": session.message_history,
             "can_undo": bool(session.undo_stack),
@@ -2092,6 +2222,7 @@ class CoachService:
             else None,
             "opening_summary": session.opening_summary,
             "training_mode": session.training_mode,
+            "lesson_style": session.lesson_style,
             "lesson": lesson,
             "training_progress": training_progress,
         }
@@ -2371,6 +2502,13 @@ def _format_evaluation(score: float | None, mate: int | None) -> str:
     if score is None:
         return "nicht verfügbar"
     return f"{score:+.2f}".replace(".", ",")
+
+
+def _format_move_history(history: list[dict[str, str]]) -> str:
+    return " ".join(
+        f"{index // 2 + 1}. {move['san']}" if index % 2 == 0 else move["san"]
+        for index, move in enumerate(history)
+    )
 
 
 _MOVE_DESCRIPTION_PATTERN = re.compile(

@@ -35,6 +35,7 @@ class SQLiteStore:
                     theory_match INTEGER,
                     training_mode TEXT NOT NULL DEFAULT 'free',
                     lesson_id TEXT,
+                    lesson_style TEXT,
                     repertoire_match INTEGER,
                     opening_eco TEXT,
                     opening_name TEXT,
@@ -95,6 +96,7 @@ class SQLiteStore:
                 {
                     "training_mode": "TEXT NOT NULL DEFAULT 'free'",
                     "lesson_id": "TEXT",
+                    "lesson_style": "TEXT",
                     "repertoire_match": "INTEGER",
                 },
             )
@@ -125,6 +127,7 @@ class SQLiteStore:
             "theory_match",
             "training_mode",
             "lesson_id",
+            "lesson_style",
             "repertoire_match",
             "opening_eco",
             "opening_name",

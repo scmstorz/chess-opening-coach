@@ -152,6 +152,26 @@
 52. Real Stockfish ranks the defining `3.Bc4` slightly below its top choice under
     shallow budgets, demonstrating why a human repertoire must not be rewritten
     by volatile top-one engine output.
+53. The learner immediately identifies the transfer problem in a fixed line:
+    memorizing one cooperative Italian sequence does not prepare White for a
+    different or inferior Black move.
+54. A large repertoire tree, per-move engine randomness, and simulated 700-Elo
+    errors are considered. Thirteen coherent authored scenarios are chosen as a
+    smaller testable step because variation between sessions must not destroy
+    causality within a session.
+55. One scenario source now supports three distinct learning jobs: repeat the
+    model, jump directly to a deviation, or discover a hidden opponent choice
+    from move one.
+56. Hiding only the initial title is insufficient: a Petroff scenario sharing
+    `1...e5` must remain secret until `2...Nf6`. The API reveal rule therefore
+    follows the first actual divergence, not a fixed move number.
+57. A Stockfish audit improves curriculum rather than dictating it. The first
+    Hungarian draft says “use more centre” but delays `d5`; aligning the move
+    with the lesson concept lowers its measured loss and strengthens the causal
+    story.
+58. Thirteen production self-plays and 60 random branch starts verify 132
+    half-moves, custom starting FENs, persistence, completion, and undo while
+    explicitly leaving visual learning transfer for human evaluation.
 
 ## Evidence already captured
 
@@ -229,6 +249,10 @@
   plus engine-loss measurements for every authored half-move
 - An ADR connecting the learner's “ask immediately” preference to PGN-backed
   recall, hint, correction, suggestion, persistence, and undo semantics
+- A 13-scenario opponent curriculum with explicit non-empirical selection
+  weights, first-divergence secrecy, and separate model/branch/realistic modes
+- A Stockfish 18 audit of 43 learner decisions plus complete real-service
+  self-play of all 132 authored half-moves
 
 ## Questions for later evaluation
 
@@ -247,3 +271,7 @@
 - How often do `unclear` and `wrong` judgments lead to different root causes and
   therefore different fixes?
 - Does the one-click control remain unobtrusive enough to use after every move?
+- Which curated deviations actually recur in the learner's 10+0 games, and how
+  should observed frequency change the explicitly non-empirical starting weights?
+- When does a sound non-target White move deserve to become an accepted
+  repertoire alternative rather than remain a retry?

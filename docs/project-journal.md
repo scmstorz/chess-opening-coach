@@ -1708,3 +1708,84 @@ The final checkpoint reports 91 passing backend tests plus Ruff, frontend lint,
 the rendered-page test, production build, publication-safety scan, and a clean
 whitespace diff. The public safety scan still finds no tracked private PDF,
 compiled book database, or matching long passage from the local corpus.
+
+## 2026-09-11 — From one memorized line to opponent variation
+
+The first guided self-play led directly to the next product objection. If Black
+always plays the same Italian replies, the learner can memorize that sequence
+without learning how to react when a real opponent chooses another, possibly
+worse, move. The desired outcome is transfer: recognize whether the Italian
+plan still applies, whether the opening family has changed, or whether a
+concrete mistake should be exploited.
+
+Three complementary exercises were agreed rather than one replacement mode.
+The model line remains useful for forming a stable plan. A deviation drill
+should jump directly to the critical position. A realistic opponent should
+start from move one and make its selection visible only through moves on the
+board. The learner is still White, plays immediately, and remains untimed.
+
+Four implementation directions were considered. A full PGN variation tree is
+the long-term expressive model but introduces transposition and accepted-move
+policy before this learning hypothesis has been tested. Per-move Stockfish
+selection creates variety without curriculum coherence. Artificially weakening
+Stockfish to imitate 700 Elo would falsely imply known player frequencies and
+could select noise. The chosen intermediate structure is a family of complete,
+linear annotated PGN scenarios. One is selected per session, so the coach varies
+between games while every individual path remains legal, authored, and
+explainable.
+
+The family now contains 13 scenarios. It covers switches after `1.e4` to the
+Sicilian, French, and Caro-Kann; alternatives after `1.e4 e5 2.Nf3` through the
+Petroff, Philidor, and Damiano; Italian branches through Two Knights,
+Hungarian, Rousseau, and Blackburne-Shilling; and the slow early moves `...h6`
+and `...a6`. The source explicitly explains that White cannot force an Italian
+after the first three opening switches. Slow moves are answered by continuing
+development rather than pretending they deserve a tactical refutation.
+
+Scenario weights sum to 100 for inspection, but no external frequency claim is
+attached to them. Network access was not used. Common sound lines receive most
+of the weight; traps, dubious gambits, and mistakes remain rare. This is a
+curriculum hypothesis to revise from observed learner games, not chess.org
+telemetry.
+
+The implementation adds `LessonFamily`, `DrillStartPly`, `RealisticWeight`, and
+`OpponentCategory` parsing. Direct drills reconstruct the position and expose
+the prior move list only as muted context. Realistic sessions conceal the
+selected lesson ID, title, goal, ECO, and scenario-specific progress length. A
+first implementation would have revealed every scenario after Black's first
+move; a new Petroff regression showed the leak because `1...e5` is still shared
+with the model line. The final rule locates each scenario's first differing ply
+and reveals it only after that specific Black reply has appeared.
+
+Session persistence gains `lesson_style`; session state gains an initial FEN
+and context history. This lets historical questions replay a branch from its
+real starting position. A generic next-coach helper also permits a short tactic
+lesson to finish on White's move instead of fabricating another Black reply.
+The browser exposes `Grundlinie`, `Abweichung üben`, and `Realistischer Gegner`;
+the last is the guided default. Branch prefixes appear in a subdued move strip.
+
+The first Stockfish audit was both verification and design feedback. Across 44
+initial learner decisions, no proposed move lost more than 0.34 pawns, but the
+Hungarian line had a conceptual mismatch: its goal promised more central space
+while `5.O-O` delayed the available `5.d5`. The line was revised to end on
+`5.d5`. A second Stockfish 18 run over 43 final learner decisions measured a
+maximum loss of 0.27; established scenarios stayed within 0.10 and solid ones
+within 0.05. This was not blind top-move optimization: the engine prompted a
+change because its concrete candidate agreed with the authored teaching goal.
+
+The agent then selected and played every scenario through the real service with
+the real local opening data and Stockfish. All 13 sessions completed, all 132
+half-moves matched independent PGN reconstruction, and every interaction was
+accepted and persisted. A further 60 random branch sessions all started in a
+legal White-to-move position with a clean current history. Automated tests cover
+hidden selection, delayed reveal, branch suggestions, custom-FEN historical
+questions, White-move completion, and undo. The remaining evidence must come
+from the learner: whether the uncertainty feels realistic, which deviations
+actually recur, and where objectively sound alternatives deserve explicit
+acceptance.
+
+The final implementation checkpoint reports 98 passing backend tests, Ruff,
+frontend lint, the vinext production build, the rendered web-shell contract,
+and a clean whitespace diff. The release publication guard checks 104 tracked
+paths and 102 historical paths against 104 private-corpus text variants and
+finds no private source leak.

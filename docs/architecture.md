@@ -37,6 +37,49 @@ can be changed explicitly through environment variables. The browser sees one
 origin; the web development server proxies `/api` requests to the Python
 service. Neither server binds to the LAN by default.
 
+## Guided repertoire scenarios
+
+Guided practice is a separate decision policy from free play. Its tracked,
+project-authored PGN files provide legal moves, explanations after both sides'
+moves, two hints for every learner decision, and compact scenario metadata.
+`python-chess` validates the complete line while loading it. Stockfish verifies
+objective plausibility but does not replace the repertoire move with its current
+top-one candidate.
+
+The Italian-from-White family currently contains one model line and twelve
+opponent deviations. The same linear scenario can be presented in three ways:
+
+```text
+model line
+  -> reconstruct initial board
+  -> repeat one stable setup
+
+branch drill
+  -> choose a non-mainline scenario
+  -> reconstruct its board at DrillStartPly
+  -> show earlier moves as context
+  -> ask White at the critical decision
+
+realistic opponent
+  -> choose one weighted scenario
+  -> keep its identity hidden
+  -> start at move one
+  -> reveal only after Black plays the first move differing from the model
+```
+
+Selection happens once per session. This creates variation between sessions
+while preserving coherent replies and explanations within one game. The
+selection weights are curriculum weights, not claimed player-frequency data.
+Every branch position stores an initial FEN and contextual move history; replay
+for historical questions therefore starts at that FEN rather than assuming the
+normal initial position.
+
+The model is deliberately finite. A legal White move can be objectively sound
+without matching the active scenario, so `repertoire_match`, broad
+`theory_match`, and Stockfish loss remain separate fields. New accepted
+alternatives or transpositions require authored semantics rather than being
+created implicitly by engine randomness.
+
 ## Three truth layers
 
 Every learner move is represented through independent facts:
@@ -241,10 +284,10 @@ Questions may also refer to an accepted learner move after the coach has already
 replied. The service replays accepted transition messages, resolves the named or
 last learner move, and changes only the analysis context to the verified board
 immediately before that move. The live session board, undo stack, and learner log
-remain unchanged. Replay currently fails closed for any future session that does
-not begin at the normal initial position. A legal move rejected by the active
-correction loop is still legal on the unchanged current board and takes
-precedence over historical replay.
+remain unchanged. Replay begins from the session's recorded initial FEN, so
+direct branch drills can answer questions about moves after their custom starting
+position. A legal move rejected by the active correction loop is still legal on
+the unchanged current board and takes precedence over historical replay.
 
 ```text
 user question + current FEN + verified transition history + optional highlighted move

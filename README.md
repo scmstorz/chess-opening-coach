@@ -30,7 +30,9 @@ operator.
 - Stable local URL at `http://localhost:53687/` with explicit port overrides
 - White, Black, and random learner color
 - Immediately playable White game on page load; choosing a color starts a fresh game
-- Guided Italian practice from White with immediate recall, two hints, and a third-attempt reveal
+- Guided Italian-from-White curriculum with 13 coherent opponent scenarios
+- Three guided styles: repeat the model line, start at a deviation, or face a hidden varying opponent line
+- Immediate recall, two hints, and a third-attempt reveal in every guided scenario
 - Separate guided and free-play modes; free play retains White, Black, and random color choice
 - Progressive opening recognition across 3,810 local Lichess opening entries
 - Theory-aware and Stockfish-checked coach moves
@@ -60,9 +62,9 @@ operator.
 - Local SQLite interaction history and Stockfish cache
 - Responsive layout and keyboard-focusable board squares
 
-The first milestone intentionally does not yet include deliberate opponent
-inaccuracies, PGN export, cross-session review prompts, repertoire variations,
-or timed 10+0 simulation.
+The first milestone intentionally does not yet include exhaustive repertoire
+trees, PGN export, cross-session review prompts, empirical opponent-frequency
+modelling, or timed 10+0 simulation.
 
 ## Prerequisites
 
@@ -255,3 +257,4 @@ license are retained in `data/openings/`.
 - [Local Ollama chess-model comparison](docs/evaluations/2026-08-29-ollama-chess-models.md)
 - [Kimi and DeepSeek explanation comparison](docs/evaluations/2026-09-08-cloud-chess-explanations.md)
 - [Six-case deep-explanation quality cycle](docs/evaluations/2026-09-09-deep-explanation-quality-cycle.md)
+- [Opponent-variation engine audit and self-play](docs/evaluations/2026-09-11-opponent-variation-self-play.md)

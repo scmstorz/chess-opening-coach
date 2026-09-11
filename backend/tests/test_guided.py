@@ -27,8 +27,11 @@ def guided_service() -> CoachService:
 
 
 def test_italian_lesson_loads_from_annotated_pgn() -> None:
-    lesson = GuidedLessonBook(REPERTOIRE_PATH).get(ITALIAN_WHITE_LESSON_ID)
+    lesson_book = GuidedLessonBook(REPERTOIRE_PATH)
+    lesson = lesson_book.get(ITALIAN_WHITE_LESSON_ID)
 
+    assert len(lesson_book.lessons) == 13
+    assert sum(item.realistic_weight for item in lesson_book.lessons.values()) == 100
     assert lesson.title == "Italienisches Spiel mit Weiß"
     assert lesson.eco == "C50"
     assert lesson.learner_color == chess.WHITE
@@ -44,6 +47,147 @@ def test_italian_lesson_loads_from_annotated_pgn() -> None:
     ]
     assert all(len(move.hints) == 2 for move in lesson.moves if move.color == chess.WHITE)
     assert all(move.explanation for move in lesson.moves)
+    assert all(
+        lesson_book.first_divergence_ply(item) == item.drill_start_ply - 1
+        for item in lesson_book.lessons.values()
+        if item.lesson_id != ITALIAN_WHITE_LESSON_ID
+    )
+
+
+def test_branch_drill_starts_after_deviation_without_revealing_answer() -> None:
+    coach = guided_service()
+
+    response = coach.create_session(
+        "white",
+        training_mode="guided",
+        lesson_style="branches",
+        lesson_id="italian-white-vs-sicilian",
+    )
+
+    assert response["lesson_style"] == "branches"
+    assert response["context_history"] == [
+        {"actor": "learner", "san": "e4"},
+        {"actor": "coach", "san": "c5"},
+    ]
+    assert response["move_history"] == []
+    assert response["opening"]["name"] == "Sicilian Defense"
+    assert response["training_progress"]["total"] == 4
+    assert response["training_progress"]["completed"] == 0
+    assert response["messages"][0]["summary"] == (
+        "Schwarz hat zuletzt c5 gespielt. Was spielst du jetzt?"
+    )
+    assert "Nf3" not in json.dumps(response["messages"], ensure_ascii=False)
+
+    suggestion = coach.suggest_move(response["session_id"])
+    assert suggestion["move_san"] == "Nf3"
+
+
+def test_realistic_opponent_hides_selected_line_until_black_plays() -> None:
+    coach = guided_service()
+    response = coach.create_session(
+        "white",
+        training_mode="guided",
+        lesson_style="realistic",
+        lesson_id="italian-white-vs-sicilian",
+    )
+
+    assert response["lesson"]["lesson_id"] == "hidden-opponent-line"
+    assert response["lesson"]["title"] == "Realistischer Gegner"
+    assert response["training_progress"]["total"] == 10
+    assert response["context_history"] == []
+    assert "Sizilian" not in json.dumps(response, ensure_ascii=False)
+
+    played = coach.play_learner_move(response["session_id"], "e2", "e4")
+
+    assert played["messages"][1]["move"] == "c5"
+    assert "Sizilianische Verteidigung" in played["messages"][1]["summary"]
+    assert played["lesson"]["lesson_id"] == "italian-white-vs-sicilian"
+    assert played["lesson"]["title"] == "Wenn Schwarz Sizilianisch wählt"
+    assert played["opening"]["name"] == "Sicilian Defense"
+
+
+def test_realistic_opponent_does_not_reveal_a_later_deviation_early() -> None:
+    coach = guided_service()
+    response = coach.create_session(
+        "white",
+        training_mode="guided",
+        lesson_style="realistic",
+        lesson_id="italian-white-vs-petroff",
+    )
+
+    after_e4 = coach.play_learner_move(response["session_id"], "e2", "e4")
+
+    assert after_e4["messages"][1]["move"] == "e5"
+    assert after_e4["lesson"]["lesson_id"] == "hidden-opponent-line"
+    assert after_e4["training_progress"]["total"] == 10
+    assert "Russisch" not in json.dumps(after_e4, ensure_ascii=False)
+
+    after_nf3 = coach.play_learner_move(response["session_id"], "g1", "f3")
+
+    assert after_nf3["messages"][1]["move"] == "Nf6"
+    assert after_nf3["lesson"]["lesson_id"] == "italian-white-vs-petroff"
+    assert after_nf3["lesson"]["title"] == "Gegen die Russische Verteidigung"
+
+
+def test_realistic_selector_uses_multiple_curated_opponent_lines() -> None:
+    lesson_book = GuidedLessonBook(REPERTOIRE_PATH)
+    rng = random.Random(12)
+
+    selected = {lesson_book.select("realistic", rng).lesson_id for _ in range(200)}
+
+    assert ITALIAN_WHITE_LESSON_ID in selected
+    assert "italian-white-vs-sicilian" in selected
+    assert "italian-white-vs-french" in selected
+    assert "italian-white-vs-caro-kann" in selected
+    assert "italian-white-two-knights" in selected
+    assert len(selected) >= 10
+
+
+def test_branch_drill_can_end_on_learner_move_and_reopen_with_undo() -> None:
+    coach = guided_service()
+    session = coach.create_session(
+        "white",
+        training_mode="guided",
+        lesson_style="branches",
+        lesson_id="italian-white-vs-damiano",
+    )
+
+    completed = coach.play_learner_move(session["session_id"], "f3", "e5")
+
+    assert completed["phase"] == "complete"
+    assert completed["move_history"] == [{"actor": "learner", "san": "Nxe5"}]
+    assert completed["messages"][0]["move"] == "Nxe5"
+    assert completed["messages"][-1]["kind"] == "summary"
+    assert all(message.get("move") != "fxe5" for message in completed["messages"])
+    assert coach.store.session_interactions(session["session_id"])[0]["lesson_style"] == (
+        "branches"
+    )
+
+    reopened = coach.undo_last_turn(session["session_id"])
+
+    assert reopened["phase"] == "opening"
+    assert reopened["move_history"] == []
+    assert reopened["context_history"][-1]["san"] == "f6"
+    assert reopened["training_progress"]["current"] == 1
+
+
+def test_branch_historical_question_replays_from_drill_start_position() -> None:
+    coach = guided_service()
+    session = coach.create_session(
+        "white",
+        training_mode="guided",
+        lesson_style="branches",
+        lesson_id="italian-white-vs-sicilian",
+    )
+    coach.play_learner_move(session["session_id"], "g1", "f3")
+
+    answer = coach.answer_question(
+        session["session_id"], "Warum war mein letzter Zug Nf3 gut?"
+    )["message"]
+
+    assert answer["move"] == "Nf3"
+    assert answer["summary"].startswith("Du entwickelst den Königsspringer")
+    assert answer["position_fen"] == session["fen"]
 
 
 def test_guided_session_asks_immediately_without_revealing_the_move() -> None:
@@ -56,7 +200,10 @@ def test_guided_session_asks_immediately_without_revealing_the_move() -> None:
     assert response["move_history"] == []
     assert response["messages"][0]["kind"] == "prompt"
     assert response["messages"][0]["summary"] == "Du spielst Weiß. Was ist dein erster Zug?"
-    assert "e4" not in json.dumps(response["messages"], ensure_ascii=False)
+    visible_prompt = " ".join(
+        f"{message['summary']} {message['details']}" for message in response["messages"]
+    )
+    assert "e4" not in visible_prompt
     assert response["training_progress"] == {
         "current": 1,
         "completed": 0,
@@ -150,6 +297,34 @@ def test_guided_api_question_uses_authored_plan_for_suggested_move() -> None:
             section["title"] == "Mittel- und langfristiger Plan"
             for section in answer.json()["message"]["explanation_sections"]
         )
+
+
+def test_guided_style_is_part_of_the_public_session_api() -> None:
+    coach = guided_service()
+
+    with TestClient(create_app(coach)) as client:
+        branch = client.post(
+            "/api/sessions",
+            json={
+                "color": "white",
+                "training_mode": "guided",
+                "lesson_style": "branches",
+                "lesson_id": "italian-white-vs-sicilian",
+            },
+        )
+        invalid = client.post(
+            "/api/sessions",
+            json={
+                "color": "white",
+                "training_mode": "guided",
+                "lesson_style": "surprise-me",
+            },
+        )
+
+    assert branch.status_code == 200
+    assert branch.json()["lesson_style"] == "branches"
+    assert branch.json()["context_history"][-1]["san"] == "c5"
+    assert invalid.status_code == 422
 
 
 def test_guided_undo_restores_lesson_position_and_progress() -> None:

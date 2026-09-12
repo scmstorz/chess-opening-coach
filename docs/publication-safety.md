@@ -5,6 +5,11 @@
 The Chess Opening Coach is publishable as an open-source application, but its
 private book corpus is not part of that application distribution.
 
+The original project code and authored repository material use the MIT license.
+Third-party components and data retain their own licenses as listed in
+`THIRD_PARTY_NOTICES.md`. The MIT grant does not apply to private operator-owned
+book sources or derived book content.
+
 | Asset | Public repository | Private local runtime |
 | --- | --- | --- |
 | Application and compiler code | yes | yes |

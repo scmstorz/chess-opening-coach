@@ -269,6 +269,8 @@
   from readiness-appropriate curriculum variation
 - An enforceable prerequisite boundary with seven active Italian scenarios and
   six preserved but inaccessible `1.e4` foundations lessons
+- A public-repository licensing decision that separates MIT-licensed original
+  code, GPL/CC0 third-party components, and an unlicensed private book overlay
 
 ## Questions for later evaluation
 

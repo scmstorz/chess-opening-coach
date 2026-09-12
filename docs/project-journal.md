@@ -1845,3 +1845,42 @@ The final checkpoint reports 99 passing backend tests, Ruff, frontend lint, the
 vinext production build, the rendered-shell contract, and a clean whitespace
 diff. The release publication guard checked 104 tracked and 104 historical paths
 against 111 private-corpus text variants without finding a leak.
+
+## 2026-09-12 — Public remote and an explicit license boundary
+
+The learner created the public GitHub repository
+`https://github.com/scmstorz/chess-opening-coach` and requested a simple,
+permissive license. The remote was confirmed empty before being configured as
+`origin`; this avoids silently overwriting or merging an independently
+initialized public history.
+
+Leaving the repository unlicensed, applying GPL-3.0-or-later to all original
+work, and licensing the original work under MIT with explicit third-party
+notices were compared. No license was rejected because public visibility by
+itself does not grant open-source reuse rights. GPL would align directly with
+the GPL-3.0-or-later `python-chess` dependency, but would not meet the learner's
+preference for a simple permissive grant on independently reusable project
+code. MIT was selected because it is concise and GPL-compatible.
+
+The distinction must remain visible: MIT covers the original project code and
+authored repository material, not every component of a running installation.
+`python-chess` remains GPL-3.0-or-later, separately installed Stockfish remains
+GPLv3, and the included Lichess opening data remains CC0. A combined
+redistribution can therefore carry obligations beyond the project's MIT text.
+`THIRD_PARTY_NOTICES.md` records those boundaries, and both Python and npm
+metadata now identify the original project license and public repository.
+
+The license change does not weaken the private-content boundary. The three
+owned PDFs, extracted book passages, compiled knowledge database, and learner
+database remain ignored local files outside the MIT grant. Public runtime still
+fails closed without book retrieval, and publication still requires both the
+release guard and human review. ADR 0017 preserves the options, reasoning, and
+consequences for the case study.
+
+Before the first public push, the complete backend and frontend checks passed:
+99 Python tests, Ruff, frontend lint, the production build, and the rendered
+shell contract. After all new license files were staged, the stricter release
+guard inspected 109 indexed paths and all 106 historical paths, then compared
+the public text with 109 private-corpus variants without finding a leak. The
+check was deliberately repeated after staging because the guard treats the Git
+index—not untracked working files—as the proposed public artifact.

@@ -249,6 +249,19 @@ Opening names and lines are sourced from
 commit `4b8622759e7ae6f93f011cc6c83a3823401ab45e`, under CC0. The source README and
 license are retained in `data/openings/`.
 
+## License
+
+Original project code and authored repository material are available under the
+[MIT License](LICENSE). Third-party software and data retain their own licenses;
+see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). In particular,
+`python-chess` is GPL-3.0-or-later, so redistribution of a complete combined
+application may carry GPL obligations in addition to the MIT grant for this
+project's original code.
+
+Private chess-book PDFs, extracted source passages, compiled claims, and the
+local book database are operator-supplied inputs. They are neither distributed
+by this repository nor licensed under MIT.
+
 ## Documentation
 
 - [Project journal](docs/project-journal.md)
@@ -260,3 +273,4 @@ license are retained in `data/openings/`.
 - [Six-case deep-explanation quality cycle](docs/evaluations/2026-09-09-deep-explanation-quality-cycle.md)
 - [Opponent-variation engine audit and self-play](docs/evaluations/2026-09-11-opponent-variation-self-play.md)
 - [Italian curriculum scope acceptance](docs/evaluations/2026-09-12-italian-scope-acceptance.md)
+- [Public repository and license decision](docs/decisions/0017-public-repository-license.md)

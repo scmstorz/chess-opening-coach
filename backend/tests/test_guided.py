@@ -3,6 +3,7 @@ import random
 from pathlib import Path
 
 import chess
+import pytest
 from chess_coach.api import create_app
 from chess_coach.guided import ITALIAN_WHITE_LESSON_ID, GuidedLessonBook
 from chess_coach.openings import OpeningBook
@@ -52,6 +53,20 @@ def test_italian_lesson_loads_from_annotated_pgn() -> None:
         for item in lesson_book.lessons.values()
         if item.lesson_id != ITALIAN_WHITE_LESSON_ID
     )
+    active_italian = [
+        item
+        for item in lesson_book.lessons.values()
+        if item.family == "italian-white" and item.realistic_weight > 0
+    ]
+    assert len(active_italian) == 7
+    assert all(
+        [move.move_san for move in item.moves[:5]] == ["e4", "e5", "Nf3", "Nc6", "Bc4"]
+        for item in active_italian
+    )
+    assert all(
+        item.lesson_id == ITALIAN_WHITE_LESSON_ID or item.drill_start_ply >= 6
+        for item in active_italian
+    )
 
 
 def test_branch_drill_starts_after_deviation_without_revealing_answer() -> None:
@@ -61,49 +76,62 @@ def test_branch_drill_starts_after_deviation_without_revealing_answer() -> None:
         "white",
         training_mode="guided",
         lesson_style="branches",
-        lesson_id="italian-white-vs-sicilian",
+        lesson_id="italian-white-two-knights",
     )
 
     assert response["lesson_style"] == "branches"
     assert response["context_history"] == [
         {"actor": "learner", "san": "e4"},
-        {"actor": "coach", "san": "c5"},
+        {"actor": "coach", "san": "e5"},
+        {"actor": "learner", "san": "Nf3"},
+        {"actor": "coach", "san": "Nc6"},
+        {"actor": "learner", "san": "Bc4"},
+        {"actor": "coach", "san": "Nf6"},
     ]
     assert response["move_history"] == []
-    assert response["opening"]["name"] == "Sicilian Defense"
-    assert response["training_progress"]["total"] == 4
+    assert response["opening"]["name"] == "Italian Game: Two Knights Defense"
+    assert response["training_progress"]["total"] == 3
     assert response["training_progress"]["completed"] == 0
     assert response["messages"][0]["summary"] == (
-        "Schwarz hat zuletzt c5 gespielt. Was spielst du jetzt?"
+        "Schwarz hat zuletzt Nf6 gespielt. Was spielst du jetzt?"
     )
-    assert "Nf3" not in json.dumps(response["messages"], ensure_ascii=False)
+    assert "d3" not in json.dumps(response["messages"], ensure_ascii=False)
 
     suggestion = coach.suggest_move(response["session_id"])
-    assert suggestion["move_san"] == "Nf3"
+    assert suggestion["move_san"] == "d3"
 
 
-def test_realistic_opponent_hides_selected_line_until_black_plays() -> None:
+def test_realistic_opponent_hides_selected_line_until_italian_deviation() -> None:
     coach = guided_service()
     response = coach.create_session(
         "white",
         training_mode="guided",
         lesson_style="realistic",
-        lesson_id="italian-white-vs-sicilian",
+        lesson_id="italian-white-two-knights",
     )
 
     assert response["lesson"]["lesson_id"] == "hidden-opponent-line"
     assert response["lesson"]["title"] == "Realistischer Gegner"
     assert response["training_progress"]["total"] == 10
     assert response["context_history"] == []
+    assert "im Italienischen Spiel" in response["messages"][0]["summary"]
     assert "Sizilian" not in json.dumps(response, ensure_ascii=False)
 
-    played = coach.play_learner_move(response["session_id"], "e2", "e4")
+    after_e4 = coach.play_learner_move(response["session_id"], "e2", "e4")
+    after_nf3 = coach.play_learner_move(response["session_id"], "g1", "f3")
 
-    assert played["messages"][1]["move"] == "c5"
-    assert "Sizilianische Verteidigung" in played["messages"][1]["summary"]
-    assert played["lesson"]["lesson_id"] == "italian-white-vs-sicilian"
-    assert played["lesson"]["title"] == "Wenn Schwarz Sizilianisch wählt"
-    assert played["opening"]["name"] == "Sicilian Defense"
+    assert after_e4["messages"][1]["move"] == "e5"
+    assert after_e4["lesson"]["lesson_id"] == "hidden-opponent-line"
+    assert after_nf3["messages"][1]["move"] == "Nc6"
+    assert after_nf3["lesson"]["lesson_id"] == "hidden-opponent-line"
+
+    played = coach.play_learner_move(response["session_id"], "f1", "c4")
+
+    assert played["messages"][1]["move"] == "Nf6"
+    assert "Zweispringer-Verteidigung" in played["messages"][1]["summary"]
+    assert played["lesson"]["lesson_id"] == "italian-white-two-knights"
+    assert played["lesson"]["title"] == "Italienisch gegen die Zweispringer-Verteidigung"
+    assert played["opening"]["name"] == "Italian Game"
 
 
 def test_realistic_opponent_does_not_reveal_a_later_deviation_early() -> None:
@@ -112,35 +140,55 @@ def test_realistic_opponent_does_not_reveal_a_later_deviation_early() -> None:
         "white",
         training_mode="guided",
         lesson_style="realistic",
-        lesson_id="italian-white-vs-petroff",
+        lesson_id="italian-white-slow-h6",
     )
 
-    after_e4 = coach.play_learner_move(response["session_id"], "e2", "e4")
+    coach.play_learner_move(response["session_id"], "e2", "e4")
+    coach.play_learner_move(response["session_id"], "g1", "f3")
+    after_bc4 = coach.play_learner_move(response["session_id"], "f1", "c4")
 
-    assert after_e4["messages"][1]["move"] == "e5"
-    assert after_e4["lesson"]["lesson_id"] == "hidden-opponent-line"
-    assert after_e4["training_progress"]["total"] == 10
-    assert "Russisch" not in json.dumps(after_e4, ensure_ascii=False)
+    assert after_bc4["messages"][1]["move"] == "Bc5"
+    assert after_bc4["lesson"]["lesson_id"] == "hidden-opponent-line"
+    assert after_bc4["lesson"]["title"] == "Realistischer Gegner"
+    assert "h6" not in json.dumps(after_bc4["lesson"], ensure_ascii=False)
 
-    after_nf3 = coach.play_learner_move(response["session_id"], "g1", "f3")
+    after_d3 = coach.play_learner_move(response["session_id"], "d2", "d3")
 
-    assert after_nf3["messages"][1]["move"] == "Nf6"
-    assert after_nf3["lesson"]["lesson_id"] == "italian-white-vs-petroff"
-    assert after_nf3["lesson"]["title"] == "Gegen die Russische Verteidigung"
+    assert after_d3["messages"][1]["move"] == "h6"
+    assert after_d3["lesson"]["lesson_id"] == "italian-white-slow-h6"
 
 
 def test_realistic_selector_uses_multiple_curated_opponent_lines() -> None:
     lesson_book = GuidedLessonBook(REPERTOIRE_PATH)
     rng = random.Random(12)
 
-    selected = {lesson_book.select("realistic", rng).lesson_id for _ in range(200)}
+    selected = {lesson_book.select("realistic", rng).lesson_id for _ in range(1_000)}
 
-    assert ITALIAN_WHITE_LESSON_ID in selected
-    assert "italian-white-vs-sicilian" in selected
-    assert "italian-white-vs-french" in selected
-    assert "italian-white-vs-caro-kann" in selected
-    assert "italian-white-two-knights" in selected
-    assert len(selected) >= 10
+    assert selected == {
+        ITALIAN_WHITE_LESSON_ID,
+        "italian-white-two-knights",
+        "italian-white-hungarian",
+        "italian-white-rousseau",
+        "italian-white-blackburne-shilling",
+        "italian-white-slow-h6",
+        "italian-white-slow-a6",
+    }
+
+
+def test_other_first_move_openings_are_retained_but_not_selected_for_italian() -> None:
+    lesson_book = GuidedLessonBook(REPERTOIRE_PATH)
+    coach = guided_service()
+
+    assert lesson_book.get("italian-white-vs-sicilian").family == "e4-white-foundations"
+    assert lesson_book.get("italian-white-vs-sicilian").realistic_weight == 0
+
+    with pytest.raises(ValueError, match="gehört nicht zum Italienisch-Training"):
+        coach.create_session(
+            "white",
+            training_mode="guided",
+            lesson_style="branches",
+            lesson_id="italian-white-vs-sicilian",
+        )
 
 
 def test_branch_drill_can_end_on_learner_move_and_reopen_with_undo() -> None:
@@ -149,16 +197,17 @@ def test_branch_drill_can_end_on_learner_move_and_reopen_with_undo() -> None:
         "white",
         training_mode="guided",
         lesson_style="branches",
-        lesson_id="italian-white-vs-damiano",
+        lesson_id="italian-white-hungarian",
     )
 
-    completed = coach.play_learner_move(session["session_id"], "f3", "e5")
+    coach.play_learner_move(session["session_id"], "d2", "d4")
+    completed = coach.play_learner_move(session["session_id"], "d4", "d5")
 
     assert completed["phase"] == "complete"
-    assert completed["move_history"] == [{"actor": "learner", "san": "Nxe5"}]
-    assert completed["messages"][0]["move"] == "Nxe5"
+    assert completed["move_history"][-1] == {"actor": "learner", "san": "d5"}
+    assert completed["messages"][0]["move"] == "d5"
     assert completed["messages"][-1]["kind"] == "summary"
-    assert all(message.get("move") != "fxe5" for message in completed["messages"])
+    assert all(message.get("move") != "Nb8" for message in completed["messages"])
     assert coach.store.session_interactions(session["session_id"])[0]["lesson_style"] == (
         "branches"
     )
@@ -166,9 +215,12 @@ def test_branch_drill_can_end_on_learner_move_and_reopen_with_undo() -> None:
     reopened = coach.undo_last_turn(session["session_id"])
 
     assert reopened["phase"] == "opening"
-    assert reopened["move_history"] == []
-    assert reopened["context_history"][-1]["san"] == "f6"
-    assert reopened["training_progress"]["current"] == 1
+    assert reopened["move_history"][-2:] == [
+        {"actor": "learner", "san": "d4"},
+        {"actor": "coach", "san": "d6"},
+    ]
+    assert reopened["context_history"][-1]["san"] == "Be7"
+    assert reopened["training_progress"]["current"] == 2
 
 
 def test_branch_historical_question_replays_from_drill_start_position() -> None:
@@ -177,16 +229,16 @@ def test_branch_historical_question_replays_from_drill_start_position() -> None:
         "white",
         training_mode="guided",
         lesson_style="branches",
-        lesson_id="italian-white-vs-sicilian",
+        lesson_id="italian-white-two-knights",
     )
-    coach.play_learner_move(session["session_id"], "g1", "f3")
+    coach.play_learner_move(session["session_id"], "d2", "d3")
 
     answer = coach.answer_question(
-        session["session_id"], "Warum war mein letzter Zug Nf3 gut?"
+        session["session_id"], "Warum war mein letzter Zug d3 gut?"
     )["message"]
 
-    assert answer["move"] == "Nf3"
-    assert answer["summary"].startswith("Du entwickelst den Königsspringer")
+    assert answer["move"] == "d3"
+    assert answer["summary"].startswith("Du stützt e4")
     assert answer["position_fen"] == session["fen"]
 
 
@@ -309,7 +361,7 @@ def test_guided_style_is_part_of_the_public_session_api() -> None:
                 "color": "white",
                 "training_mode": "guided",
                 "lesson_style": "branches",
-                "lesson_id": "italian-white-vs-sicilian",
+                "lesson_id": "italian-white-two-knights",
             },
         )
         invalid = client.post(
@@ -323,7 +375,7 @@ def test_guided_style_is_part_of_the_public_session_api() -> None:
 
     assert branch.status_code == 200
     assert branch.json()["lesson_style"] == "branches"
-    assert branch.json()["context_history"][-1]["san"] == "c5"
+    assert branch.json()["context_history"][-1]["san"] == "Nf6"
     assert invalid.status_code == 422
 
 

@@ -172,6 +172,18 @@
 58. Thirteen production self-plays and 60 random branch starts verify 132
     half-moves, custom starting FENs, persistence, completion, and undo while
     explicitly leaving visual learning transfer for human evaluation.
+59. The first learner session immediately disproves the initial curriculum
+    grouping: `1...c5` is a valid and well-explained response, but a beginner who
+    selected Italian practice has no Sicilian plan to recall.
+60. Lower probability would not repair a broken prerequisite. Curriculum family
+    becomes an enforceable selection boundary: Italian variation starts only
+    after `1.e4 e5 2.Nf3 Nc6 3.Bc4`.
+61. Six already-authored opening switches are retained with zero weight for a
+    later `1.e4` foundations course. Narrowing the current lesson does not require
+    discarding verified future content.
+62. A regression finds a second, smaller spoiler: the Two Knights goal itself
+    names `d3`. Testing absence from the prompt must include goals and metadata,
+    not just the visible question sentence.
 
 ## Evidence already captured
 
@@ -253,6 +265,10 @@
   weights, first-divergence secrecy, and separate model/branch/realistic modes
 - A Stockfish 18 audit of 43 learner decisions plus complete real-service
   self-play of all 132 authored half-moves
+- A real learner counterexample separating technically correct opening breadth
+  from readiness-appropriate curriculum variation
+- An enforceable prerequisite boundary with seven active Italian scenarios and
+  six preserved but inaccessible `1.e4` foundations lessons
 
 ## Questions for later evaluation
 

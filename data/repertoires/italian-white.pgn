@@ -13,7 +13,7 @@
 [TrainingSide "White"]
 [LessonGoal "Zentrum, schnelle Entwicklung, Rochade und den d4-Vorstoß vorbereiten"]
 [DrillStartPly "0"]
-[RealisticWeight "24"]
+[RealisticWeight "47"]
 [OpponentCategory "established"]
 
 1. e4 {Du besetzt das Zentrum und öffnest Dame und Läufer Wege ins Spiel. [%hint1 Suche einen Zug, der das Zentrum besetzt und zugleich Linien für zwei Figuren öffnet.] [%hint2 Der gesuchte Zug wird mit dem Bauern vor deinem König gespielt.]}
@@ -47,12 +47,12 @@
 [ECO "B50"]
 [Opening "Sicilian Defense: Modern Variations"]
 [LessonId "italian-white-vs-sicilian"]
-[LessonFamily "italian-white"]
+[LessonFamily "e4-white-foundations"]
 [LessonTitle "Wenn Schwarz Sizilianisch wählt"]
 [TrainingSide "White"]
 [LessonGoal "Erkennen, dass Italienisch nicht mehr möglich ist, und mit Entwicklung plus d4 reagieren"]
 [DrillStartPly "2"]
-[RealisticWeight "14"]
+[RealisticWeight "0"]
 [OpponentCategory "established"]
 
 1. e4 {Du besetzt das Zentrum und lässt offen, welche Verteidigung Schwarz wählt. [%hint1 Besetze das Zentrum und öffne Linien für Dame und Läufer.] [%hint2 Ziehe den Bauern vor deinem König zwei Felder.]}
@@ -75,12 +75,12 @@
 [ECO "C11"]
 [Opening "French Defense: Classical Variation"]
 [LessonId "italian-white-vs-french"]
-[LessonFamily "italian-white"]
+[LessonFamily "e4-white-foundations"]
 [LessonTitle "Wenn Schwarz Französisch wählt"]
 [TrainingSide "White"]
 [LessonGoal "Mit d4 das breite Zentrum aufbauen und Raum sichern"]
 [DrillStartPly "2"]
-[RealisticWeight "8"]
+[RealisticWeight "0"]
 [OpponentCategory "established"]
 
 1. e4 {Du besetzt das Zentrum und öffnest Linien für Dame und Läufer. [%hint1 Besetze das Zentrum und öffne zwei Figurenlinien.] [%hint2 Ziehe den Bauern vor deinem König zwei Felder.]}
@@ -103,12 +103,12 @@
 [ECO "B18"]
 [Opening "Caro-Kann Defense: Classical Variation"]
 [LessonId "italian-white-vs-caro-kann"]
-[LessonFamily "italian-white"]
+[LessonFamily "e4-white-foundations"]
 [LessonTitle "Wenn Schwarz Caro-Kann wählt"]
 [TrainingSide "White"]
 [LessonGoal "Das Zentrum besetzen und nach dem Tausch mit einer Figur zurücknehmen"]
 [DrillStartPly "2"]
-[RealisticWeight "8"]
+[RealisticWeight "0"]
 [OpponentCategory "established"]
 
 1. e4 {Du besetzt das Zentrum und öffnest Dame und Läufer. [%hint1 Besetze das Zentrum mit Tempo.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
@@ -131,12 +131,12 @@
 [ECO "C42"]
 [Opening "Petrov's Defense"]
 [LessonId "italian-white-vs-petroff"]
-[LessonFamily "italian-white"]
+[LessonFamily "e4-white-foundations"]
 [LessonTitle "Gegen die Russische Verteidigung"]
 [TrainingSide "White"]
 [LessonGoal "Den e5-Bauern vorübergehend nehmen, dann den Springer rechtzeitig zurückziehen"]
 [DrillStartPly "4"]
-[RealisticWeight "10"]
+[RealisticWeight "0"]
 [OpponentCategory "established"]
 
 1. e4 {Du besetzt das Zentrum und öffnest Dame und Läufer. [%hint1 Besetze ein zentrales Feld.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
@@ -161,12 +161,12 @@
 [ECO "C41"]
 [Opening "Philidor Defense"]
 [LessonId "italian-white-vs-philidor"]
-[LessonFamily "italian-white"]
+[LessonFamily "e4-white-foundations"]
 [LessonTitle "Gegen die Philidor-Verteidigung"]
 [TrainingSide "White"]
 [LessonGoal "Den passiven schwarzen Aufbau mit einem breiten Zentrum beantworten"]
 [DrillStartPly "4"]
-[RealisticWeight "8"]
+[RealisticWeight "0"]
 [OpponentCategory "solid"]
 
 1. e4 {Du besetzt das Zentrum. [%hint1 Besetze ein zentrales Feld.] [%hint2 Ziehe den e-Bauern zwei Felder.]}
@@ -189,12 +189,12 @@
 [ECO "C40"]
 [Opening "Damiano Defense"]
 [LessonId "italian-white-vs-damiano"]
-[LessonFamily "italian-white"]
+[LessonFamily "e4-white-foundations"]
 [LessonTitle "Den Damiano-Fehler erkennen"]
 [TrainingSide "White"]
 [LessonGoal "Einen frühen gegnerischen Schwächungszug konkret ausnutzen"]
 [DrillStartPly "4"]
-[RealisticWeight "1"]
+[RealisticWeight "0"]
 [OpponentCategory "mistake"]
 
 1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Ziehe den e-Bauern zwei Felder.]}
@@ -216,9 +216,9 @@
 [LessonFamily "italian-white"]
 [LessonTitle "Italienisch gegen die Zweispringer-Verteidigung"]
 [TrainingSide "White"]
-[LessonGoal "Mit d3 ruhig entwickeln, statt eine scharfe Variante auswendig zu lernen"]
+[LessonGoal "Den angegriffenen e4-Bauern sichern und den italienischen Aufbau ruhig fortsetzen"]
 [DrillStartPly "6"]
-[RealisticWeight "18"]
+[RealisticWeight "35"]
 [OpponentCategory "established"]
 
 1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Ziehe den e-Bauern zwei Felder.]}
@@ -248,7 +248,7 @@
 [TrainingSide "White"]
 [LessonGoal "Den zurückhaltenden Läuferzug mit mehr Zentrum beantworten"]
 [DrillStartPly "6"]
-[RealisticWeight "3"]
+[RealisticWeight "6"]
 [OpponentCategory "solid"]
 
 1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Ziehe den e-Bauern zwei Felder.]}
@@ -276,7 +276,7 @@
 [TrainingSide "White"]
 [LessonGoal "Den verfrühten Flügelangriff mit einem starken Zentrum beantworten"]
 [DrillStartPly "6"]
-[RealisticWeight "2"]
+[RealisticWeight "4"]
 [OpponentCategory "dubious"]
 
 1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Ziehe den e-Bauern zwei Felder.]}
@@ -304,7 +304,7 @@
 [TrainingSide "White"]
 [LessonGoal "Den ungewöhnlichen Springerzug einfach tauschen, statt dem vergifteten e5-Bauern nachzujagen"]
 [DrillStartPly "6"]
-[RealisticWeight "2"]
+[RealisticWeight "4"]
 [OpponentCategory "trap"]
 
 1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Ziehe den e-Bauern zwei Felder.]}
@@ -332,7 +332,7 @@
 [TrainingSide "White"]
 [LessonGoal "Einen harmlosen Randbauernzug nicht überbestrafen, sondern den eigenen Plan fortsetzen"]
 [DrillStartPly "8"]
-[RealisticWeight "1"]
+[RealisticWeight "2"]
 [OpponentCategory "slow"]
 
 1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Spiele e4.]}
@@ -362,7 +362,7 @@
 [TrainingSide "White"]
 [LessonGoal "Ruhig entwickeln und den möglichen Raumgewinn ...b5 einplanen"]
 [DrillStartPly "8"]
-[RealisticWeight "1"]
+[RealisticWeight "2"]
 [OpponentCategory "slow"]
 
 1. e4 {Du besetzt das Zentrum. [%hint1 Besetze das Zentrum.] [%hint2 Spiele e4.]}

@@ -1616,12 +1616,12 @@ class CoachService:
             )
         elif session.lesson_style == "realistic":
             summary = (
-                f"Du spielst {color}. Schwarz wählt seine Verteidigung diesmal variabel. "
+                f"Du spielst {color}. Schwarz variiert diesmal im Italienischen Spiel. "
                 "Was ist dein erster Zug?"
             )
             details = (
-                "Erkenne nach jedem schwarzen Zug, ob der italienische Plan noch passt, "
-                "ob die Eröffnung gewechselt hat oder ob Schwarz etwas Konkretes erlaubt. "
+                "Baue zuerst die italienische Ausgangsstellung auf. Erkenne danach, "
+                "welcher Plan zur schwarzen Antwort passt oder ob Schwarz etwas Konkretes erlaubt. "
                 "Die Gegnerlinie bleibt verborgen, bis sie auf dem Brett erscheint."
             )
         else:
@@ -2135,8 +2135,8 @@ class CoachService:
             session.lesson.goal
             if session.lesson and (session.lesson_style != "realistic" or realistic_revealed)
             else (
-                "Erkennen, ob der italienische Plan noch passt oder eine andere "
-                "Eröffnungsantwort nötig ist"
+                "Die italienische Ausgangsstellung sicher erreichen und anschließend "
+                "auf unterschiedliche schwarze Antworten reagieren"
             )
         )
         public_total_learner_moves = (

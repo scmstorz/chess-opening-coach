@@ -1789,3 +1789,59 @@ frontend lint, the vinext production build, the rendered web-shell contract,
 and a clean whitespace diff. The release publication guard checks 104 tracked
 paths and 102 historical paths against 104 private-corpus text variants and
 finds no private source leak.
+
+## 2026-09-12 — Variation must respect prerequisites
+
+The learner's first session with the varied opponent exposed the most important
+limitation faster than further agent self-play could. Black selected `1...c5`.
+The coach accurately named the Sicilian Defense and said that Italian was no
+longer possible, but the learner had no Sicilian repertoire yet. The answer was
+factually correct and still failed the learning job.
+
+The initial design had combined two different kinds of transfer. Varying after
+the Italian position tests whether its plans are understood. Varying on move one
+tests whether White knows a repertoire against several defenses to `1.e4`.
+Calling both “Italienisch üben” hid a prerequisite problem behind breadth.
+
+Three repairs were considered before changing the code. Keeping the behavior
+with a better explanation still asks an unprepared question. Merely lowering
+the weights makes the broken promise rarer rather than correct. Deleting the
+lessons throws away useful authored and verified material. The selected repair
+makes `LessonFamily` an enforceable curriculum boundary.
+
+The active `italian-white` family now contains seven scenarios, all sharing
+`1.e4 e5 2.Nf3 Nc6 3.Bc4`. The coach may then play `3...Bc5`, `3...Nf6`,
+`3...Be7`, `3...f5`, or `3...Nd4`, with two later slow-move scenarios after the
+classical reply. Their pedagogical weights are renormalized to total 100. Both
+direct deviation practice and the hidden realistic opponent draw only from this
+family.
+
+The six earlier switches remain in the same PGN but move to
+`e4-white-foundations` with zero selection weight: Sicilian, French, Caro-Kann,
+Petroff, Philidor, and Damiano. They are intended for a later, separately named
+course whose introduction supplies the missing plans. Attempting to select them
+through the Italian API now fails closed rather than relying on the UI to hide
+them.
+
+The correction also tightens the hidden-answer contract. A test of the direct
+Two Knights drill found that the question did not show `d3`, but the lesson goal
+did. The goal was rewritten around the purpose—secure `e4` and continue calm
+development—without spelling out the move. This is another example of why the
+whole learner-visible payload, not one sentence, must be checked for leakage.
+
+No chess line changed, so the preceding Stockfish audit remains valid. The
+change is instead an evidence-based curriculum correction: less breadth now
+creates a more honest and usable learning step. ADR 0016 and the dated
+acceptance note preserve the triggering quote, rejected options, new boundary,
+and regression expectations.
+
+The corrected real-service acceptance run played all seven active lessons to
+completion with Stockfish 18. All 80 half-moves were accepted and persisted,
+and all seven shared the required five-ply Italian prefix. One hundred hidden
+realistic selections and 60 random branch starts stayed inside the active
+Italian family; all branch contexts began after Black's third move or later.
+The six future `1.e4` foundation lessons still loaded but were never selected.
+The final checkpoint reports 99 passing backend tests, Ruff, frontend lint, the
+vinext production build, the rendered-shell contract, and a clean whitespace
+diff. The release publication guard checked 104 tracked and 104 historical paths
+against 111 private-corpus text variants without finding a leak.

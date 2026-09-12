@@ -30,7 +30,8 @@ operator.
 - Stable local URL at `http://localhost:53687/` with explicit port overrides
 - White, Black, and random learner color
 - Immediately playable White game on page load; choosing a color starts a fresh game
-- Guided Italian-from-White curriculum with 13 coherent opponent scenarios
+- Guided Italian-from-White curriculum with one model line and six active Italian deviations
+- Six additional `1.e4` response lessons retained locally for a later foundations curriculum
 - Three guided styles: repeat the model line, start at a deviation, or face a hidden varying opponent line
 - Immediate recall, two hints, and a third-attempt reveal in every guided scenario
 - Separate guided and free-play modes; free play retains White, Black, and random color choice
@@ -258,3 +259,4 @@ license are retained in `data/openings/`.
 - [Kimi and DeepSeek explanation comparison](docs/evaluations/2026-09-08-cloud-chess-explanations.md)
 - [Six-case deep-explanation quality cycle](docs/evaluations/2026-09-09-deep-explanation-quality-cycle.md)
 - [Opponent-variation engine audit and self-play](docs/evaluations/2026-09-11-opponent-variation-self-play.md)
+- [Italian curriculum scope acceptance](docs/evaluations/2026-09-12-italian-scope-acceptance.md)

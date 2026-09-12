@@ -46,8 +46,13 @@ moves, two hints for every learner decision, and compact scenario metadata.
 objective plausibility but does not replace the repertoire move with its current
 top-one candidate.
 
-The Italian-from-White family currently contains one model line and twelve
-opponent deviations. The same linear scenario can be presented in three ways:
+The active Italian-from-White family contains one model line and six opponent
+deviations. Every active scenario shares the prefix
+`1.e4 e5 2.Nf3 Nc6 3.Bc4`; only then may the coach vary. Six already-authored
+responses to earlier opening switches remain in the PGN under the separate
+`e4-white-foundations` family with zero selection weight. They are not reachable
+through the UI until a later foundations curriculum teaches those openings.
+The same active linear scenario can be presented in three ways:
 
 ```text
 model line

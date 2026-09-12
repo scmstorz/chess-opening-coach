@@ -67,40 +67,133 @@ The first milestone intentionally does not yet include exhaustive repertoire
 trees, PGN export, cross-session review prompts, empirical opponent-frequency
 modelling, or timed 10+0 simulation.
 
-## Prerequisites
+## Quick start
 
-- macOS or another local development system
-- Python 3.11+
-- Node.js 22.13+
-- [`uv`](https://docs.astral.sh/uv/)
-- [Ollama](https://ollama.com/) with a chat model
-- [Stockfish](https://stockfishchess.org/)
+The public repository contains the application, its guided repertoire, and the
+CC0 opening data. It does not contain or require the private chess books used by
+the project owner.
 
-Recommended local setup on macOS:
+### macOS with Apple Silicon
+
+Install [Homebrew](https://brew.sh/) and the
+[Ollama macOS app](https://ollama.com/download), then launch Ollama once. The
+following block installs the remaining tools, downloads the recommended local
+model, and starts the coach:
 
 ```bash
-brew install stockfish
+brew install git node uv stockfish
+git clone https://github.com/scmstorz/chess-opening-coach.git
+cd chess-opening-coach
 ollama pull qwen3.8:27b-mlx
 uv sync --extra dev
 npm ci
-```
-
-The application can use another installed Ollama model through
-`CHESS_COACH_OLLAMA_MODEL`. Without Ollama or Stockfish, it remains usable with
-deterministic explanations or without engine scoring, and reports the missing
-capability in the UI.
-
-## Start
-
-```bash
 npm run coach
 ```
 
-The launcher starts the local Python API on port `53686` and the browser UI at
-`http://localhost:53687/`. It checks both ports first and reports a clear error
-instead of silently changing the browser URL when either is occupied.
+Open `http://localhost:53687/`. Stop both local processes with `Ctrl+C`.
 
-Stop both processes with `Ctrl+C`.
+`qwen3.8:27b-mlx` currently offers the best tested production fit but downloads
+about 18 GB. For a much smaller first run, use the approximately 2.5 GB
+`qwen3:4b` model. Its German explanations are weaker, while all chess verdicts
+remain grounded outside the model:
+
+```bash
+ollama pull qwen3:4b
+CHESS_COACH_OLLAMA_MODEL=qwen3:4b npm run coach
+```
+
+### Linux
+
+Install [Node.js 22.13 or newer](https://nodejs.org/en/download) first. On
+Ubuntu or Debian, install the remaining system tools and Ollama with:
+
+```bash
+sudo apt update
+sudo apt install -y git curl stockfish
+curl -LsSf https://astral.sh/uv/install.sh | sh
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+Restart the shell if `uv` is not found. Then install and start the public coach
+with the smaller model:
+
+```bash
+git clone https://github.com/scmstorz/chess-opening-coach.git
+cd chess-opening-coach
+ollama pull qwen3:4b
+uv sync --extra dev
+npm ci
+CHESS_COACH_OLLAMA_MODEL=qwen3:4b npm run coach
+```
+
+If the system package places Stockfish outside `PATH`, set its absolute path as
+described under troubleshooting.
+
+### Windows
+
+Native Windows startup is not yet part of the tested support matrix. The
+supported route is [WSL 2](https://learn.microsoft.com/windows/wsl/install).
+Open PowerShell as Administrator, run the following command, restart Windows if
+requested, and then follow the Linux instructions inside the Ubuntu terminal:
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+The browser on Windows can open the same `http://localhost:53687/` address used
+inside WSL.
+
+## Optional components
+
+The application starts with reduced capabilities when optional local services
+or private data are absent:
+
+| Missing component | What still works | What is reduced |
+| --- | --- | --- |
+| Private chess books | The complete public application | No book-backed plans or citations |
+| Ollama | Legal moves, opening recognition, Stockfish, and deterministic verified explanations | No local-model selection or synthesis |
+| Stockfish | Guided lessons, legal-move checks, opening recognition, and Ollama/deterministic wording | No objective evaluation, deep analysis, or reliable post-opening suggestion |
+| Ollama and Stockfish | The PGN-guided opening lessons and deterministic chess rules | No engine quality judgment and less adaptive explanation |
+
+Ollama and Stockfish are always local. The public application requires no API
+key or account.
+
+## Startup checks and troubleshooting
+
+Check the installed tools before diagnosing the application:
+
+```bash
+node --version
+npm --version
+uv --version
+ollama list
+command -v stockfish
+```
+
+- **`node` is too old:** install Node.js 22.13 or newer, open a new terminal,
+  and rerun `npm ci`.
+- **Python reports a missing package:** rerun `uv sync --extra dev`. The launcher
+  automatically uses the resulting `.venv` on macOS and Linux.
+- **Ollama is unavailable:** launch the macOS/Windows application or run
+  `ollama serve` on Linux. Confirm that the selected model appears in
+  `ollama list`.
+- **The configured Ollama model is missing:** pull it first or start with an
+  installed model, for example
+  `CHESS_COACH_OLLAMA_MODEL=qwen3:4b npm run coach`.
+- **Stockfish is not found:** locate the executable and pass its absolute path,
+  for example
+  `STOCKFISH_PATH=/usr/games/stockfish npm run coach` on some Linux systems.
+- **Port 53686 or 53687 is occupied:** stop the other local process, or choose
+  both ports explicitly with
+  `CHESS_COACH_BACKEND_PORT=53786 CHESS_COACH_FRONTEND_PORT=53787 npm run coach`.
+- **The page opens but a capability is unavailable:** inspect
+  `http://127.0.0.1:53686/api/health`. It reports the detected opening data,
+  Stockfish, Ollama model, book database, and runtime profile without exposing
+  private book text.
+
+The launcher never silently changes the browser URL. By default it starts the
+Python API on `53686` and the browser UI on `53687`, then prints the exact local
+address once both are ready.
 
 ## Configuration
 
@@ -274,3 +367,4 @@ by this repository nor licensed under MIT.
 - [Opponent-variation engine audit and self-play](docs/evaluations/2026-09-11-opponent-variation-self-play.md)
 - [Italian curriculum scope acceptance](docs/evaluations/2026-09-12-italian-scope-acceptance.md)
 - [Public repository and license decision](docs/decisions/0017-public-repository-license.md)
+- [Public-clone onboarding audit](docs/evaluations/2026-09-12-public-clone-onboarding.md)

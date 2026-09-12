@@ -271,6 +271,9 @@
   six preserved but inaccessible `1.e4` foundations lessons
 - A public-repository licensing decision that separates MIT-licensed original
   code, GPL/CC0 third-party components, and an unlicensed private book overlay
+- A public-clone onboarding audit that converts an implicit developer setup into
+  platform-specific quickstarts, degraded-mode expectations, and executable
+  documentation contracts
 
 ## Questions for later evaluation
 

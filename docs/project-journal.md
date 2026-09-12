@@ -1884,3 +1884,53 @@ guard inspected 109 indexed paths and all 106 historical paths, then compared
 the public text with 109 private-corpus variants without finding a leak. The
 check was deliberately repeated after staging because the guard treats the Git
 index—not untracked working files—as the proposed public artifact.
+
+## 2026-09-12 — Making the public clone genuinely startable
+
+The first public README already named prerequisites, four installation commands,
+and `npm run coach`. The learner's simple question—whether somebody else could
+run it—exposed that this was a developer reminder rather than complete
+onboarding. It began after cloning, assumed macOS, recommended only the owner's
+18 GB Ollama model, and described missing services as “usable” without defining
+the resulting product.
+
+The setup path was rewritten from the perspective of a clean machine. Apple
+Silicon/macOS retains `qwen3.8:27b-mlx` as the production-tested quality option.
+The approximately 2.5 GB `qwen3:4b` model is now the explicit low-resource
+choice, with the documented trade-off that its German prose was weaker in the
+small local benchmark. Because chess truth is not delegated to the model, this
+changes explanation selection quality rather than legality or engine truth.
+
+Linux receives a separate Ubuntu/Debian path and explicit Node, uv, Ollama, and
+Stockfish guidance. Native Windows was not silently claimed: the current
+launcher has been exercised on POSIX systems, so Windows is documented through
+WSL 2 until a native acceptance run exists. The stable URL remains the same on
+the Windows host.
+
+A capability matrix now states what happens without private books, Ollama,
+Stockfish, or both local services. Troubleshooting covers version checks, venv
+setup, the Ollama process and model, explicit Stockfish paths, occupied ports,
+and the health endpoint. Inspection of the launcher confirmed that it
+re-executes the `.venv` Python automatically after `uv sync`, so macOS/Linux
+users do not need a separate activation step.
+
+Two automated README contracts preserve the public clone command, dependency
+installation, start command, stable URL, platform boundary, small-model option,
+degraded modes, and troubleshooting section. The dated onboarding audit records
+the trigger, gaps, decisions, and remaining native-Windows limitation for the
+case study.
+
+The acceptance run exported the complete staged Git index to a new temporary
+directory rather than testing the owner's working tree. Only the explanatory
+README remained below `data/books/`; no PDF or local database was present. Both
+Python and JavaScript dependencies installed into new local directories using
+only the existing offline caches. The README contracts and production frontend
+build passed in that export.
+
+Finally, the exported application started through the documented `npm run
+coach` command in the fail-closed `public` profile. Its health response reported
+3,810 open opening records, Stockfish, the 2.5 GB `qwen3:4b` option, and zero book
+sources with private knowledge explicitly disabled. The complete development
+checkpoint now contains 101 passing backend tests, Ruff, frontend lint, the
+production build, rendered-shell test, clean diff, and the strict publication
+scan.

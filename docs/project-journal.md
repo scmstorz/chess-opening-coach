@@ -1934,3 +1934,43 @@ sources with private knowledge explicitly disabled. The complete development
 checkpoint now contains 101 passing backend tests, Ruff, frontend lint, the
 production build, rendered-shell test, clean diff, and the strict publication
 scan.
+
+## 2026-09-12 — A scenario ending is not an opening ending
+
+The learner reported that “Realistischer Gegner” repeatedly announced success
+too early while Black appeared to play ordinary Italian moves. The persisted
+interaction history made the report reproducible: the selected line was the Two
+Knights scenario `1.e4 e5 2.Nf3 Nc6 3.Bc4 Nf6 4.d3 Bc5 5.O-O d6 6.c3`. Its move
+order transposes toward the familiar setup, but its authored PGN stops after 11
+plies while the model line contains 20. The service used PGN exhaustion as its
+only completion condition and therefore locked a still-useful opening position.
+
+Four responses were considered. Keeping the short ending would preserve a
+simple state machine but fail the product promise. Padding every PGN would add
+authoring without repairing the concept. Splicing the model suffix onto every
+branch would assume invalid transpositions. The selected design separates the
+end of authored guidance from the end of the opening and game.
+
+In realistic mode, the boundary is now an `Etappenziel`. The progress counter
+ends, the board remains active, and both sides continue through the ordinary
+theory/Stockfish policy. The opening-phase heuristic is held until at least the
+20-ply model-line horizon, after which its existing evidence-based, learner-
+controlled decision can appear. Direct model repetition and branch drills stay
+finite because their product promise is specifically to complete that line.
+
+This change also exposed a less visible state invariant: undo crosses a policy
+boundary, not merely a board transition. `guided_segment_complete` is therefore
+stored in every turn snapshot. Undoing `6.c3` removes White's move, the free
+Black reply, and the milestone, then restores the final authored question. ADR
+0018 records the rejected options and the dated regression note preserves the
+real sequence and acceptance criteria for the case study.
+
+The first implementation checkpoint contains three new state-machine
+regressions: exact short-line continuation, undo across the policy boundary, and
+full realistic model-line transition. A production-service replay with the
+3,810-line opening graph and Stockfish 18 continued the reported sequence with
+the legal `6...h6`, kept the board active for White, and emitted no success
+claim. The complete suite passed 104 backend tests, Ruff, frontend lint, the
+production build, the rendered-shell contract, and the whitespace check. The
+staged public-release guard checked 113 paths and 111 historical paths against
+113 private-corpus text variants without finding a leak.

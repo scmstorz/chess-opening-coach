@@ -61,6 +61,10 @@ ranked first.
 
 ## Production-service self-play
 
+This section records the completion semantics used at the time of the original
+run. ADR 0018 later changed realistic sessions so an exhausted authored scenario
+continues as free opening play; direct model and branch drills remain finite.
+
 A real `CoachService` instance used the local 3,810-line opening book, the
 normal 0.12-second move-analysis budget, Stockfish 18, in-memory SQLite, and the
 actual annotated PGN loader. The agent explicitly selected each scenario in the

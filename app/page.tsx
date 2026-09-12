@@ -78,7 +78,7 @@ type FeedbackReviewRecord = ExplanationFeedback & {
 
 type CoachMessage = {
   message_id?: string;
-  kind?: "move" | "question" | "clarification" | "phase" | "summary" | "prompt";
+  kind?: "move" | "question" | "clarification" | "phase" | "summary" | "prompt" | "milestone";
   actor: "learner" | "coach";
   question?: string;
   move: string | null;
@@ -1245,7 +1245,7 @@ export default function Home() {
                 <article className={`coach-message ${message.actor}${message.kind === "question" || message.kind === "clarification" ? " question-answer" : ""}`} key={`${index}-${message.move}-${message.question ?? message.summary}`}>
                   <span className="message-index">{String(index + 1).padStart(2, "0")}</span>
                   <div>
-                    <small className="message-author">{message.kind === "prompt" ? "Trainingsfrage" : message.kind === "clarification" ? "Rückfrage zum Zug" : message.kind === "question" ? "Antwort zur Frage" : message.kind === "phase" ? "Phasenwechsel" : message.kind === "summary" ? "Lernbilanz" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
+                    <small className="message-author">{message.kind === "prompt" ? "Trainingsfrage" : message.kind === "clarification" ? "Rückfrage zum Zug" : message.kind === "question" ? "Antwort zur Frage" : message.kind === "phase" ? "Phasenwechsel" : message.kind === "summary" ? "Lernbilanz" : message.kind === "milestone" ? "Etappenziel" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
                     {message.question && <blockquote className="question-quote">„{message.question}“</blockquote>}
                     <p>{message.summary}</p>
                     <details>

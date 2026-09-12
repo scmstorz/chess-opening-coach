@@ -33,6 +33,7 @@ operator.
 - Guided Italian-from-White curriculum with one model line and six active Italian deviations
 - Six additional `1.e4` response lessons retained locally for a later foundations curriculum
 - Three guided styles: repeat the model line, start at a deviation, or face a hidden varying opponent line
+- Realistic-opponent sessions continue as free opening play after a prepared variation ends
 - Immediate recall, two hints, and a third-attempt reveal in every guided scenario
 - Separate guided and free-play modes; free play retains White, Black, and random color choice
 - Progressive opening recognition across 3,810 local Lichess opening entries

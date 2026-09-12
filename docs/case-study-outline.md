@@ -184,6 +184,14 @@
 62. A regression finds a second, smaller spoiler: the Two Knights goal itself
     names `d3`. Testing absence from the prompt must include goals and metadata,
     not just the visible question sentence.
+63. A real Two Knights session then exposes a state-machine error: reaching the
+    end of an 11-ply authored branch says the whole realistic exercise is
+    “Geschafft,” even though the 20-ply model line and opening phase continue.
+64. Scenario mastery, opening completion, and game completion become three
+    separate meanings. Realistic mode now treats the authored boundary as an
+    `Etappenziel`, releases the fixed line, and continues with theory/Stockfish.
+65. Undo must restore policy as well as pieces. The turn snapshot therefore
+    records whether guided play had already changed into free opening play.
 
 ## Evidence already captured
 
@@ -269,6 +277,8 @@
   from readiness-appropriate curriculum variation
 - An enforceable prerequisite boundary with seven active Italian scenarios and
   six preserved but inaccessible `1.e4` foundations lessons
+- A real-session regression separating the end of a prepared opponent branch
+  from the later learner-controlled end of the opening phase
 - A public-repository licensing decision that separates MIT-licensed original
   code, GPL/CC0 third-party components, and an unlicensed private book overlay
 - A public-clone onboarding audit that converts an implicit developer setup into

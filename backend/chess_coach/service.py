@@ -42,6 +42,7 @@ class TurnSnapshot:
     phase: str
     opening_end: OpeningEndEvidence | None
     lesson_ply: int
+    guided_segment_complete: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +96,7 @@ class GameSession:
     lesson_style: str | None = None
     lesson_start_ply: int = 0
     lesson_ply: int = 0
+    guided_segment_complete: bool = False
     initial_fen: str = chess.STARTING_FEN
     initial_opening: OpeningIdentity | None = None
     context_history: list[dict[str, str]] = field(default_factory=list)
@@ -424,6 +426,7 @@ class CoachService:
             session.phase = snapshot.phase
             session.opening_end = snapshot.opening_end
             session.lesson_ply = snapshot.lesson_ply
+            session.guided_segment_complete = snapshot.guided_segment_complete
             session.opening_summary = None
             self.store.delete_session_summary(session.session_id)
             del session.move_history[snapshot.move_history_length :]
@@ -1517,10 +1520,18 @@ class CoachService:
             return
         expected = self._guided_expected_move(session)
         if expected is None:
+            milestone = self._finish_realistic_segment_if_needed(session)
+            if milestone is not None:
+                messages.append(milestone)
+            if session.guided_segment_complete:
+                messages.append(self._play_coach_move(session))
             return
         if expected.color == session.learner_color:
             raise ValueError("Die Trainingslinie enthält zwei Lernzüge ohne Coach-Antwort")
         messages.append(self._play_coach_move(session))
+        milestone = self._finish_realistic_segment_if_needed(session)
+        if milestone is not None:
+            messages.append(milestone)
 
     def _play_coach_move(self, session: GameSession) -> dict[str, Any]:
         board = session.board
@@ -1534,7 +1545,7 @@ class CoachService:
             move = chess.Move.from_uci(guided_step.move_uci)
             if move not in board.legal_moves:
                 raise ValueError("Die Trainingslinie passt nicht mehr zur aktuellen Stellung")
-        elif session.lesson is not None:
+        elif session.lesson is not None and not session.guided_segment_complete:
             raise ValueError("Die Trainingslinie enthält keine weitere Coach-Antwort")
         elif session.phase == "middlegame":
             move, analysis = self.engine.get_best_move(board)
@@ -1584,7 +1595,7 @@ class CoachService:
 
     @staticmethod
     def _guided_expected_move(session: GameSession) -> GuidedMove | None:
-        if session.lesson is None:
+        if session.lesson is None or session.guided_segment_complete:
             return None
         expected = session.lesson.move_at(session.lesson_ply)
         if expected is None:
@@ -1592,6 +1603,42 @@ class CoachService:
         if expected.position_key != position_key(session.board):
             raise ValueError("Die Trainingslinie passt nicht mehr zur aktuellen Stellung")
         return expected
+
+    @staticmethod
+    def _finish_realistic_segment_if_needed(
+        session: GameSession,
+    ) -> dict[str, Any] | None:
+        """Turn a finished realistic script into free opening play, not a finished lesson."""
+
+        if (
+            session.lesson is None
+            or session.lesson_style != "realistic"
+            or session.guided_segment_complete
+            or session.lesson_ply < len(session.lesson.moves)
+        ):
+            return None
+        session.guided_segment_complete = True
+        is_mainline = session.lesson.lesson_id == ITALIAN_WHITE_LESSON_ID
+        return {
+            "kind": "milestone",
+            "actor": "coach",
+            "move": None,
+            "summary": (
+                "Die Grundlinie sitzt. Jetzt spielen wir die Eröffnungsphase frei weiter."
+                if is_mainline
+                else "Du hast diese Abweichung beantwortet. Wir spielen die Eröffnungsphase weiter."
+            ),
+            "details": (
+                "Der vorbereitete Variantenabschnitt endet hier, nicht die Partie. "
+                "Von jetzt an bewertet der Coach deine freien Züge mit Eröffnungstheorie, "
+                "python-chess und Stockfish."
+            ),
+            "source": "guided-scenario-boundary",
+            "model": None,
+            "attempt": None,
+            "engine": None,
+            "repertoire_match": None,
+        }
 
     def _realistic_lesson_revealed(self, session: GameSession) -> bool:
         """Reveal a hidden scenario only after its first different reply was played."""
@@ -2051,6 +2098,7 @@ class CoachService:
                 phase=session.phase,
                 opening_end=session.opening_end,
                 lesson_ply=session.lesson_ply,
+                guided_segment_complete=session.guided_segment_complete,
             )
         )
 
@@ -2063,6 +2111,7 @@ class CoachService:
     ) -> dict[str, Any]:
         guided_complete = bool(
             session.lesson is not None
+            and session.lesson_style != "realistic"
             and session.lesson_ply >= len(session.lesson.moves)
             and correction is None
         )
@@ -2109,8 +2158,19 @@ class CoachService:
         should_check_phase = completed_turn or (
             session.board.is_game_over() and any(message.get("move_uci") for message in messages)
         )
+        realistic_continuation = bool(
+            session.lesson is not None
+            and session.lesson_style == "realistic"
+            and session.guided_segment_complete
+        )
+        free_opening_play = session.lesson is None or realistic_continuation
+        minimum_opening_horizon_reached = not realistic_continuation or (
+            len(session.move_history)
+            >= len(self.guided_lessons.get(ITALIAN_WHITE_LESSON_ID).moves)
+        )
         if (
-            session.lesson is None
+            free_opening_play
+            and minimum_opening_horizon_reached
             and session.phase == "opening"
             and correction is None
             and should_check_phase
@@ -2199,7 +2259,9 @@ class CoachService:
                 ),
                 "goal": public_lesson_goal,
             }
-            if session.lesson and session.phase != "complete"
+            if session.lesson
+            and session.phase != "complete"
+            and not session.guided_segment_complete
             else None
         )
         return {

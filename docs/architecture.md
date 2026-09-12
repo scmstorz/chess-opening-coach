@@ -70,6 +70,8 @@ realistic opponent
   -> keep its identity hidden
   -> start at move one
   -> reveal only after Black plays the first move differing from the model
+  -> finish the prepared segment without ending the opening session
+  -> continue with theory/Stockfish until the normal opening-phase decision
 ```
 
 Selection happens once per session. This creates variation between sessions
@@ -78,6 +80,19 @@ selection weights are curriculum weights, not claimed player-frequency data.
 Every branch position stores an initial FEN and contextual move history; replay
 for historical questions therefore starts at that FEN rather than assuming the
 normal initial position.
+
+A scenario boundary and an opening-phase boundary are different states. Direct
+model-line and branch drills may finish when their authored moves are exhausted.
+In realistic-opponent mode, however, that same point is only an `Etappenziel`:
+the fixed reply policy is released and the game continues using local theory or
+Stockfish. The opening-end heuristic is not allowed to interrupt that continuation
+before the 20-ply model-line horizon. It may then offer the learner the existing
+choice between continuing into the middlegame and evaluating the opening.
+
+Turn snapshots include both the current lesson ply and whether the prepared
+realistic segment has ended. Undoing the final learner turn therefore removes
+its free coach reply and milestone, restores the prior guided question, and does
+not leave the session accidentally in free play.
 
 The model is deliberately finite. A legal White move can be objectively sound
 without matching the active scenario, so `repertoire_match`, broad
@@ -472,8 +487,9 @@ Broad `theory_match`, exact `repertoire_match`, and engine loss remain distinct
 values. A lesson can deliberately teach a sound human move that is not
 Stockfish's current top-one choice. Turn snapshots include the lesson ply so one
 undo restores both half-moves, both explanations, and the previous question.
-The current implementation permits exactly one PGN main line; accepting and
-selecting among PGN variations is a later explicit design decision.
+The current implementation represents each curated opponent response as a
+separate annotated PGN game. Accepting arbitrary PGN variations as equivalent
+repertoire answers is still a later explicit design decision.
 
 ## Persistence
 
@@ -493,7 +509,7 @@ a settled product requirement rather than an incidental implementation detail.
 
 - Single local learner
 - Standard chess only
-- Untimed free opening play and one guided Italian lesson from White
+- Untimed free opening play and a guided Italian-from-White scenario family
 - No authentication or cloud persistence
 - No imported PGN analysis
 - No automatic network refresh

@@ -95,7 +95,10 @@ def test_branch_drill_starts_after_deviation_without_revealing_answer() -> None:
     assert response["messages"][0]["summary"] == (
         "Schwarz hat zuletzt Nf6 gespielt. Was spielst du jetzt?"
     )
-    assert "d3" not in json.dumps(response["messages"], ensure_ascii=False)
+    visible_prompt = " ".join(
+        f"{message['summary']} {message['details']}" for message in response["messages"]
+    )
+    assert "d3" not in visible_prompt
 
     suggestion = coach.suggest_move(response["session_id"])
     assert suggestion["move_san"] == "d3"
@@ -156,6 +159,116 @@ def test_realistic_opponent_does_not_reveal_a_later_deviation_early() -> None:
 
     assert after_d3["messages"][1]["move"] == "h6"
     assert after_d3["lesson"]["lesson_id"] == "italian-white-slow-h6"
+
+
+def test_finished_realistic_variation_continues_as_free_opening_play() -> None:
+    coach = guided_service()
+    response = coach.create_session(
+        "white",
+        training_mode="guided",
+        lesson_style="realistic",
+        lesson_id="italian-white-two-knights",
+    )
+    session_id = response["session_id"]
+
+    for move_uci in ("e2e4", "g1f3", "f1c4", "d2d3", "e1g1", "c2c3"):
+        response = coach.play_learner_move(
+            session_id, move_uci[:2], move_uci[2:4], move_uci[4:] or None
+        )
+
+    assert response["phase"] == "opening"
+    assert response["training_progress"] is None
+    assert len(response["move_history"]) == 12
+    assert response["move_history"][-2] == {"actor": "learner", "san": "c3"}
+    assert response["move_history"][-1]["actor"] == "coach"
+    assert coach.sessions[session_id].guided_segment_complete is True
+    assert any(message["kind"] == "milestone" for message in response["messages"])
+    assert any(
+        "Variantenabschnitt endet hier, nicht die Partie" in message["details"]
+        for message in response["messages"]
+        if message["kind"] == "milestone"
+    )
+    assert "Geschafft" not in json.dumps(response["messages"], ensure_ascii=False)
+
+    legal_move = next(
+        move for move in response["legal_moves"] if move != "f2f3"
+    )
+    continued = coach.play_learner_move(
+        session_id, legal_move[:2], legal_move[2:4], legal_move[4:] or None
+    )
+
+    assert continued["phase"] == "opening"
+    assert len(continued["move_history"]) == 14
+    assert "Geschafft" not in json.dumps(continued["messages"], ensure_ascii=False)
+
+
+def test_undo_reopens_finished_realistic_variation() -> None:
+    coach = guided_service()
+    response = coach.create_session(
+        "white",
+        training_mode="guided",
+        lesson_style="realistic",
+        lesson_id="italian-white-two-knights",
+    )
+    session_id = response["session_id"]
+    for move_uci in ("e2e4", "g1f3", "f1c4", "d2d3", "e1g1", "c2c3"):
+        response = coach.play_learner_move(
+            session_id, move_uci[:2], move_uci[2:4], move_uci[4:] or None
+        )
+
+    assert coach.sessions[session_id].guided_segment_complete is True
+
+    reopened = coach.undo_last_turn(session_id)
+
+    assert reopened["phase"] == "opening"
+    assert reopened["move_history"][-2:] == [
+        {"actor": "learner", "san": "O-O"},
+        {"actor": "coach", "san": "d6"},
+    ]
+    assert reopened["training_progress"] == {
+        "current": 6,
+        "completed": 5,
+        "total": 6,
+        "question": "Was spielst du als Nächstes?",
+        "goal": reopened["lesson"]["goal"],
+    }
+    assert coach.sessions[session_id].guided_segment_complete is False
+    assert all(message["kind"] != "milestone" for message in reopened["message_history"])
+
+
+def test_realistic_mainline_reaches_phase_decision_instead_of_lesson_success() -> None:
+    coach = guided_service()
+    response = coach.create_session(
+        "white",
+        training_mode="guided",
+        lesson_style="realistic",
+        lesson_id=ITALIAN_WHITE_LESSON_ID,
+    )
+    session_id = response["session_id"]
+
+    for move_uci in (
+        "e2e4",
+        "g1f3",
+        "f1c4",
+        "d2d3",
+        "e1g1",
+        "c2c3",
+        "f1e1",
+        "c4b3",
+        "b1d2",
+        "h2h3",
+    ):
+        response = coach.play_learner_move(
+            session_id, move_uci[:2], move_uci[2:4], move_uci[4:] or None
+        )
+
+    assert response["phase"] == "transition"
+    assert response["opening_end"] is not None
+    assert response["opening_summary"] is None
+    assert response["training_progress"] is None
+    assert any(message["kind"] == "milestone" for message in response["messages"])
+    assert any(message["kind"] == "phase" for message in response["messages"])
+    assert "Geschafft" not in json.dumps(response["messages"], ensure_ascii=False)
 
 
 def test_realistic_selector_uses_multiple_curated_opponent_lines() -> None:

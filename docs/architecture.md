@@ -334,10 +334,22 @@ capture and verifies that the focused move vacated a square between the slider
 and its target. When this narrow condition holds, its causal sentence becomes
 the answer and both LLM selection and book retrieval are skipped.
 
-The UI estimates remaining time from an operation-specific rolling average kept
-in browser storage. It counts down only as an estimate and changes to “noch einen
-Moment” instead of showing a false negative countdown. This preference-like
-telemetry is device-local and is not learner-state data.
+The UI estimates remaining time from operation-specific recent histories kept
+in browser storage. Scripted repertoire replies and adaptive coach replies use
+separate profiles: the former usually needs only board and engine checks, while
+the latter can include two Ollama explanations and varies much more. The
+adaptive profile starts conservatively at 45 seconds; the scripted profile at
+4 seconds. Each profile retains the last eight valid measurements and estimates
+from their 80th percentile plus a 20-percent and two-second margin. This targets
+the upper part of recent experience rather than a mean that is exceeded about
+half the time.
+
+The final move of a realistic scripted segment uses the adaptive profile because
+that request may cross into free play and generate the first unscripted coach
+reply. Versioned storage keys deliberately retire the earlier pooled rolling
+average. The countdown remains an estimate and changes to “noch einen Moment”
+if work still exceeds it. This preference-like telemetry is device-local and is
+not learner-state data.
 
 The user question itself is treated as untrusted context, not as evidence. The
 answer is added to the in-memory conversation feed but not recorded as a move or

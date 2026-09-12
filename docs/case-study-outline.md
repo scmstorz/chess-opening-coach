@@ -192,6 +192,12 @@
     `Etappenziel`, releases the fixed line, and continues with theory/Stockfish.
 65. Undo must restore policy as well as pieces. The turn snapshot therefore
     records whether guided play had already changed into free opening play.
+66. The learner observes that coach-move countdowns are consistently low. The
+    nominally operation-specific average still pools fast authored replies with
+    slow free replies and estimates the center rather than the upper runtime.
+67. Timing becomes workload-aware: scripted and adaptive move profiles retain
+    separate recent histories, and a conservative 80th-percentile estimate
+    replaces the pooled exponential mean.
 
 ## Evidence already captured
 
@@ -209,6 +215,8 @@
 - Comparable local chess benchmarks for Qwen, Glimmer, Ornith, and GPT-OSS
 - Reproducible cloud comparison of Kimi K3 and DeepSeek V4 Pro on three failures
 - Measured countdown inputs for standard, deep, local, and cloud operations
+- A learner-triggered countdown correction separating scripted engine work from
+  adaptive Ollama-backed coach turns
 - A whole-book versus explanation-value design trade-off, including the
   learner's decision to require both
 - Explicit consent and privacy boundary for automatic local processing of short

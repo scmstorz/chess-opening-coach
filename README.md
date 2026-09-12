@@ -48,7 +48,7 @@ operator.
 - Expandable sections for long-term plan, concrete effects, alternatives, and engine lines
 - A local PDF knowledge compiler with page-level provenance, FTS retrieval, and explicit issue quarantine
 - Grounded German book synthesis with one compact source card per book and an honest evidence fallback
-- Learned countdown estimates for normal and deep coach operations
+- Conservative, locally learned countdowns with separate scripted and adaptive move profiles
 - Visible engine evaluation using the standard White-positive convention
 - German feedback after every learner and coach move
 - Expandable explanation detail

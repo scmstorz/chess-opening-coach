@@ -98,11 +98,19 @@ type CoachMessage = {
 };
 
 type ProgressKind = "move" | "suggestion" | "question" | "deep";
+type ProgressProfile = "move-guided" | "move-adaptive" | Exclude<ProgressKind, "move">;
 
 type BusyProgress = {
   kind: ProgressKind;
+  profile: ProgressProfile;
   startedAt: number;
   estimateSeconds: number;
+};
+
+type ProgressRun = {
+  kind: ProgressKind;
+  profile: ProgressProfile;
+  startedAt: number;
 };
 
 type OpeningEndSignal = {
@@ -290,11 +298,19 @@ const fenPieces: Record<Piece["kind"], string> = {
   pawn: "p",
 };
 
-const defaultProgressEstimates: Record<ProgressKind, number> = {
-  move: 18,
+const defaultProgressEstimates: Record<ProgressProfile, number> = {
+  "move-guided": 4,
+  "move-adaptive": 45,
   suggestion: 3,
   question: 12,
   deep: 22,
+};
+
+const initialProgressEstimates: Record<ProgressKind, number> = {
+  move: defaultProgressEstimates["move-adaptive"],
+  suggestion: defaultProgressEstimates.suggestion,
+  question: defaultProgressEstimates.question,
+  deep: defaultProgressEstimates.deep,
 };
 
 const progressLabels: Record<ProgressKind, string> = {
@@ -306,6 +322,32 @@ const progressLabels: Record<ProgressKind, string> = {
 
 function currentTimeMs(): number {
   return Date.now();
+}
+
+function durationHistoryKey(profile: ProgressProfile): string {
+  return `coach-duration-history-v2-${profile}`;
+}
+
+function durationHistory(profile: ProgressProfile): number[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(durationHistoryKey(profile)) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (value): value is number => Number.isFinite(value) && value >= 0.5 && value <= 300,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function conservativeDurationEstimate(profile: ProgressProfile, history: number[]): number {
+  if (history.length === 0) return defaultProgressEstimates[profile];
+  const sorted = [...history].sort((left, right) => left - right);
+  const percentileIndex = Math.max(0, Math.ceil(sorted.length * 0.8) - 1);
+  const observedUpperRange = sorted[percentileIndex];
+  return Math.ceil(
+    Math.max(defaultProgressEstimates[profile], observedUpperRange * 1.2 + 2),
+  );
 }
 
 function parseFen(fen: string): Record<string, Piece> {
@@ -528,7 +570,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<BusyProgress | null>(null);
   const [progressClock, setProgressClock] = useState(0);
-  const [durationEstimates, setDurationEstimates] = useState(defaultProgressEstimates);
+  const [durationEstimates, setDurationEstimates] = useState(initialProgressEstimates);
   const [error, setError] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
@@ -642,26 +684,28 @@ export default function Home() {
     ? progressLabels[progress.kind]
     : "Coach denkt nach";
 
-  function beginProgress(kind: ProgressKind): number {
+  function beginProgress(kind: ProgressKind, profile?: ProgressProfile): ProgressRun {
     const startedAt = currentTimeMs();
-    const stored = Number(window.localStorage.getItem(`coach-duration-${kind}`));
-    const estimateSeconds = Number.isFinite(stored) && stored > 0
-      ? Math.max(1, Math.round(stored))
-      : durationEstimates[kind];
+    const selectedProfile = profile ?? (kind === "move" ? "move-adaptive" : kind);
+    const estimateSeconds = conservativeDurationEstimate(
+      selectedProfile,
+      durationHistory(selectedProfile),
+    );
     setDurationEstimates((current) => ({ ...current, [kind]: estimateSeconds }));
     setProgressClock(startedAt);
-    setProgress({ kind, startedAt, estimateSeconds });
-    return startedAt;
+    setProgress({ kind, profile: selectedProfile, startedAt, estimateSeconds });
+    return { kind, profile: selectedProfile, startedAt };
   }
 
-  function finishProgress(kind: ProgressKind, startedAt: number) {
-    const measured = Math.max(0.5, (currentTimeMs() - startedAt) / 1000);
-    const previous = Number(window.localStorage.getItem(`coach-duration-${kind}`));
-    const smoothed = Number.isFinite(previous) && previous > 0
-      ? previous * 0.65 + measured * 0.35
-      : measured;
-    window.localStorage.setItem(`coach-duration-${kind}`, smoothed.toFixed(1));
-    setDurationEstimates((current) => ({ ...current, [kind]: Math.round(smoothed) }));
+  function finishProgress(run: ProgressRun) {
+    const measured = Math.max(0.5, (currentTimeMs() - run.startedAt) / 1000);
+    const history = [...durationHistory(run.profile), measured].slice(-8);
+    window.localStorage.setItem(durationHistoryKey(run.profile), JSON.stringify(history));
+    const estimateSeconds = conservativeDurationEstimate(run.profile, history);
+    setDurationEstimates((current) => ({
+      ...current,
+      [run.kind]: estimateSeconds,
+    }));
     setProgress(null);
   }
 
@@ -747,7 +791,15 @@ export default function Home() {
     const optimisticFen = matchingMove ? visualFenAfterMove(fenBefore, matchingMove) : fenBefore;
     if (matchingMove) setDisplayFen(optimisticFen);
     setLoading(true);
-    const progressStartedAt = beginProgress("move");
+    const isFinalRealisticScriptedMove = Boolean(
+      session.lesson_style === "realistic"
+      && session.training_progress
+      && session.training_progress.current === session.training_progress.total,
+    );
+    const moveProfile: ProgressProfile = session.training_progress && !isFinalRealisticScriptedMove
+      ? "move-guided"
+      : "move-adaptive";
+    const progressRun = beginProgress("move", moveProfile);
     setError(null);
     try {
       const next = await api<SessionState>(`/api/sessions/${session.session_id}/moves`, {
@@ -777,7 +829,7 @@ export default function Home() {
       setSelectedSquare(null);
       setDraggedFrom(null);
       setLoading(false);
-      finishProgress("move", progressStartedAt);
+      finishProgress(progressRun);
     }
   }
 
@@ -806,7 +858,7 @@ export default function Home() {
   async function requestSuggestion() {
     if (!session || boardInteractionLocked || session.turn !== session.learner_color) return;
     setLoading(true);
-    const progressStartedAt = beginProgress("suggestion");
+    const progressRun = beginProgress("suggestion");
     setError(null);
     setSuggestion(null);
     setSelectedSquare(null);
@@ -820,7 +872,7 @@ export default function Home() {
       setError(caught instanceof Error ? caught.message : "Es konnte kein Zug vorgeschlagen werden.");
     } finally {
       setLoading(false);
-      finishProgress("suggestion", progressStartedAt);
+      finishProgress(progressRun);
     }
   }
 
@@ -829,7 +881,7 @@ export default function Home() {
     if (!session || boardInteractionLocked || question.length < 2) return;
     setAskingQuestion(true);
     const progressKind: ProgressKind = deep ? "deep" : "question";
-    const progressStartedAt = beginProgress(progressKind);
+    const progressRun = beginProgress(progressKind);
     setError(null);
     try {
       const response = await api<QuestionResponse>(
@@ -849,7 +901,7 @@ export default function Home() {
       setError(caught instanceof Error ? caught.message : "Die Frage konnte nicht beantwortet werden.");
     } finally {
       setAskingQuestion(false);
-      finishProgress(progressKind, progressStartedAt);
+      finishProgress(progressRun);
     }
   }
 

@@ -1974,3 +1974,36 @@ claim. The complete suite passed 104 backend tests, Ruff, frontend lint, the
 production build, the rendered-shell contract, and the whitespace check. The
 staged public-release guard checked 113 paths and 111 historical paths against
 113 private-corpus text variants without finding a leak.
+
+## 2026-09-12 — A countdown should estimate the wait, not the average task
+
+While continuing the live test, the learner reported that the coach-move
+countdown was consistently too low. Inspection found that the browser did learn
+durations, but its single `move` exponential average combined very fast authored
+lesson replies with much slower free replies. The latter can invoke Ollama once
+for the learner move and again for the coach move. Recent work on realistic
+continuation made this distinction especially visible: the UI changed policies,
+but its timing model did not.
+
+Merely raising the 18-second default would not repair an already stored low
+average. A global multiplier would still mix incompatible workloads. An exact
+backend prediction was rejected for now because model cold starts, retries,
+caches, and machine load are not reliably knowable before the request. The
+selected client-only design separates `move-guided` and `move-adaptive` timing
+histories.
+
+Scripted moves start at four seconds. Adaptive moves start at a conservative 45
+seconds, matching earlier observed cold local runs of roughly 22–42 seconds plus
+headroom. The final move of a realistic script already uses the adaptive profile
+because its request may also generate the first free reply. Instead of estimating
+the mean, each profile keeps eight measurements and uses their 80th percentile
+with a 20-percent and two-second margin. New versioned storage keys discard the
+misleading pooled history while keeping all timing data on the device.
+
+ADR 0019 preserves the options and formula. Frontend lint, the production build,
+the rendered-shell test, and whitespace validation pass. The backend process and
+its in-memory sessions were not restarted. The frontend development server did,
+however, reload the page module and created a new visible browser session; this
+is a development-time interruption worth avoiding during future live-play fixes.
+The staged public-release guard checked 114 paths and 113 historical paths
+against 114 private-corpus text variants without finding a leak.

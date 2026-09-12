@@ -338,7 +338,7 @@ The UI estimates remaining time from operation-specific recent histories kept
 in browser storage. Scripted repertoire replies and adaptive coach replies use
 separate profiles: the former usually needs only board and engine checks, while
 the latter can include two Ollama explanations and varies much more. The
-adaptive profile starts conservatively at 45 seconds; the scripted profile at
+adaptive profile starts at 30 seconds; the scripted profile at
 4 seconds. Each profile retains the last eight valid measurements and estimates
 from their 80th percentile plus a 20-percent and two-second margin. This targets
 the upper part of recent experience rather than a mean that is exceeded about

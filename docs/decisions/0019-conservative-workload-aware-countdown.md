@@ -37,7 +37,7 @@ authored reply remains and as `move-adaptive` during free opening or middlegame
 play. The final question in a realistic scenario is classified as adaptive
 because the same request may finish the script and generate a free Black reply.
 
-The first estimates are 4 seconds for scripted work and 45 seconds for adaptive
+The first estimates are 4 seconds for scripted work and 30 seconds for adaptive
 work. Each profile stores at most eight measurements on the current device. The
 displayed estimate is the larger of its initial floor and:
 
@@ -49,10 +49,11 @@ inherit the old pooled mean that triggered the defect.
 
 ## Consequences
 
-Free coach turns begin with a deliberately cautious estimate and react strongly
-to normal slow runs. Scripted lessons keep a short estimate instead of paying
-for that caution. The estimate can still be wrong—especially on a model cold
-start—but it should reach “noch einen Moment” substantially less often.
+Free coach turns begin with a moderate estimate and react strongly to normal
+slow runs. Scripted lessons keep a short estimate instead of paying for that
+caution. The estimate can still be wrong—especially on the first model cold
+start—but it should reach “noch einen Moment” substantially less often after
+the first measurements.
 
 The history remains local browser telemetry and is neither sent to the backend
 nor stored as learner performance. If later evidence shows distinct cold/warm

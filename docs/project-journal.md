@@ -1992,13 +1992,15 @@ caches, and machine load are not reliably knowable before the request. The
 selected client-only design separates `move-guided` and `move-adaptive` timing
 histories.
 
-Scripted moves start at four seconds. Adaptive moves start at a conservative 45
-seconds, matching earlier observed cold local runs of roughly 22–42 seconds plus
-headroom. The final move of a realistic script already uses the adaptive profile
-because its request may also generate the first free reply. Instead of estimating
-the mean, each profile keeps eight measurements and uses their 80th percentile
-with a 20-percent and two-second margin. New versioned storage keys discard the
-misleading pooled history while keeping all timing data on the device.
+Scripted moves start at four seconds. The initial adaptive estimate was set to a
+conservative 45 seconds, then reduced to 30 seconds after immediate learner
+feedback that the starting wait felt too long. Slower real measurements raise it
+automatically. The final move of a realistic script already uses the adaptive
+profile because its request may also generate the first free reply. Instead of
+estimating the mean, each profile keeps eight measurements and uses their 80th
+percentile with a 20-percent and two-second margin. New versioned storage keys
+discard the misleading pooled history while keeping all timing data on the
+device.
 
 ADR 0019 preserves the options and formula. Frontend lint, the production build,
 the rendered-shell test, and whitespace validation pass. The backend process and
@@ -2007,3 +2009,6 @@ however, reload the page module and created a new visible browser session; this
 is a development-time interruption worth avoiding during future live-play fixes.
 The staged public-release guard checked 114 paths and 113 historical paths
 against 114 private-corpus text variants without finding a leak.
+After lowering the initial adaptive estimate to 30 seconds, the follow-up guard
+checked the same 114 staged paths plus 114 historical paths and again found no
+private-corpus overlap.

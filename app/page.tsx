@@ -300,7 +300,7 @@ const fenPieces: Record<Piece["kind"], string> = {
 
 const defaultProgressEstimates: Record<ProgressProfile, number> = {
   "move-guided": 4,
-  "move-adaptive": 45,
+  "move-adaptive": 30,
   suggestion: 3,
   question: 12,
   deep: 22,

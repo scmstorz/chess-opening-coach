@@ -97,6 +97,55 @@ type CoachMessage = {
   feedback?: ExplanationFeedback | null;
 };
 
+type IndexedCoachMessage = {
+  index: number;
+  message: CoachMessage;
+};
+
+type CoachFeedGroup =
+  | { kind: "turn"; startIndex: number; messages: IndexedCoachMessage[] }
+  | { kind: "standalone"; message: IndexedCoachMessage };
+
+function isMoveMessage(message: CoachMessage): boolean {
+  return (message.kind ?? "move") === "move";
+}
+
+function groupCoachMessages(messages: CoachMessage[]): CoachFeedGroup[] {
+  const groups: CoachFeedGroup[] = [];
+  let index = 0;
+
+  while (index < messages.length) {
+    const message = messages[index];
+    if (message.actor !== "learner" || !isMoveMessage(message)) {
+      groups.push({ kind: "standalone", message: { index, message } });
+      index += 1;
+      continue;
+    }
+
+    const turnMessages: IndexedCoachMessage[] = [{ index, message }];
+    const startIndex = index;
+    index += 1;
+
+    while (index < messages.length && messages[index].kind === "milestone") {
+      turnMessages.push({ index, message: messages[index] });
+      index += 1;
+    }
+
+    if (
+      index < messages.length
+      && messages[index].actor === "coach"
+      && isMoveMessage(messages[index])
+    ) {
+      turnMessages.push({ index, message: messages[index] });
+      index += 1;
+    }
+
+    groups.push({ kind: "turn", startIndex, messages: turnMessages });
+  }
+
+  return groups;
+}
+
 type ProgressKind = "move" | "suggestion" | "question" | "deep";
 type ProgressProfile = "move-guided" | "move-adaptive" | Exclude<ProgressKind, "move">;
 
@@ -577,6 +626,7 @@ export default function Home() {
   const [reviewItems, setReviewItems] = useState<FeedbackReviewRecord[]>([]);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const coachFeedRef = useRef<HTMLDivElement | null>(null);
+  const previousMessageCountRef = useRef(0);
   const initialSessionRequestedRef = useRef(false);
   const interactionLocked = loading || askingQuestion;
   const phaseDecisionPending = session?.phase === "transition";
@@ -608,11 +658,36 @@ export default function Home() {
 
   useEffect(() => {
     const feed = coachFeedRef.current;
-    if (!feed || messages.length === 0) return;
+    const previousMessageCount = previousMessageCountRef.current;
+    previousMessageCountRef.current = messages.length;
+    if (!feed || messages.length === 0 || messages.length === previousMessageCount) return;
+
+    const firstNewMessageIndex = messages.length > previousMessageCount
+      ? previousMessageCount
+      : messages.length;
+    let latestNewLearnerMoveIndex = -1;
+    for (let index = firstNewMessageIndex; index < messages.length; index += 1) {
+      if (messages[index].actor === "learner" && isMoveMessage(messages[index])) {
+        latestNewLearnerMoveIndex = index;
+      }
+    }
+
     window.requestAnimationFrame(() => {
+      if (latestNewLearnerMoveIndex >= 0) {
+        const turn = feed.querySelector<HTMLElement>(
+          `[data-turn-start="${latestNewLearnerMoveIndex}"]`,
+        );
+        if (turn) {
+          const top = turn.getBoundingClientRect().top
+            - feed.getBoundingClientRect().top
+            + feed.scrollTop;
+          feed.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+          return;
+        }
+      }
       feed.scrollTo({ top: feed.scrollHeight, behavior: "smooth" });
     });
-  }, [messages.length]);
+  }, [messages]);
 
   useEffect(() => {
     if (!progress) return;
@@ -669,6 +744,7 @@ export default function Home() {
   const suggestedTo = suggestion?.move_uci.slice(2, 4);
 
   const latestEngine = [...messages].reverse().find((message) => message.engine?.available)?.engine;
+  const coachFeedGroups = useMemo(() => groupCoachMessages(messages), [messages]);
   const evaluation = latestEngine?.evaluation_played ?? 0;
   const evaluationWidth = Math.max(6, Math.min(94, 50 + evaluation * 8));
   const elapsedSeconds = progress ? Math.max(0, (progressClock - progress.startedAt) / 1000) : 0;
@@ -878,7 +954,7 @@ export default function Home() {
 
   async function askQuestion(deep = false, suggestedQuestion?: string) {
     const question = questionText.trim() || suggestedQuestion?.trim() || "";
-    if (!session || boardInteractionLocked || question.length < 2) return;
+    if (!session || interactionLocked || question.length < 2) return;
     setAskingQuestion(true);
     const progressKind: ProgressKind = deep ? "deep" : "question";
     const progressRun = beginProgress(progressKind);
@@ -1292,9 +1368,9 @@ export default function Home() {
                   <details><summary>So funktioniert das Training</summary><p>Gute ungewöhnliche Züge bleiben auf dem Brett. Bei einem echten Fehler bekommst du bis zu zwei Hinweise, bevor ich die Lösung zeige.</p></details>
                 </div>
               </article>
-            ) : (
-              messages.map((message, index) => (
-                <article className={`coach-message ${message.actor}${message.kind === "question" || message.kind === "clarification" ? " question-answer" : ""}`} key={`${index}-${message.move}-${message.question ?? message.summary}`}>
+            ) : coachFeedGroups.map((group) => {
+              const renderMessage = ({ message, index }: IndexedCoachMessage) => (
+                <article className={`coach-message ${message.actor}${message.kind === "question" || message.kind === "clarification" ? " question-answer" : ""}`} key={message.message_id ?? `${index}-${message.move}-${message.question ?? message.summary}`}>
                   <span className="message-index">{String(index + 1).padStart(2, "0")}</span>
                   <div>
                     <small className="message-author">{message.kind === "prompt" ? "Trainingsfrage" : message.kind === "clarification" ? "Rückfrage zum Zug" : message.kind === "question" ? "Antwort zur Frage" : message.kind === "phase" ? "Phasenwechsel" : message.kind === "summary" ? "Lernbilanz" : message.kind === "milestone" ? "Etappenziel" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
@@ -1339,8 +1415,24 @@ export default function Home() {
                     )}
                   </div>
                 </article>
-              ))
-            )}
+              );
+
+              if (group.kind === "turn") {
+                return (
+                  <div
+                    aria-label="Dein Zug und die Antwort des Coaches"
+                    className="coach-turn-pair"
+                    data-turn-start={group.startIndex}
+                    key={`turn-${group.startIndex}`}
+                    role="group"
+                  >
+                    {group.messages.map(renderMessage)}
+                  </div>
+                );
+              }
+
+              return renderMessage(group.message);
+            })}
           </div>
 
           <div className="truth-grid">
@@ -1357,22 +1449,22 @@ export default function Home() {
                 onChange={(event) => setQuestionText(event.target.value)}
                 placeholder={suggestion ? `Warum ist ${suggestion.move_san} hier gut?` : "Warum ist e4 hier sinnvoll?"}
                 value={questionText}
-                disabled={!session || boardInteractionLocked}
+                disabled={!session || interactionLocked}
                 maxLength={600}
               />
-              <button type="submit" disabled={!session || boardInteractionLocked || questionText.trim().length < 2} aria-label="Frage senden">
+              <button type="submit" disabled={!session || interactionLocked || questionText.trim().length < 2} aria-label="Frage senden">
                 {askingQuestion ? "…" : "↑"}
               </button>
             </form>
             <button
               className="deep-question-action"
-              disabled={!session || boardInteractionLocked || questionText.trim().length < 2}
+              disabled={!session || interactionLocked || questionText.trim().length < 2}
               onClick={() => void askQuestion(true)}
               type="button"
             >
               Tief erklären <span>mehrere Varianten · ca. {durationEstimates.deep} s</span>
             </button>
-            <small>{sessionComplete ? "Die Eröffnungslektion ist abgeschlossen. Starte eine neue Partie, wenn du weiterüben möchtest." : phaseDecisionPending ? "Entscheide zuerst, ob du weiterspielen oder auswerten möchtest." : askingQuestion && progress ? `${activeProgressLabel} · ${remainingSeconds > 0 ? `noch etwa ${remainingSeconds} Sekunden` : "noch einen Moment"}` : `Geerdet mit Stellung, Eröffnungstheorie und Stockfish${health?.ollama.model ? ` · ${health.ollama.model}` : ""}`}</small>
+            <small>{askingQuestion && progress ? `${activeProgressLabel} · ${remainingSeconds > 0 ? `noch etwa ${remainingSeconds} Sekunden` : "noch einen Moment"}` : sessionComplete ? "Die Eröffnungslektion ist abgeschlossen. Fragen zur letzten Stellung sind weiterhin möglich." : phaseDecisionPending ? "Du kannst zur letzten Stellung fragen oder entscheiden, ob du weiterspielst oder auswertest." : `Geerdet mit Stellung, Eröffnungstheorie und Stockfish${health?.ollama.model ? ` · ${health.ollama.model}` : ""}`}</small>
           </div>
         </aside>
       </section>

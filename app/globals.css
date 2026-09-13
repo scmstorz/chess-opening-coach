@@ -180,8 +180,14 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .coach-avatar { align-items: center; background: var(--green); border: 5px solid var(--green-soft); border-radius: 50%; color: #fff; display: flex; font-size: 26px; height: 58px; justify-content: center; width: 58px; }
 .coach-heading .eyebrow { margin-bottom: 4px; }
 .coach-feed { flex: 1 1 0; margin-top: 22px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 8px; scrollbar-gutter: stable; scroll-behavior: smooth; }
+.coach-turn-pair { border-top: 1px solid var(--line); scroll-margin-top: 8px; }
+.coach-feed > .coach-turn-pair:first-child { border-top: 0; }
 .coach-message { display: grid; gap: 18px; grid-template-columns: 28px 1fr; padding: 20px 0; }
-.coach-message + .coach-message { border-top: 1px solid var(--line); }
+.coach-feed > .coach-message + .coach-message,
+.coach-feed > .coach-message + .coach-turn-pair,
+.coach-feed > .coach-turn-pair + .coach-message,
+.coach-feed > .coach-turn-pair + .coach-turn-pair { border-top: 1px solid var(--line); }
+.coach-turn-pair > .coach-message + .coach-message { border-top: 1px dashed var(--line); }
 .coach-message.coach .message-index { border-color: var(--green); color: var(--green); }
 .coach-message.question-answer { background: rgba(220, 231, 223, .34); border-radius: 9px; margin-right: 2px; padding-left: 9px; padding-right: 9px; }
 .message-index { border-top: 2px solid var(--coral); color: var(--coral); font-family: Georgia, serif; font-size: 12px; padding-top: 5px; }
@@ -268,7 +274,7 @@ details p { color: var(--muted); font-family: inherit !important; font-size: 13p
 .question-box label { display: block; font-size: 11px; font-weight: 800; margin-bottom: 9px; text-transform: uppercase; }
 .question-box > form { display: flex; }
 .question-box input { background: rgba(255,255,255,.48); border: 1px solid var(--line); border-radius: 8px 0 0 8px; color: var(--muted); min-width: 0; padding: 12px 13px; width: 100%; }
-.question-box input:disabled { cursor: wait; opacity: .65; }
+.question-box input:disabled { cursor: not-allowed; opacity: .65; }
 .question-box button { background: var(--green); border: 0; border-radius: 0 8px 8px 0; color: #fff; cursor: pointer; min-width: 48px; padding: 0 16px; }
 .question-box button:disabled { cursor: not-allowed; opacity: .55; }
 .question-box small { color: var(--muted); display: block; font-size: 10px; margin-top: 7px; }

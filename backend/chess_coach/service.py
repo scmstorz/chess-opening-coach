@@ -869,6 +869,14 @@ class CoachService:
                 ),
                 None,
             )
+            explicit_castling_choice = next(
+                (
+                    str(fact["text"])
+                    for fact in answer_facts
+                    if fact.get("id") == "castling_choice"
+                ),
+                None,
+            )
             if immediate_tactic:
                 # A directly provable one-ply material loss answers the learner's
                 # question more precisely than broad opening prose or LLM selection.
@@ -882,6 +890,20 @@ class CoachService:
                 perspective_filtered = 0
                 knowledge_status = "no_evidence"
                 knowledge_reason = "immediate_tactic_takes_priority"
+            elif explicit_castling_choice:
+                # All explanatory claims for this narrow comparison have already
+                # been derived from the board and the two required engine roots.
+                # An LLM has no remaining selection choice and would add substantial
+                # latency without adding any permitted information.
+                text = TutorText(
+                    summary=explicit_castling_choice,
+                    details=text.details,
+                    source="deterministic",
+                    model=None,
+                )
+                perspective_filtered = 0
+                knowledge_status = "no_evidence"
+                knowledge_reason = "explicit_castling_comparison_takes_priority"
             else:
                 book_evidence = self.book_knowledge.retrieve(
                     question=clean_question,

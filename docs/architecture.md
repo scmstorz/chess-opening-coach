@@ -315,7 +315,9 @@ engine section prioritizes both named moves over unrelated top candidates. A
 narrow board-derived explainer can contrast an advanced g-pawn, a verified
 `...h5` lever, existing queen pressure on `h2`/`h7`, and the rook files. It also
 states that connecting the rooks is common to both castlings and therefore does
-not explain the preference.
+not explain the preference. When that narrow fact set is complete, it bypasses
+LLM selection and broad book retrieval: the model has no remaining content
+choice and would add latency without adding permitted information.
 
 Questions may also refer to an accepted learner move after the coach has already
 replied. The service replays accepted transition messages, resolves the named or

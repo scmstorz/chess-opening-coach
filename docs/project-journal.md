@@ -2085,12 +2085,19 @@ Long castling places the king on `c1`, away from this lever. Both castlings
 connect the rooks, so the old template's true statement was explicitly demoted
 from “reason” to “not the distinction.”
 
-The visible summary is now constrained to the verified castling conclusion even
-when Ollama performs fact selection. Engine-line presentation prioritizes the
-focus and explicitly requested alternative, so `O-O` cannot fall out behind
-unrelated candidates. The new regression fixture forbids the original `h4`
-substitution and requires the concrete king squares, pawn lever, queen pressure,
-rook-file contrast, and explicit engine comparison.
+The visible summary is now constrained to the verified castling conclusion.
+Engine-line presentation prioritizes the focus and explicitly requested
+alternative, so `O-O` cannot fall out behind unrelated candidates. The new
+regression fixture forbids the original `h4` substitution and requires the
+concrete king squares, pawn lever, queen pressure, rook-file contrast, and
+explicit engine comparison.
+
+An isolated run with the actually configured `qwen3.8:27b-mlx` selected the
+correct fact unchanged, with no grounding error. It nevertheless added roughly
+45 seconds while being allowed to contribute no new claim. The final narrow
+path therefore bypasses LLM selection and broad book retrieval. This is not a
+retreat from LLM pedagogy: it applies the existing priority rule that a complete,
+directly proved answer should not be diluted or delayed by weaker layers.
 
 The focused suites pass 28 tests, the complete backend suite passes 107 tests,
 and Ruff reports no issues. A real normal-comparison run with Stockfish 18 took
@@ -2099,3 +2106,9 @@ in the calculation. The deeper quality runner also passed in 15.19 seconds and
 found `h4` as White's recurring follow-up against all three checked replies.
 ADR 0020 and a dated evaluation retain the exact FEN, alternatives, evidence,
 and limitations for the case study.
+
+After removing the redundant model selection, a final run with an intentionally
+unreachable tutor returned the same complete answer in 10.18 seconds, left the
+tutor error empty, and recorded the deterministic priority reason. This verifies
+that the ordinary roughly 12-second question estimate is again realistic for
+this path rather than counting on a warm model or a silent fallback.

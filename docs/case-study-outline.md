@@ -202,7 +202,9 @@
     relevance failure: all facts can be true while the system substitutes `h4`
     for the learner's named alternative. Natural move resolution, required
     engine roots, and a concrete `g4`/`...h5` king-safety contrast turn the
-    objection into an explicit-comparison contract.
+    objection into an explicit-comparison contract. Qwen then proves correct
+    but redundant, preserving the answer while adding roughly 45 seconds; the
+    complete deterministic path appropriately bypasses the model.
 
 ## Evidence already captured
 

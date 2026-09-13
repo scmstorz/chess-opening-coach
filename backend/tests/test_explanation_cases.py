@@ -89,6 +89,8 @@ def test_real_explanation_regressions(case: dict[str, Any]) -> None:
     assert len(message["explanation_sections"]) == case.get("expected_section_count", 4)
     if summary_required_phrase := case.get("summary_required_phrase"):
         assert summary_required_phrase in message["summary"]
+    if expected_source := case.get("expected_source"):
+        assert message["source"] == expected_source
     for phrase in case["required_phrases"]:
         assert phrase in rendered
     for phrase in case["forbidden_phrases"]:

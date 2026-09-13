@@ -70,18 +70,21 @@ and the post-castling rook files are derived from the board. The output states
 explicitly that connecting the rooks applies to both choices and therefore is
 not the reason for preferring one.
 
-The castling conclusion is the only fact eligible for the short answer. Ollama
-may select verified detail facts but cannot replace the learner's requested
-comparison with a generic engine verdict. The raw calculation prioritizes the
-focus move and the explicitly requested alternative before other candidates, so
-neither disappears because of a display limit.
+The castling conclusion is the only fact eligible for the short answer. Because
+the narrow path has no remaining content choice, it bypasses Ollama and book
+retrieval just as a directly proved one-ply material loss does. A real Qwen test
+selected the correct fact unchanged but added roughly 45 seconds without adding
+information. The raw calculation prioritizes the focus move and the explicitly
+requested alternative before other candidates, so neither disappears because
+of a display limit.
 
 ## Consequences
 
-Explicit comparisons take longer than ordinary questions, but the additional
-latency buys a common analysis depth and useful lines for both named moves. The
-existing local duration history remains an estimate rather than a guarantee;
-the response identifies this work as deep analysis.
+Explicit comparisons take longer than ordinary shallow questions, but the
+additional engine latency buys a common analysis depth and useful lines for both
+named moves. The deterministic castling path avoids a second, much larger model
+delay. The existing local duration history remains an estimate rather than a
+guarantee; the response identifies this work as deep analysis.
 
 The castling explanation is deliberately narrow. It does not claim that long
 castling is generally safer, that an advanced g-pawn is always bad, or that an

@@ -59,7 +59,10 @@ questions.
 A castling-specific fact builder then checks the advanced g-pawn, the verified
 `...h5` reply, the queen attack on `h2`, and the rook files. Only its direct
 conclusion may become the visible short answer. Focus and requested alternative
-are shown before other engine candidates.
+are shown before other engine candidates. A real `qwen3.8:27b-mlx` run selected
+that same conclusion without error, but added roughly 45 seconds and no new
+permitted information. The final narrow path therefore bypasses both LLM
+selection and broad book retrieval.
 
 ## Verification
 
@@ -75,4 +78,8 @@ answer identified the `g4`/`...h5`/`g1` contrast, and its raw candidate lines
 displayed both `O-O-O` and `O-O`. The full deep quality benchmark also passed in
 15.19 seconds; it additionally checked three plausible replies after `O-O-O`
 and found `h4` in all three continuations. Exact centipawn values are not
-asserted because bounded engine searches can vary.
+asserted because bounded engine searches can vary. A final normal-path run with
+an intentionally unreachable tutor still returned the complete answer in 10.18
+seconds, recorded no tutor error, and reported
+`explicit_castling_comparison_takes_priority`; this confirms that the LLM and
+book layers are genuinely bypassed rather than merely ignored afterward.

@@ -87,6 +87,7 @@
     ],
     "expected_section_count": 3,
     "summary_required_phrase": "Die große Rochade ist hier besser",
+    "expected_source": "deterministic",
     "required_phrases": [
       "Die große Rochade ist hier besser",
       "König nach O-O auf g1",

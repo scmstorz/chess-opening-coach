@@ -389,6 +389,20 @@ def test_question_uses_the_first_of_multiple_named_legal_moves() -> None:
     assert reversed_order == chess.Move.from_uci("b5a4")
 
 
+def test_question_resolves_natural_names_for_both_castling_moves() -> None:
+    coach = service()
+    board = chess.Board(
+        "rnb1k2r/1pqp1pp1/p3pn1p/2b5/2PNP1P1/1QN1B3/PP2BP1P/R3K2R w KQkq - 0 11"
+    )
+
+    moves = coach._mentioned_legal_moves(
+        board,
+        "Warum war bei mir gerade eben die große Rochade besser als die kleine?",
+    )
+
+    assert moves == [chess.Move.from_uci("e1c1"), chess.Move.from_uci("e1g1")]
+
+
 def test_contradictory_piece_notation_requires_confirmation_before_analysis() -> None:
     coach = service()
     session = coach.create_session("white")
@@ -521,6 +535,74 @@ def test_question_about_played_learner_move_uses_its_historical_position() -> No
     assert explicit["engine"]["played_pv_san"][0] == "b3"
     assert implicit["move"] == "b3"
     assert active.board.fen() == current_fen
+
+
+def test_historical_castling_question_preserves_the_named_alternative() -> None:
+    coach = service()
+    response = coach.create_session("white")
+    active = coach.sessions[response["session_id"]]
+    replay = chess.Board()
+    active.move_history = []
+    active.message_history = []
+    for index, san in enumerate(
+        (
+            "e4",
+            "c5",
+            "Nf3",
+            "e6",
+            "d4",
+            "cxd4",
+            "Nxd4",
+            "a6",
+            "c4",
+            "Qc7",
+            "Nc3",
+            "Be7",
+            "Be3",
+            "Nf6",
+            "Be2",
+            "Bb4",
+            "Qb3",
+            "Bc5",
+            "g4",
+            "h6",
+            "O-O-O",
+            "Nc6",
+        )
+    ):
+        move = replay.parse_san(san)
+        actor = "learner" if index % 2 == 0 else "coach"
+        replay.push(move)
+        active.move_history.append({"actor": actor, "san": san})
+        active.message_history.append(
+            {
+                "actor": actor,
+                "move": san,
+                "move_uci": move.uci(),
+                "fen_after": replay.fen(),
+                "summary": "Test",
+                "details": "Test",
+                "source": "deterministic",
+                "model": None,
+                "attempt": None,
+                "engine": None,
+            }
+        )
+    active.board = replay
+
+    message = coach.answer_question(
+        response["session_id"],
+        "Warum war bei mir gerade eben die große Rochade besser als die kleine?",
+    )["message"]
+    rendered = " ".join(
+        [message["summary"]]
+        + [section["text"] for section in message["explanation_sections"]]
+    )
+
+    assert message["move"] == "O-O-O"
+    assert "ausdrücklich genannte Vergleichszug O-O" in rendered
+    assert "Stockfishs nächster Kandidat" not in rendered
+    assert active.board.fen() == replay.fen()
 
 
 def test_question_about_rejected_retry_uses_the_unchanged_current_position() -> None:

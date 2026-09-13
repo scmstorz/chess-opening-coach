@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the six learner-derived explanation cases through the real local stack."""
+"""Run the learner-derived explanation cases through the real local stack."""
 
 from __future__ import annotations
 

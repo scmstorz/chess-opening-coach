@@ -727,6 +727,7 @@ class CoachService:
                 move = focused
 
             precomputed_analysis: MoveAnalysis | None = None
+            comparison_deep = deep
             if move is None:
                 try:
                     guided_focus = (
@@ -769,6 +770,12 @@ class CoachService:
                     () if question_phase == "middlegame" else self.openings.theory_moves(board)
                 )
                 theory_match = move.uci() in {candidate.uci for candidate in theory_moves}
+                # An explicitly named alternative must be evaluated in the same,
+                # deeper root search as the focus move. A shallow top-N search often
+                # omits the alternative and then produces only a one-move fallback PV;
+                # that was exactly why a short-vs-long castling question got compared
+                # with h4 and never exposed Black's immediate ...h5 lever.
+                comparison_deep = deep or comparison_move is not None
                 comparison = (
                     self.engine.compare_moves(
                         board,
@@ -777,7 +784,7 @@ class CoachService:
                         required_moves=(comparison_move,) if comparison_move else (),
                         deep=True,
                     )
-                    if deep
+                    if comparison_deep
                     else self.engine.compare_moves(
                         board,
                         count=3,
@@ -835,6 +842,8 @@ class CoachService:
                         "Erkläre den mittel- und langfristigen Nutzen des Zuges anhand einer "
                         "vertieften Analyse."
                         if deep
+                        else "Vergleiche die beiden ausdrücklich genannten Züge."
+                        if comparison_move is not None
                         else "Beantworte die Rückfrage zur aktuellen Stellung."
                     ),
                     "user_question": clean_question,
@@ -848,7 +857,7 @@ class CoachService:
                     "engine_comparison": asdict(comparison),
                     "plan_branches": asdict(plan_analysis) if plan_analysis else None,
                     "answer_facts": answer_facts,
-                    "analysis_mode": "deep" if deep else "standard",
+                    "analysis_mode": "deep" if comparison_deep else "standard",
                 }
                 text = fallback
 
@@ -973,7 +982,7 @@ class CoachService:
                 "attempt": None,
                 "engine": asdict(analysis) if analysis else None,
                 "explanation_sections": explanation_sections,
-                "analysis_mode": "deep" if deep else "standard",
+                "analysis_mode": "deep" if comparison_deep else "standard",
                 "references": references,
                 "knowledge": {
                     "status": knowledge_status,
@@ -1103,6 +1112,7 @@ class CoachService:
     def _mentioned_legal_moves(board: chess.Board, question: str) -> list[chess.Move]:
         matches: list[tuple[int, chess.Move]] = []
         matches.extend(_described_coordinate_moves(board, question))
+        matches.extend(_described_castling_moves(board, question))
         for move in board.legal_moves:
             san = board.san(move).rstrip("+#")
             if match := re.search(
@@ -1346,7 +1356,22 @@ class CoachService:
             comparison,
             preferred_alternative=preferred_alternative,
         )
-        engine_lines_text = _candidate_lines_text(move, analysis, comparison)
+        castling_summary, castling_detail = _castling_choice_context(
+            board,
+            move,
+            preferred_alternative,
+            comparison,
+        )
+        if castling_summary:
+            # “Both moves castle” is not an explanation of why one side is safer.
+            # Prefer the verified flank-specific contrast over the generic template.
+            concept_text = ""
+        engine_lines_text = _candidate_lines_text(
+            move,
+            analysis,
+            comparison,
+            preferred_alternative=preferred_alternative,
+        )
         pv_moves = " ".join(analysis.played_pv_san[:4])
         pv_text = f"Eine kurze Stockfish-Prüfvariante beginnt mit: {pv_moves}." if pv_moves else ""
         if (
@@ -1387,6 +1412,8 @@ class CoachService:
             ("focus", f"Ich beziehe deine Frage auf {san}.", False),
             ("verdict", verdict_text, False),
             ("immediate_material_tactic", immediate_tactic_text, True),
+            ("castling_choice", castling_summary, True),
+            ("castling_detail", castling_detail, True),
             ("plan", plan_text, True),
             ("recurring_plan", recurring_text, deep),
             ("concept", concept_text, not plan_text),
@@ -1408,15 +1435,19 @@ class CoachService:
                 "id": fact_id,
                 "text": text,
                 "required": required,
-                "summary_eligible": fact_id
-                in {
-                    "verdict",
-                    "immediate_material_tactic",
-                    "plan",
-                    "direct_threat",
-                    "heuristic",
-                    "development",
-                },
+                "summary_eligible": (
+                    fact_id == "castling_choice"
+                    if castling_summary
+                    else fact_id
+                    in {
+                        "verdict",
+                        "immediate_material_tactic",
+                        "plan",
+                        "direct_threat",
+                        "heuristic",
+                        "development",
+                    }
+                ),
             }
             for fact_id, text, required in fact_values
             if text
@@ -1424,12 +1455,14 @@ class CoachService:
         fallback = TutorText(
             summary=(
                 immediate_tactic_text
+                or castling_summary
                 or f"Ich beziehe deine Frage auf {san}. {verdict_text}"
             ),
             details=" ".join(
                 part
                 for part in (
                     immediate_tactic_text,
+                    castling_detail,
                     response_text,
                     defender_pressure_text,
                     heuristic_text,
@@ -1472,6 +1505,13 @@ class CoachService:
         if immediate_tactic_text:
             explanation_sections = [
                 {"title": "Sofortige taktische Folge", "text": immediate_tactic_text}
+            ]
+        elif castling_detail:
+            explanation_sections = [
+                {
+                    "title": "Warum hier die große statt der kleinen Rochade?",
+                    "text": castling_detail,
+                }
             ]
         else:
             explanation_sections = [
@@ -2619,6 +2659,47 @@ def _described_coordinate_moves(
     return described
 
 
+def _described_castling_moves(
+    board: chess.Board, question: str
+) -> list[tuple[int, chess.Move]]:
+    """Resolve natural German castling names to legal moves in textual order."""
+
+    if not re.search(r"\b(?:rochade|rochier\w*)\b", question, re.I):
+        return []
+    patterns = (
+        (
+            re.compile(
+                r"\b(?:(?:gro(?:ß|ss)|lang)(?:e|en|er|es)?(?:\s+rochade)?|"
+                r"damenfl[uü]gel(?:rochade|\s+rochade))\b",
+                re.I,
+            ),
+            "O-O-O",
+        ),
+        (
+            re.compile(
+                r"\b(?:(?:klein|kurz)(?:e|en|er|es)?(?:\s+rochade)?|"
+                r"k[oö]nigsfl[uü]gel(?:rochade|\s+rochade))\b",
+                re.I,
+            ),
+            "O-O",
+        ),
+    )
+    matches: list[tuple[int, chess.Move]] = []
+    for pattern, san in patterns:
+        for match in pattern.finditer(question):
+            try:
+                move = board.parse_san(san)
+            except (
+                chess.IllegalMoveError,
+                chess.InvalidMoveError,
+                chess.AmbiguousMoveError,
+                ValueError,
+            ):
+                continue
+            matches.append((match.start(), move))
+    return matches
+
+
 def _is_affirmative_answer(text: str) -> bool:
     return bool(
         re.fullmatch(
@@ -3414,6 +3495,152 @@ def _parsed_candidate_line(
     return parsed
 
 
+def _castling_choice_context(
+    board: chess.Board,
+    focus_move: chess.Move,
+    alternative_move: chess.Move | None,
+    comparison: MoveComparison,
+) -> tuple[str, str]:
+    """Explain a directly requested short-vs-long castling choice from board facts."""
+
+    if (
+        alternative_move is None
+        or not board.is_castling(focus_move)
+        or not board.is_castling(alternative_move)
+        or board.is_kingside_castling(focus_move)
+        == board.is_kingside_castling(alternative_move)
+    ):
+        return "", ""
+
+    candidates = {
+        candidate.move_uci: candidate for candidate in comparison.candidates
+    }
+    focus = candidates.get(focus_move.uci())
+    alternative = candidates.get(alternative_move.uci())
+    if focus is None or alternative is None:
+        return "", ""
+
+    long_move = (
+        focus_move if board.is_queenside_castling(focus_move) else alternative_move
+    )
+    short_move = (
+        focus_move if board.is_kingside_castling(focus_move) else alternative_move
+    )
+    long_candidate = candidates[long_move.uci()]
+    short_candidate = candidates[short_move.uci()]
+    long_is_better = (
+        long_candidate.evaluation > short_candidate.evaluation
+        if board.turn == chess.WHITE
+        else long_candidate.evaluation < short_candidate.evaluation
+    )
+    if not long_is_better:
+        return "", ""
+
+    rank = 1 if board.turn == chess.WHITE else 8
+    g_start = chess.G2 if board.turn == chess.WHITE else chess.G7
+    g_pawns = sorted(
+        board.pieces(chess.PAWN, board.turn) & chess.SquareSet(chess.BB_FILES[6])
+    )
+    advanced_g_pawn = (
+        g_pawns[0]
+        if board.piece_at(g_start) != chess.Piece(chess.PAWN, board.turn) and g_pawns
+        else None
+    )
+    short_reply = short_candidate.pv_san[1] if len(short_candidate.pv_san) >= 2 else ""
+    h_pawn_lever = False
+    if short_reply:
+        replay = board.copy(stack=False)
+        try:
+            replay.push(short_move)
+            reply = replay.parse_san(short_reply)
+            reply_piece = replay.piece_at(reply.from_square)
+            replay.push(reply)
+            h_pawn_lever = bool(
+                reply_piece == chess.Piece(chess.PAWN, not board.turn)
+                and chess.square_file(reply.from_square) == 7
+                and advanced_g_pawn is not None
+                and advanced_g_pawn in replay.attacks(reply.to_square)
+            )
+        except (
+            chess.IllegalMoveError,
+            chess.InvalidMoveError,
+            chess.AmbiguousMoveError,
+            ValueError,
+        ):
+            h_pawn_lever = False
+
+    short_king = f"g{rank}"
+    long_king = f"c{rank}"
+    mover_name = "Weiß" if board.turn == chess.WHITE else "Schwarz"
+    opponent_pawn = "schwarze" if board.turn == chess.WHITE else "weiße"
+    reply_notation = f"...{short_reply}" if board.turn == chess.WHITE else short_reply
+    g_pawn_square = chess.square_name(advanced_g_pawn) if advanced_g_pawn is not None else ""
+    if h_pawn_lever:
+        summary = (
+            f"Die große Rochade ist hier besser, weil dein König nach O-O auf {short_king} "
+            f"genau hinter dem bereits nach {g_pawn_square} vorgerückten g-Bauern stünde. "
+            f"Stockfish zeigt mit {reply_notation} sofort den Hebel gegen diesen "
+            f"Königsflügel; nach O-O-O steht dein König auf {long_king} davon entfernt."
+        )
+    elif advanced_g_pawn is not None:
+        summary = (
+            f"Die große Rochade ist hier besser, weil der g-Bauer bereits auf "
+            f"{g_pawn_square} steht und den König nach O-O auf {short_king} nicht mehr "
+            f"als normaler Bauernschutz deckt. Nach O-O-O steht der König auf {long_king} "
+            "außerhalb dieses vorgeschobenen Flügels."
+        )
+    else:
+        return "", ""
+
+    details = [
+        "Beide Rochaden verbinden die Türme; das ist deshalb nicht der entscheidende "
+        "Unterschied zwischen ihnen."
+    ]
+    if h_pawn_lever:
+        details.append(
+            f"Der {opponent_pawn} h-Bauer nutzt mit {reply_notation} aus, dass dein g-Bauer "
+            f"auf {g_pawn_square} Teil des Bauernschutzes vor dem König auf {short_king} "
+            "wäre: Er greift ihn an und bereitet das Öffnen von Linien an diesem Flügel vor."
+        )
+
+    h_target = chess.H2 if board.turn == chess.WHITE else chess.H7
+    queen_attackers = [
+        square
+        for square in board.attackers(not board.turn, h_target)
+        if (piece := board.piece_at(square)) and piece.piece_type == chess.QUEEN
+    ]
+    if queen_attackers:
+        details.append(
+            f"Außerdem zielt die gegnerische Dame auf {chess.square_name(queen_attackers[0])} "
+            f"bereits auf {chess.square_name(h_target)}. Neben einem König auf "
+            f"{short_king} wird dieser Punkt wichtiger; der König auf {long_king} steht "
+            "nicht auf diesem Angriffsflügel."
+        )
+
+    long_followups = set(long_candidate.pv_san[2::2])
+    restraining_move = "h4" if board.turn == chess.WHITE else "h5"
+    opposing_lever = "...h5" if board.turn == chess.WHITE else "h4"
+    if restraining_move in long_followups:
+        details.append(
+            f"Im geprüften Weg folgt nach O-O-O der Zug {restraining_move}: {mover_name} "
+            f"kann den {opposing_lever}-Hebel bremsen, ohne damit den Schutz des eigenen "
+            "Königs zu lockern."
+        )
+
+    d_pawn_start = chess.D2 if board.turn == chess.WHITE else chess.D7
+    f_pawn_start = chess.F2 if board.turn == chess.WHITE else chess.F7
+    if (
+        board.piece_at(d_pawn_start) != chess.Piece(chess.PAWN, board.turn)
+        and board.piece_at(f_pawn_start) == chess.Piece(chess.PAWN, board.turn)
+    ):
+        details.append(
+            f"Auch der Turm steht nach O-O-O auf d{rank} auf einer Linie ohne eigenen "
+            f"d-Bauern; nach O-O wäre der Turm auf f{rank} zunächst durch den eigenen "
+            f"Bauern auf f{rank + 1 if board.turn == chess.WHITE else rank - 1} blockiert."
+        )
+    return summary, " ".join(details)
+
+
 def _candidate_comparison_text(
     board: chess.Board,
     focus_move: chess.Move,
@@ -3499,6 +3726,11 @@ def _candidate_comparison_text(
         if alternative_move is not None and alternative_move in board.legal_moves
         else None
     )
+    castling_pair = bool(
+        alternative_move is not None
+        and board.is_castling(focus_move)
+        and board.is_castling(alternative_move)
+    )
     if (
         alternative_effects is not None
         and alternative_move is not None
@@ -3508,7 +3740,7 @@ def _candidate_comparison_text(
         alternative_effects["central_squares"] = ""
 
     differences: list[str] = []
-    if alternative_effects:
+    if alternative_effects and not castling_pair:
         if focus_effects["escapes_attack"] and alternative_effects["escapes_attack"]:
             if focus_move.from_square == alternative_move.from_square:
                 piece_name = _piece_name(board.piece_at(focus_move.from_square))
@@ -3560,7 +3792,12 @@ def _candidate_comparison_text(
     if alternative_reply and alternative_reply != focus_reply:
         differences.append(alternative_reply)
 
-    if differences:
+    if castling_pair:
+        interpretation = (
+            "Der entscheidende Unterschied liegt hier in der konkreten Königssicherheit "
+            "und nicht darin, dass beide Züge formal Rochaden sind."
+        )
+    elif differences:
         interpretation = (
             "Diese sichtbaren Unterschiede erklären plausibel einen Teil des Engine-Abstands; "
             "die Bewertung allein beweist aber keinen einzigen ausschließlichen Grund."
@@ -3577,6 +3814,8 @@ def _candidate_lines_text(
     focus_move: chess.Move,
     focus_analysis: MoveAnalysis,
     comparison: MoveComparison,
+    *,
+    preferred_alternative: chess.Move | None = None,
 ) -> str:
     if not comparison.available or not comparison.candidates:
         return ""
@@ -3597,6 +3836,17 @@ def _candidate_lines_text(
                 pv_san=focus_analysis.played_pv_san,
             )
         )
+    prioritized_uci = [focus_move.uci()]
+    if preferred_alternative is not None:
+        prioritized_uci.append(preferred_alternative.uci())
+    candidates.sort(
+        key=lambda candidate: (
+            prioritized_uci.index(candidate.move_uci)
+            if candidate.move_uci in prioritized_uci
+            else len(prioritized_uci),
+            candidate.loss_pawns,
+        )
+    )
     lines: list[str] = []
     for candidate in candidates[:4]:
         evaluation = _format_evaluation(candidate.evaluation, candidate.mate)
@@ -3886,6 +4136,8 @@ def _has_supported_explanation(
     if has_plan:
         return True
     causal_ids = {
+        "castling_choice",
+        "castling_detail",
         "direct_threat",
         "defender_pressure",
         "heuristic",

@@ -86,7 +86,9 @@ def test_real_explanation_regressions(case: dict[str, Any]) -> None:
     )
 
     assert message["move"] == chess.Board(case["fen"]).san(chess.Move.from_uci(case["focus_uci"]))
-    assert len(message["explanation_sections"]) == 4
+    assert len(message["explanation_sections"]) == case.get("expected_section_count", 4)
+    if summary_required_phrase := case.get("summary_required_phrase"):
+        assert summary_required_phrase in message["summary"]
     for phrase in case["required_phrases"]:
         assert phrase in rendered
     for phrase in case["forbidden_phrases"]:

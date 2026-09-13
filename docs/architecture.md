@@ -216,6 +216,14 @@ the FEN, engine, explanation time, depth, candidate count, and optional focus
 move. This gives weak moves a real continuation instead of comparing a deep
 best line with a one-ply placeholder.
 
+An A-versus-B question is treated differently from an open-ended `why?` query.
+Every explicitly named legal alternative is a required root and promotes the
+comparison itself to the common depth-24 search, even when the learner did not
+press `Tief erklären`. The deeper reply-robust plan search remains opt-in. This
+prevents a named alternative from being silently replaced by a convenient top-N
+candidate and gives the requested move enough principal variation for a causal
+comparison.
+
 `Tief erklären` uses a five-second, depth-24 budget. A first pass discovers four
 candidates. A second pass then analyzes that common root set—including the
 focused move—under the same limit. Scores and lines shown in one explanation
@@ -299,6 +307,15 @@ fall back to the highlighted suggestion. It asks whether the learner means
 `Nxd4`, explains the international `K`/`N` distinction, and stores that proposed
 interpretation with the current FEN. An affirmative response continues only if
 the board is unchanged.
+
+Natural German castling descriptions are also resolved through the legal move
+set. Long/large/queenside castling maps to `O-O-O`, and
+short/small/kingside castling maps to `O-O`. In an explicit comparison, the raw
+engine section prioritizes both named moves over unrelated top candidates. A
+narrow board-derived explainer can contrast an advanced g-pawn, a verified
+`...h5` lever, existing queen pressure on `h2`/`h7`, and the rook files. It also
+states that connecting the rooks is common to both castlings and therefore does
+not explain the preference.
 
 Questions may also refer to an accepted learner move after the coach has already
 replied. The service replays accepted transition messages, resolves the named or

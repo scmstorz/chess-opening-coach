@@ -2051,3 +2051,51 @@ If a later book is added, it should answer a measured weakness in these concrete
 positions and preferably offer beginner-oriented White plans against common
 `1.e4` defenses. Another general opening catalogue should not be imported merely
 to increase chunk count.
+
+## 2026-09-13 — A true answer can still answer the wrong comparison
+
+Before expanding the curriculum, the learner supplied another real explanation
+failure. Asked why the previously played large castling was better than small
+castling, the coach said that `O-O-O` was preferred, described the generic
+effects of castling, and compared it with `h4`. The learner correctly judged
+this nearly worthless: the requested B in the A-versus-B question had vanished.
+
+The persisted session reconstructed the exact pre-move FEN and the sequence
+through `10...h6`. Inspection separated two causes. Natural German castling
+names were not part of the legal-move resolver, so elliptical “die kleine” was
+not recognized as `O-O`. The missing comparison target then activated the
+ordinary top-candidate policy, which selected `h4`. A short forced-root engine
+fallback could evaluate `O-O` but did not reliably return the continuation that
+made its weakness understandable.
+
+Three remedies were considered. Trusting Ollama to infer the omitted SAN was
+rejected because interpretation must remain auditable through legal moves.
+Continuing to compare with the closest engine candidate was rejected because it
+changes the question. A generic opposite-side-castling lesson was rejected
+because the position offered a much sharper reason. The accepted design resolves
+large/long/queenside and small/short/kingside descriptions through
+`python-chess`, forces an explicitly named alternative into the same depth-24
+root search, and generates a narrow castling-safety fact only when the board and
+principal variation support it.
+
+Here White's g-pawn had already moved to `g4`. Real Stockfish 18 runs showed the
+critical short-castling continuation `O-O h5`: Black attacks `g4` and prepares
+to open lines beside the king on `g1`. The queen on `c7` already attacks `h2`.
+Long castling places the king on `c1`, away from this lever. Both castlings
+connect the rooks, so the old template's true statement was explicitly demoted
+from “reason” to “not the distinction.”
+
+The visible summary is now constrained to the verified castling conclusion even
+when Ollama performs fact selection. Engine-line presentation prioritizes the
+focus and explicitly requested alternative, so `O-O` cannot fall out behind
+unrelated candidates. The new regression fixture forbids the original `h4`
+substitution and requires the concrete king squares, pawn lever, queen pressure,
+rook-file contrast, and explicit engine comparison.
+
+The focused suites pass 28 tests, the complete backend suite passes 107 tests,
+and Ruff reports no issues. A real normal-comparison run with Stockfish 18 took
+about 11.4 seconds, identified `...h5` in the summary, and showed both castlings
+in the calculation. The deeper quality runner also passed in 15.19 seconds and
+found `h4` as White's recurring follow-up against all three checked replies.
+ADR 0020 and a dated evaluation retain the exact FEN, alternatives, evidence,
+and limitations for the case study.

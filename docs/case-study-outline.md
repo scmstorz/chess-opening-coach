@@ -198,6 +198,11 @@
 67. Timing becomes workload-aware: scripted and adaptive move profiles retain
     separate recent histories, and a conservative 80th-percentile estimate
     replaces the pooled exponential mean.
+68. A question comparing long and short castling exposes a new class of
+    relevance failure: all facts can be true while the system substitutes `h4`
+    for the learner's named alternative. Natural move resolution, required
+    engine roots, and a concrete `g4`/`...h5` king-safety contrast turn the
+    objection into an explicit-comparison contract.
 
 ## Evidence already captured
 
@@ -292,6 +297,9 @@
 - A public-clone onboarding audit that converts an implicit developer setup into
   platform-specific quickstarts, degraded-mode expectations, and executable
   documentation contracts
+- A persisted long-versus-short castling failure showing that answer grounding
+  also requires preserving the learner's comparison target, plus a real
+  Stockfish 18 regression exposing the `O-O ...h5` consequence
 
 ## Questions for later evaluation
 

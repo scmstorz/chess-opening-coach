@@ -46,5 +46,17 @@
     "question": "Warum ist Bb5 mittel- und langfristig gut?",
     "required_phrases": ["Springer auf c6"],
     "forbidden_phrases": ["weil Stockfish", "Stockfish sagt"]
+  },
+  {
+    "id": "long_castle_vs_short_castle",
+    "fen": "rnb1k2r/1pqp1pp1/p3pn1p/2b5/2PNP1P1/1QN1B3/PP2BP1P/R3K2R w KQkq - 0 11",
+    "focus_uci": "e1c1",
+    "question": "Warum war bei mir gerade eben die große Rochade besser als die kleine?",
+    "required_phrases": ["g4", "h5", "g1", "c1"],
+    "forbidden_phrases": [
+      "Stockfish bevorzugt O-O-O in dieser Stellung",
+      "Die Rochade bringt den König in Sicherheit und verbindet die Türme",
+      "Stockfishs nächster Kandidat ist h4"
+    ]
   }
 ]

@@ -64,5 +64,45 @@
     "forbidden_phrases": [
       "legt neue Felder dauerhaft fest"
     ]
+  },
+  {
+    "id": "long_castle_over_short_castle_with_advanced_g_pawn",
+    "fen": "rnb1k2r/1pqp1pp1/p3pn1p/2b5/2PNP1P1/1QN1B3/PP2BP1P/R3K2R w KQkq - 0 11",
+    "question": "Warum war bei mir gerade eben die große Rochade besser als die kleine?",
+    "focus_uci": "e1c1",
+    "analysis": {
+      "best_move_uci": "e1c1",
+      "best_move_san": "O-O-O",
+      "evaluation_before": 1.01,
+      "evaluation_played": 1.01,
+      "loss_pawns": 0.0,
+      "classification": "practically_equal",
+      "best_pv_san": ["O-O-O", "Nc6", "h4", "Nxd4", "Bxd4", "b6"],
+      "played_pv_san": ["O-O-O", "Nc6", "h4", "Nxd4", "Bxd4", "b6"]
+    },
+    "candidates": [
+      ["e1c1", "O-O-O", 1.01, 0.0, ["O-O-O", "Nc6", "h4", "Nxd4", "Bxd4", "b6"]],
+      ["h2h4", "h4", 0.81, 0.2, ["h4", "b6", "O-O-O", "Bb7", "f3", "Nc6"]],
+      ["e1g1", "O-O", -0.63, 1.64, ["O-O", "h5", "Ndb5", "axb5", "Nxb5", "Qc6"]]
+    ],
+    "expected_section_count": 3,
+    "summary_required_phrase": "Die große Rochade ist hier besser",
+    "required_phrases": [
+      "Die große Rochade ist hier besser",
+      "König nach O-O auf g1",
+      "nach g4 vorgerückten g-Bauern",
+      "...h5",
+      "Dame auf c7",
+      "auf h2",
+      "Turm steht nach O-O-O auf d1",
+      "ausdrücklich genannte Vergleichszug O-O",
+      "1,64 Bauerneinheiten schwächer",
+      "O-O (-0,63"
+    ],
+    "forbidden_phrases": [
+      "Stockfishs nächster Kandidat ist h4",
+      "Die Rochade bringt den König in Sicherheit und verbindet die Türme",
+      "Nach O-O-O bleiben angegriffen"
+    ]
   }
 ]

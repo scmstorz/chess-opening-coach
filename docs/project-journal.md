@@ -2012,3 +2012,42 @@ against 114 private-corpus text variants without finding a leak.
 After lowering the initial adaptive estimate to 30 seconds, the follow-up guard
 checked the same 114 staged paths plus 114 historical paths and again found no
 private-corpus overlap.
+
+## 2026-09-13 — Proposed content priority: breadth before a fourth book
+
+The learner asked whether the next increment should add another opening or
+another book. This is recorded as a recommendation, not yet an implementation
+decision. The local knowledge overlay already contains three complementary
+sources: a beginner survey, *Fundamental Chess Openings*, and the more
+principle-oriented *Discovering Chess Openings*. A fourth broad opening book
+would increase extraction, retrieval, relevance, and private-corpus maintenance
+cost without evidence that source volume is currently the limiting factor.
+
+The repertoire already contains a more direct next step. Six legal, annotated,
+but deliberately inactive `e4-white-foundations` scenarios cover Sicilian,
+French, Caro-Kann, Petroff, Philidor, and Damiano responses. ADR 0016 parked them
+because selecting one without prior teaching violated the Italian course's
+prerequisites. That decision now suggests the next product slice: introduce
+those replies explicitly before allowing them in a hidden mixed-opponent mode.
+
+Three alternatives were compared. Deepening only the Italian tree would improve
+transfer inside one opening but leave White unprepared as soon as Black avoids
+`1...e5`. Adding an unrelated complete opening such as a new first-move system
+would fragment the learner's still-small repertoire. Adding a fourth book would
+expand potential explanations but not add a practice path. The proposed order is
+therefore a small “Antworten auf 1.e4” foundation course, followed by targeted
+source acquisition only if real questions reveal a documented evidence gap.
+
+The course should use progressive disclosure: first show and explain one simple
+White plan against a named Black response, then practise that response directly,
+and only after exposure unlock a realistic mixed opponent. Sicilian, French,
+and Caro-Kann are the first useful group because each prevents the intended
+Italian setup immediately. Petroff, Philidor, and Damiano can follow as nearby
+`1...e5` branches. Before activation, the existing short PGNs still need a fresh
+didactic and Stockfish audit; “already authored” is not treated as “ready to
+teach.”
+
+If a later book is added, it should answer a measured weakness in these concrete
+positions and preferably offer beginner-oriented White plans against common
+`1.e4` defenses. Another general opening catalogue should not be imported merely
+to increase chunk count.

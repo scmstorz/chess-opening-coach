@@ -358,6 +358,7 @@ by this repository nor licensed under MIT.
 
 ## Documentation
 
+- [Current-session handoff](SESSION_HANDOFF.md)
 - [Project journal](docs/project-journal.md)
 - [Architecture](docs/architecture.md)
 - [Case study outline](docs/case-study-outline.md)

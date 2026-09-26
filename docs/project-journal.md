@@ -2112,3 +2112,114 @@ unreachable tutor returned the same complete answer in 10.18 seconds, left the
 tutor error empty, and recorded the deterministic priority reason. This verifies
 that the ordinary roughly 12-second question estimate is again realistic for
 this path rather than counting on a warm model or a silent fallback.
+
+## 2026-09-26 — First named response to the Sicilian Defense
+
+The learner asked whether Italian was still the only guided opening and then
+which opening to add next. Guided Italian was indeed the only active course;
+free play already recognized many openings but did not provide a structured
+response to `1...c5`. The recommendation was a White response to the Sicilian
+Defense, and the learner explicitly approved implementation.
+
+The earlier content decision pointed toward breadth across `1.e4` responses.
+Three options were considered for this increment. Extending Italian's hidden
+opponent to `1...c5` would repeat the prerequisite failure in ADR 0016. Adding
+a deep Open Sicilian repertoire would exceed what this learner currently needs.
+A short, separately named Sicilian course gives the learner one transferable
+central plan and visible practice against three early replies. This is the
+chosen scope; French and Caro-Kann remain future, separately introduced work.
+
+The previous inactive Sicilian sketch moved out of `italian-white.pgn` and
+became the `...d6` lesson in `sicilian-white.pgn`. Two named lines show
+`2...Nc6` and `2...e6`. All start at move one and teach why `...c5` contests
+`d4`, why White can challenge it with `d4`, why the developed knight recaptures,
+and why `Nc3` supports `e4` after `...Nf6`. Both sides receive position-specific
+explanations; every White move has two hints. The browser presents a visible
+introduction and named line choices. Course IDs are explicitly allowed through
+the guided selector, while Italian selection and the hidden realistic selector
+remain limited to the Italian family. The other five foundations sketches stay
+inactive.
+
+One candidate explanation failed manual chess review: an early `...e6` line
+claimed `Nc3` defended the knight on `d4` against `...Nc6`. It does not. The
+final `...e6` example instead uses `...Nf6`, making `Nc3` a concrete defense
+of the attacked `e4` pawn. This was a prose-truth correction, not an engine
+ranking preference.
+
+Stockfish's 0.35-second forced-root audit found at most 0.10 pawn loss for a
+White taught move and 0.13 for a scripted Black move in the recorded run.
+Short search times make the exact values variable; the result supports
+plausibility rather than a claim of unique best moves. All three named lessons
+passed a complete service replay through the finish summary. The full backend
+suite and browser production build passed at this checkpoint. ADR 0021 and the
+dated evaluation preserve the design, the reproducible audit, and its limits.
+
+## 2026-09-26 — A taught line was mistaken for the end of the game
+
+The first learner check found a product error at the new Sicilian course's
+boundary: after `5.Nc3`, the board was locked. The learner compared it with
+Italian “Realistischer Gegner”, where play continues after the scripted line.
+The cause was a reused `mainline` style: the existing completion predicate
+treated every non-realistic guided line as a finished session. The Sicilian
+course had been described as a short lesson, but the learner reasonably wanted
+to practise the position that lesson created.
+
+Keeping the finite boundary and requiring a new free game was rejected because
+it loses that position. Adding a separate resume button was rejected because
+the service already has a continuation path for an exhausted Italian realistic
+segment. The chosen fix extends that path to the explicitly named Sicilian
+lessons. After the fifth White move, the coach now marks the teaching segment
+complete, explains that the opening game continues, and plays a free reply
+using the ordinary theory/Stockfish policy. Later turns receive normal
+engine-backed guidance and the normal opening-phase choice. Italian model and
+direct branch drills remain finite. The Sicilian continuation waits until at
+least 12 half-moves before considering an opening-end prompt; Italian realistic
+play retains its 20-half-move floor.
+
+Regression tests replay all three Sicilian lines through the first free coach
+reply and another learner turn. A boundary undo test verifies that taking back
+the final taught move also removes the free reply and milestone, restoring the
+last guided question. ADR 0022 records the amended completion semantics.
+The full backend suite, frontend build and rendered-shell test, lint, Ruff,
+release publication guard, and new-file private-corpus scan passed. A live
+local run of the `...d6` lesson reached `5.Nc3`, received a free `...g6` coach
+reply, stayed in the opening phase, and left White with legal moves.
+
+## 2026-09-26 — The same selector position meant two different things
+
+The learner compared the second row of controls: Italian showed “Grundlinie”,
+“Abweichung üben”, and “Realistischer Gegner”, while Sicilian showed three
+Black replies. A screenshot confirmed that the Sicilian buttons were present
+once; the apparent repetition in the question was not a rendered duplicate.
+The actual usability problem was that the row changed meaning without a
+visible label. “Grundplan · ...d6” also made the first reply sound like a
+different exercise type from `...Nc6` and `...e6`.
+
+The control now labels the Italian row “Art der Übung” and the Sicilian row
+“Schwarz spielt nach 1.e4 c5 2.Nf3”. The Sicilian buttons simply show `d6`,
+`Nc6`, and `e6`; adjacent text explains that all three practise the same
+White plan and then continue as free play. This preserves the prerequisite
+boundary: hidden mixed practice was not added merely to make the selectors
+look identical. The copy and layout changed without restarting the local API
+or discarding the learner's current board.
+
+## 2026-09-26 — Suggested Sicilian moves waited on discarded rewrites
+
+The learner found that, in the `...e6` Sicilian exercise, playing a suggested
+move could leave “Coach prüft den Zug” on screen for several seconds. The live
+interaction record showed the first free coach reply arriving about 11 seconds
+after `5.Nc3`; later free replies followed about four seconds after each
+learner move. The suggestion's played-move analysis was cached in SQLite. The
+health endpoint reported a rejected Ollama rewrite, and the recorded messages
+used deterministic fallback text. The newly added free continuation had
+inherited that synchronous paraphrase path from ordinary free play.
+
+Automatic feedback after a guided segment now returns the verified draft
+directly. Explicit questions still have the tutor. The browser uses a separate
+five-second initial estimate for this continuation, including the first free
+coach reply. A regression test plays the `...e6` line, asks for a suggestion,
+plays it, and fails on any automatic tutor call. An isolated replay with real
+Stockfish took 0.48 seconds for the boundary hint and turn, and 0.24 seconds
+for the suggested free move and reply. ADR 0023 records the tradeoff. The
+learner explicitly approved discarding the in-memory game. The local starter
+was restarted; both backend health and the browser returned successfully.

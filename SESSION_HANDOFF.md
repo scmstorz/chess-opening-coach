@@ -6,6 +6,33 @@ Start a new session by reading this file, then inspect the actual Git status and
 runtime health: processes, model availability, and learner data can change while
 the conversation is closed.
 
+## Update: 2026-09-26
+
+The learner approved the first new guided opening course: **Sizilianisch mit
+Weiß**. This update adds a separately named course with an
+introduction and three finite exercises against `2...d6`, `2...Nc6`, and
+`2...e6`. After each taught segment, the session continues with a free coach
+reply and further play; an initial premature completion was repaired in the
+same work session. The `...d6` sketch was moved out of the Italian PGN and
+reviewed; the other two lines were authored and Stockfish checked. Italian
+realistic selection still stays inside Italian positions, and the other five `1.e4`
+foundations sketches remain inactive. See [ADR 0021](docs/decisions/0021-introduce-sicilian-white-course.md),
+the [evaluation](docs/evaluations/2026-09-26-sicilian-white-course.md),
+[ADR 0022](docs/decisions/0022-continue-after-sicilian-teaching-line.md), and the
+latest journal entry. The original 2026-09-16 Git and runtime details below
+are historical snapshots; check them again before continuing.
+
+The course selector now labels Italian choices as exercise types and Sicilian
+choices as Black's second move, after a learner screenshot exposed the ambiguity.
+
+The learner also reported slow “Coach prüft den Zug” feedback after playing a
+suggested move in the `...e6` line. ADR 0023 documents a local code change:
+free continuation after a guided segment now returns verified automatic move
+feedback without waiting for Ollama paraphrasing; explicit questions still use
+the tutor. The frontend has a separate short progress estimate for that path.
+The learner explicitly approved discarding the in-memory game. The local
+starter was restarted; backend health and the browser both responded.
+
 ## One-minute orientation
 
 The project is a **local-first, single-user browser chess coach** for a learner
@@ -48,10 +75,10 @@ learner database. Never publish a raw copy of this working directory.
   active deviations. Modes are model-line repetition, a direct deviation drill,
   and a realistic hidden opponent line. All active scenarios stay inside the
   Italian family until after `1.e4 e5 2.Nf3 Nc6 3.Bc4`.
-- Six further annotated `1.e4` response scenarios (Sicilian, French,
-  Caro-Kann, Petroff, Philidor, Damiano) exist in the PGN but are intentionally
-  **inactive**. They belong to a future, separately taught foundations course;
-  they must not leak into “Italienisch üben”.
+- A separate guided Sicilian course for White teaches one central plan through
+  three named lines. Five further annotated `1.e4` response scenarios (French,
+  Caro-Kann, Petroff, Philidor, Damiano) remain **inactive** and must not leak
+  into “Italienisch üben”.
 - The correction loop normally gives a strategic hint, then a more concrete
   hint, then reveals the answer on the third unsuccessful attempt. It is for
   materially bad moves, not sound moves merely absent from the training line.
@@ -174,22 +201,14 @@ identify its process first. See README troubleshooting for platform details.
 
 ## What is *not* decided or finished
 
-The next content increment has **not been approved for implementation**. On
-2026-09-13 the user asked whether to add an opening or another book. The
-recommendation, recorded in the journal, was **breadth before a fourth broad
-book**: turn the six inactive `1.e4` response scenarios into a separately named
-“Antworten auf 1.e4” foundations course, first teaching simple White plans
-against Sicilian, French, and Caro-Kann, then nearby `1...e5` responses. Only
-after explicit introduction should hidden mixed-opponent practice be allowed.
-The authored PGNs still need didactic and Stockfish review before activation.
-Adding a fourth general survey would increase retrieval and privacy overhead
-without clear evidence that book volume is the present bottleneck.
-
-That proposal was interrupted by the castling-explanation defect and has not
-been resumed with the user. The next conversation should **first ask what the
-user wants to do now**: playtest the corrected explanation, start the
-foundations-course discussion, or address another observed failure. Do not
-quietly unlock early Sicilian/French/Caro-Kann opponents inside Italian mode.
+The first part of the 2026-09-13 proposal is now implemented: the learner chose
+Sicilian-from-White as the next named course. Expansion to French, Caro-Kann,
+and nearby `1...e5` responses is still undecided. Each authored sketch needs
+didactic and Stockfish review before activation. Hidden mixed-opponent practice
+requires explicit prior teaching and remains locked. A fourth broad book still
+lacks evidence of a current retrieval bottleneck. The next conversation can
+playtest the new Sicilian course, revisit the corrected castling explanation,
+or address a newly observed issue.
 
 Other known limits and deferred work:
 

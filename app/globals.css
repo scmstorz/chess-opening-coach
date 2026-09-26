@@ -59,6 +59,8 @@ h1 { font-size: clamp(31px, 4vw, 52px); letter-spacing: -0.045em; line-height: 0
 h2 { font-size: 25px; letter-spacing: -0.025em; }
 
 .session-options { align-items: flex-end; display: grid; gap: 7px; justify-items: end; }
+.selection-caption { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .06em; line-height: 1.3; text-transform: uppercase; }
+.selection-note { color: var(--muted); font-size: 10px; line-height: 1.35; margin: 0; max-width: 330px; text-align: right; }
 .mode-picker, .color-picker, .guided-style-picker { background: #e9e4d9; border-radius: 10px; display: flex; padding: 4px; }
 .mode-option, .color-option, .style-option { background: transparent; border: 0; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 9px 13px; }
 .style-option { font-size: 10px; padding: 7px 10px; }
@@ -73,6 +75,9 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .evaluation-track { background: #26322b; border-radius: 99px; height: 6px; margin-top: 7px; overflow: hidden; }
 .evaluation-track span { background: #f7f4ec; display: block; height: 100%; transition: width 260ms ease; }
 .evaluation-help { color: var(--muted); font-size: 9px; margin: 6px 0 0; text-align: center; }
+.lesson-intro { background: #f7f0db; border: 1px solid #e2cf96; border-radius: 9px; margin: 0 0 13px; padding: 10px 12px; }
+.lesson-intro strong { color: #654e16; display: block; font-size: 12px; }
+.lesson-intro p { color: #6d5b2a; font-size: 11px; line-height: 1.45; margin: 4px 0 0; }
 .lesson-prompt { align-items: center; background: var(--green-soft); border: 1px solid #bed0c3; border-radius: 9px; display: flex; gap: 16px; justify-content: space-between; margin: 0 0 13px; padding: 10px 12px; }
 .lesson-prompt div { display: grid; gap: 2px; }
 .lesson-prompt span { color: var(--green); font-size: 9px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
@@ -296,6 +301,7 @@ details p { color: var(--muted); font-family: inherit !important; font-size: 13p
   .workspace { padding: 28px 12px 44px; }
   .session-toolbar { align-items: flex-start; flex-direction: column; gap: 18px; }
   .session-options, .mode-picker, .color-picker, .guided-style-picker { justify-items: stretch; width: 100%; }
+  .selection-caption, .selection-note { justify-self: start; text-align: left; }
   .mode-option, .color-option, .style-option { flex: 1; }
   .lesson-prompt { align-items: flex-start; flex-direction: column; gap: 6px; }
   .lesson-prompt small { text-align: left; }

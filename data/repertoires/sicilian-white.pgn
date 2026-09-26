@@ -1,0 +1,83 @@
+[Event "Sicilian White: basic plan against d6"]
+[Site "Local"]
+[Date "2026.09.26"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "B54"]
+[Opening "Sicilian Defense"]
+[LessonId "sicilian-white-d6"]
+[LessonFamily "e4-white-foundations"]
+[LessonTitle "Sizilianisch: Grundplan gegen ...d6"]
+[TrainingSide "White"]
+[LessonGoal "Mit d4 das Zentrum öffnen, mit dem Springer zurücknehmen und e4 decken"]
+[DrillStartPly "0"]
+[RealisticWeight "0"]
+[OpponentCategory "established"]
+
+1. e4 {Du nimmst Raum im Zentrum und öffnest Linien für Läufer und Dame. Nach ...c5 brauchst du einen anderen Aufbau als im Italienischen Spiel. [%hint1 Besetze mit einem Bauern das Zentrum.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
+1... c5 {Schwarz greift d4 mit dem c-Bauern an. So entsteht die Sizilianische Verteidigung; der italienische Aufbau nach ...e5 ist hier nicht möglich.}
+2. Nf3 {Du entwickelst den Königsspringer. Er kann nach einem Tausch auf d4 zurücknehmen und hilft bei der kurzen Rochade. [%hint1 Entwickle eine Figur, die später auf d4 zurücknehmen kann.] [%hint2 Ziehe den Königsspringer nach f3.]}
+2... d6 {Schwarz hält e5 unter Kontrolle und macht den Weg für den Läufer auf c8 frei. Der c5-Bauer greift weiter d4 an.}
+3. d4 {Du stellst den d-Bauern ins Zentrum und greifst c5 an. Nach einem Tausch wird dein Springer auf d4 aktiv stehen. [%hint1 Fordere den schwarzen c5-Bauern mit einem Zentralbauern heraus.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+3... cxd4 {Schwarz tauscht seinen c-Bauern gegen deinen d-Bauern und erhält die halboffene c-Linie. Du kannst nun mit einer Figur zurücknehmen.}
+4. Nxd4 {Dein bereits entwickelter Springer nimmt zurück und steht zentral. Schwarz hat dafür Druck auf der c-Linie als mögliches Gegenspiel. [%hint1 Nimm mit der Figur zurück, die schon auf f3 steht.] [%hint2 Der Springer auf f3 kann nach d4 schlagen.]}
+4... Nf6 {Schwarz entwickelt den Springer und greift deinen e4-Bauern an. Du solltest die Drohung mit Entwicklung beantworten.}
+5. Nc3 {Du deckst e4 mit dem Damenspringer und entwickelst zugleich eine Figur. Als Nächstes kannst du den Läufer entwickeln und die Königssicherheit planen. [%hint1 Entwickle eine Figur, die e4 deckt.] [%hint2 Der Springer auf b1 soll nach c3.]} *
+
+[Event "Sicilian White: response to Nc6"]
+[Site "Local"]
+[Date "2026.09.26"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "B33"]
+[Opening "Sicilian Defense"]
+[LessonId "sicilian-white-nc6"]
+[LessonFamily "e4-white-foundations"]
+[LessonTitle "Sizilianisch gegen ...Nc6"]
+[TrainingSide "White"]
+[LessonGoal "Nach ...Nc6 mit d4 das Zentrum öffnen und den e4-Bauern im Blick behalten"]
+[DrillStartPly "0"]
+[RealisticWeight "0"]
+[OpponentCategory "established"]
+
+1. e4 {Du nimmst Raum im Zentrum und öffnest Linien für Läufer und Dame. [%hint1 Besetze das Zentrum mit einem Bauern.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
+1... c5 {Schwarz greift d4 von der Seite an. Auch gegen diese Antwort kannst du um das Zentrum kämpfen.}
+2. Nf3 {Der Königsspringer entwickelt sich und kann nach einem Tausch auf d4 zurücknehmen. [%hint1 Entwickle eine Figur, die später auf d4 aktiv werden kann.] [%hint2 Ziehe den Königsspringer nach f3.]}
+2... Nc6 {Schwarz entwickelt einen Springer und kontrolliert d4 sowie e5. Der c5-Bauer bleibt ein Angriffsziel für deinen d-Bauern.}
+3. d4 {Du greifst c5 mit deinem d-Bauern an und öffnest bei einem Tausch das Zentrum für die Figuren. [%hint1 Fordere c5 mit einem Zentralbauern heraus.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+3... cxd4 {Schwarz tauscht auf d4 und öffnet die c-Linie für späteres Gegenspiel.}
+4. Nxd4 {Du nimmst mit dem Springer zurück. Er steht aktiv im Zentrum und die Dame bleibt auf ihrem Ausgangsfeld sicher. [%hint1 Nutze die bereits entwickelte Figur zum Zurücknehmen.] [%hint2 Der Springer auf f3 schlägt auf d4.]}
+4... Nf6 {Schwarz greift e4 an, während sein Springer sich entwickelt.}
+5. Nc3 {Du deckst den angegriffenen e4-Bauern und entwickelst den zweiten Springer. Danach sind Läuferentwicklung und Rochade die nächsten Aufgaben. [%hint1 Verbinde das Decken von e4 mit Entwicklung.] [%hint2 Der Springer auf b1 kann nach c3.]} *
+
+[Event "Sicilian White: response to e6"]
+[Site "Local"]
+[Date "2026.09.26"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "B40"]
+[Opening "Sicilian Defense"]
+[LessonId "sicilian-white-e6"]
+[LessonFamily "e4-white-foundations"]
+[LessonTitle "Sizilianisch gegen ...e6"]
+[TrainingSide "White"]
+[LessonGoal "Nach ...e6 das Zentrum mit d4 öffnen und die Figuren zügig entwickeln"]
+[DrillStartPly "0"]
+[RealisticWeight "0"]
+[OpponentCategory "established"]
+
+1. e4 {Du nimmst Raum im Zentrum und öffnest Linien für Läufer und Dame. [%hint1 Besetze das Zentrum mit einem Bauern.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
+1... c5 {Schwarz greift d4 mit dem c-Bauern an und wählt die Sizilianische Verteidigung.}
+2. Nf3 {Du entwickelst den Königsspringer und bereitest vor, nach einem Tausch auf d4 mit ihm zurückzunehmen. [%hint1 Entwickle eine Figur mit Blick auf das Zentrum.] [%hint2 Ziehe den Königsspringer nach f3.]}
+2... e6 {Schwarz bereitet ...d5 vor und öffnet dem Läufer auf f8 den Weg. Der c5-Bauer greift weiterhin d4 an.}
+3. d4 {Du greifst den c5-Bauern an und bringst einen zweiten Bauern ins Zentrum, bevor Schwarz selbst ...d5 spielt. [%hint1 Fordere den schwarzen c-Bauern mit einem Zentralbauern heraus.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+3... cxd4 {Schwarz tauscht auf d4. Der weiße Springer kann die zentrale Stellung übernehmen.}
+4. Nxd4 {Der Springer nimmt zurück und kontrolliert von d4 aus wichtige Felder. Du brauchst nun weitere Entwicklung, damit er dort gut unterstützt ist. [%hint1 Nimm mit einer entwickelten Figur zurück.] [%hint2 Der Springer auf f3 kann nach d4 schlagen.]}
+4... Nf6 {Schwarz entwickelt den Königsspringer und greift deinen e4-Bauern an.}
+5. Nc3 {Du entwickelst den zweiten Springer und deckst damit e4. Danach bleiben Läufer und Königssicherheit auf deiner Aufgabenliste. [%hint1 Decke e4 durch Entwicklung einer Figur.] [%hint2 Der Springer auf b1 gehört nach c3.]} *

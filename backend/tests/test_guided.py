@@ -1,11 +1,16 @@
 import json
 import random
 from pathlib import Path
+from unittest.mock import Mock
 
 import chess
 import pytest
 from chess_coach.api import create_app
-from chess_coach.guided import ITALIAN_WHITE_LESSON_ID, GuidedLessonBook
+from chess_coach.guided import (
+    ITALIAN_WHITE_LESSON_ID,
+    SICILIAN_WHITE_LESSON_IDS,
+    GuidedLessonBook,
+)
 from chess_coach.openings import OpeningBook
 from chess_coach.service import CoachService
 from chess_coach.storage import SQLiteStore
@@ -31,7 +36,7 @@ def test_italian_lesson_loads_from_annotated_pgn() -> None:
     lesson_book = GuidedLessonBook(REPERTOIRE_PATH)
     lesson = lesson_book.get(ITALIAN_WHITE_LESSON_ID)
 
-    assert len(lesson_book.lessons) == 13
+    assert len(lesson_book.lessons) == 15
     assert sum(item.realistic_weight for item in lesson_book.lessons.values()) == 100
     assert lesson.title == "Italienisches Spiel mit Weiß"
     assert lesson.eco == "C50"
@@ -51,7 +56,7 @@ def test_italian_lesson_loads_from_annotated_pgn() -> None:
     assert all(
         lesson_book.first_divergence_ply(item) == item.drill_start_ply - 1
         for item in lesson_book.lessons.values()
-        if item.lesson_id != ITALIAN_WHITE_LESSON_ID
+        if item.family == "italian-white" and item.lesson_id != ITALIAN_WHITE_LESSON_ID
     )
     active_italian = [
         item
@@ -288,20 +293,125 @@ def test_realistic_selector_uses_multiple_curated_opponent_lines() -> None:
     }
 
 
-def test_other_first_move_openings_are_retained_but_not_selected_for_italian() -> None:
+def test_sicilian_course_is_named_and_other_foundations_stay_inactive() -> None:
     lesson_book = GuidedLessonBook(REPERTOIRE_PATH)
     coach = guided_service()
 
-    assert lesson_book.get("italian-white-vs-sicilian").family == "e4-white-foundations"
-    assert lesson_book.get("italian-white-vs-sicilian").realistic_weight == 0
+    assert SICILIAN_WHITE_LESSON_IDS <= lesson_book.lessons.keys()
+    assert all(
+        lesson_book.get(lesson_id).family == "e4-white-foundations"
+        and lesson_book.get(lesson_id).realistic_weight == 0
+        and lesson_book.get(lesson_id).drill_start_ply == 0
+        for lesson_id in SICILIAN_WHITE_LESSON_IDS
+    )
+    assert lesson_book.get("italian-white-vs-french").realistic_weight == 0
 
     with pytest.raises(ValueError, match="gehört nicht zum Italienisch-Training"):
         coach.create_session(
             "white",
             training_mode="guided",
-            lesson_style="branches",
-            lesson_id="italian-white-vs-sicilian",
+            lesson_style="mainline",
+            lesson_id="italian-white-vs-french",
         )
+    with pytest.raises(ValueError, match="benannte Grundlinienübung"):
+        coach.create_session(
+            "white",
+            training_mode="guided",
+            lesson_style="realistic",
+            lesson_id="sicilian-white-d6",
+        )
+
+
+@pytest.mark.parametrize(
+    ("lesson_id", "black_second_move"),
+    [
+        ("sicilian-white-d6", "d6"),
+        ("sicilian-white-nc6", "Nc6"),
+        ("sicilian-white-e6", "e6"),
+    ],
+)
+def test_sicilian_lesson_teaches_then_continues_after_named_line(
+    lesson_id: str, black_second_move: str
+) -> None:
+    coach = guided_service()
+    response = coach.create_session(
+        "white", training_mode="guided", lesson_style="mainline", lesson_id=lesson_id
+    )
+    session_id = response["session_id"]
+
+    assert response["lesson"]["lesson_id"] == lesson_id
+    assert response["training_progress"]["total"] == 5
+    assert "Sizilianisch" in response["messages"][0]["summary"]
+    assert "d4" in response["messages"][0]["details"]
+
+    for move_uci in ("e2e4", "g1f3", "d2d4", "f3d4", "b1c3"):
+        response = coach.play_learner_move(session_id, move_uci[:2], move_uci[2:4])
+
+    assert response["move_history"][1] == {"actor": "coach", "san": "c5"}
+    assert response["move_history"][3] == {
+        "actor": "coach", "san": black_second_move
+    }
+    assert response["phase"] == "opening"
+    assert response["opening_summary"] is None
+    assert response["training_progress"] is None
+    assert coach.sessions[session_id].guided_segment_complete is True
+    assert len(response["move_history"]) == 10
+    assert response["messages"][1]["kind"] == "milestone"
+    assert "frei weiter" in response["messages"][1]["summary"]
+    assert response["messages"][2]["actor"] == "coach"
+    assert response["messages"][2]["move"] is not None
+
+    next_move = next(move for move in response["legal_moves"] if move != "f2f3")
+    continued = coach.play_learner_move(session_id, next_move[:2], next_move[2:4])
+    assert len(continued["move_history"]) == 12
+    assert continued["messages"][0]["actor"] == "learner"
+
+
+def test_sicilian_e6_suggested_moves_continue_without_waiting_for_tutor() -> None:
+    coach = guided_service()
+    coach.tutor.explain = Mock(side_effect=AssertionError("automatic tutor call"))
+    response = coach.create_session(
+        "white", training_mode="guided", lesson_id="sicilian-white-e6"
+    )
+    session_id = response["session_id"]
+
+    for move_uci in ("e2e4", "g1f3", "d2d4", "f3d4", "b1c3"):
+        suggestion = coach.suggest_move(session_id)
+        assert suggestion["move_uci"] == move_uci
+        response = coach.play_learner_move(session_id, move_uci[:2], move_uci[2:4])
+
+    assert response["messages"][-1]["actor"] == "coach"
+    assert response["messages"][-1]["source"] == "deterministic"
+    assert coach.sessions[session_id].guided_segment_complete is True
+
+    suggestion = coach.suggest_move(session_id)
+    response = coach.play_learner_move(
+        session_id, suggestion["move_uci"][:2], suggestion["move_uci"][2:4]
+    )
+
+    assert [message["source"] for message in response["messages"][:2]] == [
+        "deterministic",
+        "deterministic",
+    ]
+    coach.tutor.explain.assert_not_called()
+
+
+def test_sicilian_undo_reopens_the_last_taught_move() -> None:
+    coach = guided_service()
+    response = coach.create_session(
+        "white", training_mode="guided", lesson_id="sicilian-white-d6"
+    )
+    session_id = response["session_id"]
+    for move_uci in ("e2e4", "g1f3", "d2d4", "f3d4", "b1c3"):
+        coach.play_learner_move(session_id, move_uci[:2], move_uci[2:4])
+
+    reopened = coach.undo_last_turn(session_id)
+
+    assert reopened["phase"] == "opening"
+    assert reopened["training_progress"]["current"] == 5
+    assert len(reopened["move_history"]) == 8
+    assert coach.sessions[session_id].guided_segment_complete is False
+    assert all(message["kind"] != "milestone" for message in reopened["message_history"])
 
 
 def test_branch_drill_can_end_on_learner_move_and_reopen_with_undo() -> None:

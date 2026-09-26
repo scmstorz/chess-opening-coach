@@ -23,6 +23,7 @@ from chess_coach.engine import (
 from chess_coach.guided import (
     GUIDED_STYLES,
     ITALIAN_WHITE_LESSON_ID,
+    SICILIAN_WHITE_LESSON_IDS,
     GuidedLesson,
     GuidedLessonBook,
     GuidedMove,
@@ -1582,7 +1583,7 @@ class CoachService:
             return
         expected = self._guided_expected_move(session)
         if expected is None:
-            milestone = self._finish_realistic_segment_if_needed(session)
+            milestone = self._finish_prepared_segment_if_needed(session)
             if milestone is not None:
                 messages.append(milestone)
             if session.guided_segment_complete:
@@ -1591,7 +1592,7 @@ class CoachService:
         if expected.color == session.learner_color:
             raise ValueError("Die Trainingslinie enthält zwei Lernzüge ohne Coach-Antwort")
         messages.append(self._play_coach_move(session))
-        milestone = self._finish_realistic_segment_if_needed(session)
+        milestone = self._finish_prepared_segment_if_needed(session)
         if milestone is not None:
             messages.append(milestone)
 
@@ -1667,26 +1668,32 @@ class CoachService:
         return expected
 
     @staticmethod
-    def _finish_realistic_segment_if_needed(
+    def _finish_prepared_segment_if_needed(
         session: GameSession,
     ) -> dict[str, Any] | None:
-        """Turn a finished realistic script into free opening play, not a finished lesson."""
+        """Continue a finished teaching script as free opening play."""
 
         if (
             session.lesson is None
-            or session.lesson_style != "realistic"
+            or (
+                session.lesson_style != "realistic"
+                and session.lesson.lesson_id not in SICILIAN_WHITE_LESSON_IDS
+            )
             or session.guided_segment_complete
             or session.lesson_ply < len(session.lesson.moves)
         ):
             return None
         session.guided_segment_complete = True
         is_mainline = session.lesson.lesson_id == ITALIAN_WHITE_LESSON_ID
+        is_sicilian = session.lesson.lesson_id in SICILIAN_WHITE_LESSON_IDS
         return {
             "kind": "milestone",
             "actor": "coach",
             "move": None,
             "summary": (
-                "Die Grundlinie sitzt. Jetzt spielen wir die Eröffnungsphase frei weiter."
+                "Der Sizilianisch-Grundplan ist geübt. Jetzt spielen wir die Eröffnung frei weiter."
+                if is_sicilian
+                else "Die Grundlinie sitzt. Jetzt spielen wir die Eröffnungsphase frei weiter."
                 if is_mainline
                 else "Du hast diese Abweichung beantwortet. Wir spielen die Eröffnungsphase weiter."
             ),
@@ -1732,6 +1739,15 @@ class CoachService:
                 "Baue zuerst die italienische Ausgangsstellung auf. Erkenne danach, "
                 "welcher Plan zur schwarzen Antwort passt oder ob Schwarz etwas Konkretes erlaubt. "
                 "Die Gegnerlinie bleibt verborgen, bis sie auf dem Brett erscheint."
+            )
+        elif session.lesson.lesson_id in SICILIAN_WHITE_LESSON_IDS:
+            summary = "Du lernst Sizilianisch mit Weiß. Was ist dein erster Zug?"
+            details = (
+                "Nach 1...c5 greift Schwarz d4 mit dem c-Bauern an. "
+                "Dein Grundplan: Nf3 entwickeln, mit d4 das Zentrum herausfordern "
+                "und nach ...cxd4 mit Nxd4 zurücknehmen. Falls ...Nf6 den Bauern "
+                "auf e4 angreift, entwickelt Nc3 eine Figur und deckt ihn. "
+                "Die schwarzen Antworten werden in benannten Übungen gezeigt."
             )
         else:
             summary = f"Du spielst {color}. Was ist dein erster Zug?"
@@ -1896,7 +1912,7 @@ class CoachService:
             model=None,
         )
         facts = self._grounded(session, "learner", san, theory_match, analysis, opening_after)
-        return self._message("learner", san, facts, fallback)
+        return self._message(session, "learner", san, facts, fallback)
 
     def _coach_message(
         self,
@@ -1933,7 +1949,7 @@ class CoachService:
             model=None,
         )
         facts = self._grounded(session, "coach", san, theory_match, analysis, opening_after)
-        return self._message("coach", san, facts, fallback)
+        return self._message(session, "coach", san, facts, fallback)
 
     def _mistake_message(
         self,
@@ -1965,7 +1981,7 @@ class CoachService:
             model=None,
         )
         facts = self._grounded(session, "learner", san, theory_match, analysis, session.opening)
-        return self._message("learner", san, facts, fallback)
+        return self._message(session, "learner", san, facts, fallback)
 
     def _solution_message(
         self, session: GameSession, played_san: str, recommended_san: str, analysis: MoveAnalysis
@@ -1978,7 +1994,7 @@ class CoachService:
             model=None,
         )
         facts = self._grounded(session, "learner", recommended_san, True, analysis, session.opening)
-        return self._message("learner", recommended_san, facts, fallback)
+        return self._message(session, "learner", recommended_san, facts, fallback)
 
     def _illegal_message(self, attempt: int) -> dict[str, Any]:
         return {
@@ -1996,9 +2012,20 @@ class CoachService:
         }
 
     def _message(
-        self, actor: str, san: str, facts: dict[str, Any], fallback: TutorText
+        self,
+        session: GameSession,
+        actor: str,
+        san: str,
+        facts: dict[str, Any],
+        fallback: TutorText,
     ) -> dict[str, Any]:
-        text = self.tutor.explain(facts, fallback)
+        # The taught segment already has authored feedback. Its free continuation
+        # should keep automatic turns responsive; deeper questions still use the tutor.
+        text = (
+            fallback
+            if session.lesson is not None and session.guided_segment_complete
+            else self.tutor.explain(facts, fallback)
+        )
         return {
             "kind": "move",
             "actor": actor,
@@ -2174,6 +2201,7 @@ class CoachService:
         guided_complete = bool(
             session.lesson is not None
             and session.lesson_style != "realistic"
+            and session.lesson.lesson_id not in SICILIAN_WHITE_LESSON_IDS
             and session.lesson_ply >= len(session.lesson.moves)
             and correction is None
         )
@@ -2220,15 +2248,18 @@ class CoachService:
         should_check_phase = completed_turn or (
             session.board.is_game_over() and any(message.get("move_uci") for message in messages)
         )
-        realistic_continuation = bool(
+        guided_continuation = bool(
             session.lesson is not None
-            and session.lesson_style == "realistic"
             and session.guided_segment_complete
         )
-        free_opening_play = session.lesson is None or realistic_continuation
-        minimum_opening_horizon_reached = not realistic_continuation or (
+        free_opening_play = session.lesson is None or guided_continuation
+        minimum_opening_horizon_reached = not guided_continuation or (
             len(session.move_history)
-            >= len(self.guided_lessons.get(ITALIAN_WHITE_LESSON_ID).moves)
+            >= (
+                len(self.guided_lessons.get(ITALIAN_WHITE_LESSON_ID).moves)
+                if session.lesson_style == "realistic"
+                else 12
+            )
         )
         if (
             free_opening_play

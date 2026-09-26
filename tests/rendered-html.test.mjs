@@ -22,7 +22,9 @@ test("server-renders the chess coach product shell", async () => {
   assert.match(html, /favicon\.svg/);
   assert.match(html, />Eröffnungen<\/h1>/);
   assert.match(html, /Italienisch üben/);
+  assert.match(html, /Sizilianisch üben/);
   assert.match(html, /Freies Spiel/);
+  assert.match(html, /Art der Übung/);
   assert.match(html, /Grundlinie/);
   assert.match(html, /Abweichung üben/);
   assert.match(html, /Realistischer Gegner/);

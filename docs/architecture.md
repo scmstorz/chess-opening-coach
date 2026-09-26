@@ -48,11 +48,16 @@ top-one candidate.
 
 The active Italian-from-White family contains one model line and six opponent
 deviations. Every active scenario shares the prefix
-`1.e4 e5 2.Nf3 Nc6 3.Bc4`; only then may the coach vary. Six already-authored
-responses to earlier opening switches remain in the PGN under the separate
-`e4-white-foundations` family with zero selection weight. They are not reachable
-through the UI until a later foundations curriculum teaches those openings.
-The same active linear scenario can be presented in three ways:
+`1.e4 e5 2.Nf3 Nc6 3.Bc4`; only then may the coach vary. A separate
+Sicilian-from-White course explicitly selects three named lines against
+`2...d6`, `2...Nc6`, and `2...e6`. Each starts at move one and introduces the
+central `d4` plan. Its authored segment ends after the first five White moves;
+the coach then replies from theory or Stockfish and the opening game continues.
+These lines have zero realistic-selection weight, so they cannot appear in
+Italian practice or
+a hidden mixed-opponent session. The five other `1.e4` response lessons remain
+inactive in `e4-white-foundations`. Italian scenarios can be presented in three
+ways:
 
 ```text
 model line
@@ -249,6 +254,11 @@ only that draft. Generated numbers and opening terminology are checked; output
 that appears to add unsupported facts is discarded in favor of the deterministic
 text.
 
+After a guided lesson's authored segment ends, automatic move feedback uses
+that verified draft directly so play does not wait for optional paraphrasing.
+Explicit position questions still use the grounded tutor flow. Ordinary free
+play keeps its existing automatic paraphrase path.
+
 Expanded move details are intentionally a separate information layer, not a
 longer copy of the summary. Pawn explanations enumerate their verified before-
 and-after controlled squares, support of an existing pawn, and newly freed
@@ -354,19 +364,19 @@ and its target. When this narrow condition holds, its causal sentence becomes
 the answer and both LLM selection and book retrieval are skipped.
 
 The UI estimates remaining time from operation-specific recent histories kept
-in browser storage. Scripted repertoire replies and adaptive coach replies use
-separate profiles: the former usually needs only board and engine checks, while
-the latter can include two Ollama explanations and varies much more. The
-adaptive profile starts at 30 seconds; the scripted profile at
-4 seconds. Each profile retains the last eight valid measurements and estimates
+in browser storage. Scripted repertoire replies, free continuation after a
+guided segment, and adaptive free-play replies use separate profiles. The first
+two need board and engine checks; ordinary free play can include two Ollama
+explanations. The profiles start at 4, 5, and 30 seconds respectively. Each
+profile retains the last eight valid measurements and estimates
 from their 80th percentile plus a 20-percent and two-second margin. This targets
 the upper part of recent experience rather than a mean that is exceeded about
 half the time.
 
-The final move of a realistic scripted segment uses the adaptive profile because
-that request may cross into free play and generate the first unscripted coach
-reply. Versioned storage keys deliberately retire the earlier pooled rolling
-average. The countdown remains an estimate and changes to “noch einen Moment”
+The final move of a continuing guided segment uses the continuation profile
+because that request also generates the first unscripted coach reply. Versioned
+storage keys deliberately retire the earlier pooled rolling average. The
+countdown remains an estimate and changes to “noch einen Moment”
 if work still exceeds it. This preference-like telemetry is device-local and is
 not learner-state data.
 
@@ -540,7 +550,7 @@ a settled product requirement rather than an incidental implementation detail.
 
 - Single local learner
 - Standard chess only
-- Untimed free opening play and a guided Italian-from-White scenario family
+- Untimed free opening play, guided Italian scenarios, and named Sicilian exercises for White
 - No authentication or cloud persistence
 - No imported PGN analysis
 - No automatic network refresh

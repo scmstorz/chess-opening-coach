@@ -37,34 +37,6 @@
 10. h3 {Der Zug verhindert ...Bg4 und gibt deinem König ein Luftfeld, ohne den zentralen Aufbau zu verändern. [%hint1 Verhindere, dass der Läufer auf c8 eine Figur auf f3 fesselt.] [%hint2 Ein Randbauer kann dem Feld g4 die Kontrolle entziehen.]}
 10... h6 {Schwarz nimmt dem weißen Läufer oder Springer das Feld g5 und schafft ebenfalls ein Luftfeld.} *
 
-[Event "Italian White: Sicilian switch"]
-[Site "Local"]
-[Date "2026.09.11"]
-[Round "-"]
-[White "Learner"]
-[Black "Coach"]
-[Result "*"]
-[ECO "B50"]
-[Opening "Sicilian Defense: Modern Variations"]
-[LessonId "italian-white-vs-sicilian"]
-[LessonFamily "e4-white-foundations"]
-[LessonTitle "Wenn Schwarz Sizilianisch wählt"]
-[TrainingSide "White"]
-[LessonGoal "Erkennen, dass Italienisch nicht mehr möglich ist, und mit Entwicklung plus d4 reagieren"]
-[DrillStartPly "2"]
-[RealisticWeight "0"]
-[OpponentCategory "established"]
-
-1. e4 {Du besetzt das Zentrum und lässt offen, welche Verteidigung Schwarz wählt. [%hint1 Besetze das Zentrum und öffne Linien für Dame und Läufer.] [%hint2 Ziehe den Bauern vor deinem König zwei Felder.]}
-1... c5 {Schwarz wählt die Sizilianische Verteidigung und kontrolliert d4 von der Seite. Italienisch ist damit nicht mehr möglich.}
-2. Nf3 {Du entwickelst den Königsspringer und bereitest d4 vor, statt den c5-Bauern sofort zu jagen. [%hint1 Entwickle eine Figur und bereite zugleich den zentralen Vorstoß d4 vor.] [%hint2 Der Königsspringer gehört nach f3.]}
-2... d6 {Schwarz kontrolliert e5 und bereitet die Entwicklung des Königsspringers vor.}
-3. d4 {Du öffnest das Zentrum, bevor Schwarz seinen Raumvorteil am Damenflügel ausbauen kann. [%hint1 Stelle jetzt einen zweiten Bauern ins Zentrum.] [%hint2 Der d-Bauer soll den c5-Bauern angreifen.]}
-3... cxd4 {Schwarz tauscht den c-Bauern gegen deinen zentralen d-Bauern.}
-4. Nxd4 {Der entwickelte Springer nimmt zurück und steht aktiv im Zentrum, ohne die Dame früh herauszubringen. [%hint1 Nimm den Bauern mit einer bereits entwickelten Figur zurück.] [%hint2 Der Springer auf f3 kann nach d4 schlagen.]}
-4... Nf6 {Schwarz entwickelt mit Angriff auf e4.}
-5. Nc3 {Der zweite Springer entwickelt sich, deckt e4 und kontrolliert d5. [%hint1 Decke e4 und entwickle zugleich deine letzte Springerfigur.] [%hint2 Der Springer auf b1 gehört nach c3.]} *
-
 [Event "Italian White: French switch"]
 [Site "Local"]
 [Date "2026.09.11"]

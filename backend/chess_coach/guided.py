@@ -13,6 +13,9 @@ from chess_coach.openings import position_key
 
 ITALIAN_WHITE_LESSON_ID = "italian-white-pianissimo"
 ITALIAN_WHITE_FAMILY = "italian-white"
+SICILIAN_WHITE_LESSON_IDS = frozenset(
+    {"sicilian-white-d6", "sicilian-white-nc6", "sicilian-white-e6"}
+)
 GUIDED_STYLES = frozenset({"mainline", "branches", "realistic"})
 OPPONENT_CATEGORIES = frozenset(
     {"established", "solid", "slow", "dubious", "trap", "mistake"}
@@ -117,6 +120,12 @@ class GuidedLessonBook:
             raise ValueError(f"Unbekannte Form des geführten Trainings: {style}")
         if lesson_id is not None:
             lesson = self.get(lesson_id)
+            if lesson.lesson_id in SICILIAN_WHITE_LESSON_IDS:
+                if style != "mainline" or lesson.family != "e4-white-foundations":
+                    raise ValueError(
+                        "Sizilianisch wird nur als benannte Grundlinienübung angeboten"
+                    )
+                return lesson
             if lesson.family != ITALIAN_WHITE_FAMILY:
                 raise ValueError("Die gewählte Lektion gehört nicht zum Italienisch-Training")
             if lesson.lesson_id != ITALIAN_WHITE_LESSON_ID:
@@ -158,6 +167,8 @@ class GuidedLessonBook:
         )[0]
 
     def first_divergence_ply(self, lesson: GuidedLesson) -> int | None:
+        if lesson.family != ITALIAN_WHITE_FAMILY:
+            raise ValueError("Abweichungen werden nur innerhalb des Italienisch-Kurses verglichen")
         mainline = self.get(ITALIAN_WHITE_LESSON_ID)
         if lesson.lesson_id == mainline.lesson_id:
             return None

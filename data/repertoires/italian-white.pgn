@@ -37,34 +37,6 @@
 10. h3 {Der Zug verhindert ...Bg4 und gibt deinem König ein Luftfeld, ohne den zentralen Aufbau zu verändern. [%hint1 Verhindere, dass der Läufer auf c8 eine Figur auf f3 fesselt.] [%hint2 Ein Randbauer kann dem Feld g4 die Kontrolle entziehen.]}
 10... h6 {Schwarz nimmt dem weißen Läufer oder Springer das Feld g5 und schafft ebenfalls ein Luftfeld.} *
 
-[Event "Italian White: French switch"]
-[Site "Local"]
-[Date "2026.09.11"]
-[Round "-"]
-[White "Learner"]
-[Black "Coach"]
-[Result "*"]
-[ECO "C11"]
-[Opening "French Defense: Classical Variation"]
-[LessonId "italian-white-vs-french"]
-[LessonFamily "e4-white-foundations"]
-[LessonTitle "Wenn Schwarz Französisch wählt"]
-[TrainingSide "White"]
-[LessonGoal "Mit d4 das breite Zentrum aufbauen und Raum sichern"]
-[DrillStartPly "2"]
-[RealisticWeight "0"]
-[OpponentCategory "established"]
-
-1. e4 {Du besetzt das Zentrum und öffnest Linien für Dame und Läufer. [%hint1 Besetze das Zentrum und öffne zwei Figurenlinien.] [%hint2 Ziehe den Bauern vor deinem König zwei Felder.]}
-1... e6 {Schwarz wählt die Französische Verteidigung und bereitet ...d5 gegen dein Zentrum vor. Italienisch ist damit nicht mehr möglich.}
-2. d4 {Du nutzt den Raum und baust mit e4 und d4 ein starkes Bauernzentrum auf. [%hint1 Besetze auch das zweite zentrale Feld mit einem Bauern.] [%hint2 Ziehe den Bauern vor deiner Dame zwei Felder.]}
-2... d5 {Schwarz greift sofort deinen e4-Bauern an.}
-3. Nc3 {Du entwickelst eine Figur und deckst e4, ohne die Spannung vorschnell aufzulösen. [%hint1 Decke e4 durch Entwicklung einer Figur.] [%hint2 Der Damenspringer kann nach c3.]}
-3... Nf6 {Schwarz erhöht den Druck auf e4.}
-4. e5 {Du gewinnst Raum und vertreibst den Springer, musst später aber deine Bauernkette stützen. [%hint1 Nutze deinen Raumvorteil und greife den Springer an.] [%hint2 Schiebe den angegriffenen e-Bauern ein Feld vor.]}
-4... Nfd7 {Der Springer weicht aus und bereitet Gegendruck mit ...c5 vor.}
-5. f4 {Du stützt e5 und stabilisierst die Spitze deiner Bauernkette. [%hint1 Stütze den weit vorgerückten Bauern auf e5.] [%hint2 Der f-Bauer kann diese Aufgabe übernehmen.]} *
-
 [Event "Italian White: Caro-Kann switch"]
 [Site "Local"]
 [Date "2026.09.11"]

@@ -131,6 +131,14 @@ def opening_end_session(coach: CoachService) -> tuple[str, chess.Board]:
     return session_id, board
 
 
+def knight_repetition_board(appearances: int) -> chess.Board:
+    board = chess.Board()
+    for _ in range(appearances - 1):
+        for san in ("Nf3", "Nf6", "Ng1", "Ng8"):
+            board.push_san(san)
+    return board
+
+
 def test_complete_white_turn_keeps_truth_layers_separate() -> None:
     coach = service()
     session = coach.create_session("white")
@@ -158,6 +166,73 @@ def test_complete_white_turn_keeps_truth_layers_separate() -> None:
     assert undone["can_undo"] is False
     assert undone["undo"] == {"removed_moves": 2, "removed_messages": 2}
     assert coach.store.summary()["attempts"] == 0
+
+
+def test_threefold_repetition_can_be_claimed_but_does_not_end_automatically() -> None:
+    coach = service()
+    response = coach.create_session("white")
+    active = coach.sessions[response["session_id"]]
+    active.board = knight_repetition_board(3)
+    active.phase = "middlegame"
+
+    offered = coach._response(active, messages=[])
+
+    assert offered["game_over"] is False
+    assert offered["game_end"] is None
+    assert offered["draw_claim"]["reason"] == "threefold_repetition"
+    assert offered["legal_moves"]
+
+    claimed = coach.claim_threefold_repetition(response["session_id"])
+
+    assert claimed["game_over"] is True
+    assert claimed["game_end"] == {
+        "reason": "threefold_repetition",
+        "result": "1/2-1/2",
+        "headline": "Remis durch dreifache Stellungswiederholung.",
+        "explanation": "Du hast das Remis regelgerecht beansprucht. Die Partie endet ½–½.",
+        "automatic": False,
+    }
+    assert claimed["draw_claim"] is None
+    assert claimed["legal_moves"] == []
+    assert claimed["phase"] == "transition"
+    assert claimed["messages"][0]["kind"] == "game_end"
+    assert claimed["messages"][0]["source"] == "verified-chess-rule"
+
+
+def test_fivefold_repetition_ends_the_game_automatically() -> None:
+    coach = service()
+    response = coach.create_session("white")
+    active = coach.sessions[response["session_id"]]
+    active.board = knight_repetition_board(5)
+    active.phase = "middlegame"
+
+    ended = coach._response(active, messages=[])
+
+    assert ended["game_over"] is True
+    assert ended["game_end"]["reason"] == "fivefold_repetition"
+    assert ended["game_end"]["result"] == "1/2-1/2"
+    assert ended["game_end"]["automatic"] is True
+    assert ended["draw_claim"] is None
+    assert ended["legal_moves"] == []
+    assert ended["phase"] == "transition"
+    assert ended["messages"][0]["kind"] == "game_end"
+
+
+def test_undo_preserves_history_needed_to_detect_repetition() -> None:
+    coach = service()
+    response = coach.create_session("white")
+    active = coach.sessions[response["session_id"]]
+    active.board = knight_repetition_board(3)
+    active.phase = "middlegame"
+    coach._save_turn_snapshot(active)
+    active.board.push_san("Nf3")
+    active.move_history.append({"actor": "learner", "san": "Nf3"})
+
+    undone = coach.undo_last_turn(response["session_id"])
+
+    assert active.board.is_repetition(3) is True
+    assert undone["draw_claim"]["reason"] == "threefold_repetition"
+    assert undone["game_over"] is False
 
 
 def test_material_mistake_starts_three_attempt_correction_loop() -> None:

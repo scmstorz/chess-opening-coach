@@ -1,0 +1,86 @@
+[Event "French White: Advance plan against Nc6"]
+[Site "Local"]
+[Date "2026.09.26"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C02"]
+[Opening "French Defense: Advance Variation"]
+[LessonId "french-white-nc6"]
+[LessonFamily "e4-white-foundations"]
+[LessonTitle "Französisch: Bauernkette gegen ...Nc6"]
+[TrainingSide "White"]
+[LessonGoal "Mit e5 Raum gewinnen, d4 durch c3 stützen und die Figuren entwickeln"]
+[DrillStartPly "0"]
+[RealisticWeight "0"]
+[OpponentCategory "established"]
+
+1. e4 {Du besetzt das Zentrum und öffnest Linien für Dame und Läufer. [%hint1 Besetze das Zentrum und öffne zwei Figurenlinien.] [%hint2 Ziehe den Bauern vor deinem König zwei Felder.]}
+1... e6 {Schwarz bereitet ...d5 vor. Die Partie führt in die Französische Verteidigung, nicht in den italienischen Aufbau.}
+2. d4 {Du stellst einen zweiten Bauern ins Zentrum. e4 und d4 geben deinen Figuren Raum. [%hint1 Ergänze deinen e-Bauern durch einen zweiten Zentralbauern.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+2... d5 {Schwarz greift den Bauern auf e4 mit dem d-Bauern an.}
+3. e5 {Du schiebst den angegriffenen Bauern vor, gewinnst Raum und bildest mit d4 eine Bauernkette. Schwarz kann deren Basis auf d4 mit ...c5 angreifen. [%hint1 Gewinne Raum, indem du den angegriffenen e-Bauern vorschiebst.] [%hint2 Ziehe den Bauern von e4 nach e5.]}
+3... c5 {Schwarz greift mit dem c-Bauern die Basis deiner Bauernkette auf d4 an.}
+4. c3 {Du stützt d4 mit dem c-Bauern. Deine Bauern stehen nun auf c3, d4 und e5; die Figuren sollen folgen. [%hint1 Stütze den Bauern auf d4 mit einem Nachbarbauern.] [%hint2 Ziehe den c-Bauern ein Feld vor.]}
+4... Nc6 {Schwarz entwickelt einen Springer, der d4 zusätzlich angreift.}
+5. Nf3 {Du entwickelst einen Springer, deckst d4 und bereitest die kurze Rochade vor. [%hint1 Entwickle eine Figur, die d4 zusätzlich deckt.] [%hint2 Der Königsspringer kann nach f3.]}
+5... Qb6 {Schwarz stellt die Dame auf b6. Sie schaut auf b2; der weiße Läufer auf c1 deckt diesen Bauern. Nach einem Tausch auf d4 kann die Dame dort Druck ausüben.} *
+
+[Event "French White: Advance plan against Qb6"]
+[Site "Local"]
+[Date "2026.09.26"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C02"]
+[Opening "French Defense: Advance Variation"]
+[LessonId "french-white-qb6"]
+[LessonFamily "e4-white-foundations"]
+[LessonTitle "Französisch: Entwicklung gegen ...Qb6"]
+[TrainingSide "White"]
+[LessonGoal "Die Bauernkette festigen und auch gegen frühen Damendruck entwickeln"]
+[DrillStartPly "0"]
+[RealisticWeight "0"]
+[OpponentCategory "established"]
+
+1. e4 {Du besetzt das Zentrum und öffnest Linien für Dame und Läufer. [%hint1 Besetze mit einem Bauern das Zentrum.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
+1... e6 {Schwarz bereitet ...d5 vor und wählt die Französische Verteidigung.}
+2. d4 {Du nutzt den Raum und stellst zwei Bauern nebeneinander ins Zentrum. [%hint1 Besetze auch das Feld d4 mit einem Bauern.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+2... d5 {Schwarz greift e4 an.}
+3. e5 {Du schiebst den angegriffenen e-Bauern vor und gewinnst Raum. d4 stützt e5 und bleibt der Angriffspunkt für Schwarz. [%hint1 Halte den e-Bauern im Zentrum, indem du ihn vorschiebst.] [%hint2 Ziehe e4 nach e5.]}
+3... c5 {Schwarz greift deinen Bauern auf d4 mit dem c-Bauern an.}
+4. c3 {Du stützt d4 und hältst die Bauernkette zusammen. [%hint1 Decke die Basis deiner Bauernkette mit einem Bauern.] [%hint2 Ziehe den c-Bauern nach c3.]}
+4... Qb6 {Die schwarze Dame steht auf b6 und blickt auf b2. Dein Läufer auf c1 deckt b2; nach einem späteren ...cxd4 kann die Dame auch d4 angreifen.}
+5. Nf3 {Du entwickelst eine Figur, deckst d4 zusätzlich und kommst der Rochade näher. [%hint1 Entwickle eine Figur, die d4 deckt.] [%hint2 Ziehe den Königsspringer nach f3.]}
+5... Nc6 {Schwarz entwickelt den Springer und greift d4 zusätzlich an.} *
+
+[Event "French White: Advance plan after cxd4"]
+[Site "Local"]
+[Date "2026.09.26"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "C02"]
+[Opening "French Defense: Advance Variation"]
+[LessonId "french-white-cxd4"]
+[LessonFamily "e4-white-foundations"]
+[LessonTitle "Französisch: nach ...cxd4 zurücknehmen"]
+[TrainingSide "White"]
+[LessonGoal "Die Bauernkette nach einem Tausch auf d4 erhalten"]
+[DrillStartPly "0"]
+[RealisticWeight "0"]
+[OpponentCategory "established"]
+
+1. e4 {Du besetzt das Zentrum und öffnest Linien für Dame und Läufer. [%hint1 Besetze das Zentrum mit einem Bauern.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
+1... e6 {Schwarz bereitet ...d5 vor und wählt die Französische Verteidigung.}
+2. d4 {Du stellst e4 und d4 nebeneinander ins Zentrum. [%hint1 Gewinne weiteren Raum mit einem Zentralbauern.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+2... d5 {Schwarz greift e4 an.}
+3. e5 {Du gewinnst Raum und bildest die Bauernkette d4–e5. [%hint1 Schiebe den angegriffenen e-Bauern vor.] [%hint2 Ziehe e4 nach e5.]}
+3... c5 {Schwarz greift die Basis deiner Bauernkette auf d4 an.}
+4. c3 {Du stützt d4 mit dem c-Bauern und hältst das Zentrum zusammen. [%hint1 Stütze d4 mit einem zweiten Bauern.] [%hint2 Ziehe den Bauern von c2 nach c3.]}
+4... cxd4 {Schwarz tauscht den c5-Bauern gegen deinen d4-Bauern. Der Bauer auf c3 kann zurücknehmen.}
+5. cxd4 {Du nimmst mit dem c-Bauern zurück. Damit stehen wieder weiße Bauern auf d4 und e5; die c-Linie ist geöffnet. [%hint1 Stelle nach dem Tausch wieder einen Bauern auf d4.] [%hint2 Der Bauer auf c3 kann nach d4 schlagen.]}
+5... Nc6 {Schwarz entwickelt einen Springer und greift den Bauern auf d4 an.} *

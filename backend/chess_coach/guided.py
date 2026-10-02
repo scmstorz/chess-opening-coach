@@ -16,6 +16,10 @@ ITALIAN_WHITE_FAMILY = "italian-white"
 SICILIAN_WHITE_LESSON_IDS = frozenset(
     {"sicilian-white-d6", "sicilian-white-nc6", "sicilian-white-e6"}
 )
+FRENCH_WHITE_LESSON_IDS = frozenset(
+    {"french-white-nc6", "french-white-qb6", "french-white-cxd4"}
+)
+NAMED_WHITE_FOUNDATION_LESSON_IDS = SICILIAN_WHITE_LESSON_IDS | FRENCH_WHITE_LESSON_IDS
 GUIDED_STYLES = frozenset({"mainline", "branches", "realistic"})
 OPPONENT_CATEGORIES = frozenset(
     {"established", "solid", "slow", "dubious", "trap", "mistake"}
@@ -120,10 +124,10 @@ class GuidedLessonBook:
             raise ValueError(f"Unbekannte Form des geführten Trainings: {style}")
         if lesson_id is not None:
             lesson = self.get(lesson_id)
-            if lesson.lesson_id in SICILIAN_WHITE_LESSON_IDS:
+            if lesson.lesson_id in NAMED_WHITE_FOUNDATION_LESSON_IDS:
                 if style != "mainline" or lesson.family != "e4-white-foundations":
                     raise ValueError(
-                        "Sizilianisch wird nur als benannte Grundlinienübung angeboten"
+                        "Diese Eröffnung wird nur als benannte Grundlinienübung angeboten"
                     )
                 return lesson
             if lesson.family != ITALIAN_WHITE_FAMILY:

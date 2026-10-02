@@ -6,7 +6,7 @@ from chess_coach.service import CoachService
 from chess_coach.storage import SQLiteStore
 from chess_coach.tutor import OllamaTutor
 from fastapi.testclient import TestClient
-from test_service import FakeEngine, opening_end_session
+from test_service import FakeEngine, knight_repetition_board, opening_end_session
 
 
 def test_api_session_and_move_round_trip() -> None:
@@ -111,3 +111,30 @@ def test_api_finishes_and_persists_opening_summary() -> None:
 
         assert repeated.status_code == 200
         assert repeated.json()["opening_summary"] == reviewed.json()["opening_summary"]
+
+
+def test_api_claims_threefold_repetition() -> None:
+    service = CoachService(
+        OpeningBook(),
+        FakeEngine(),
+        OllamaTutor("http://127.0.0.1:1", timeout=0.01),
+        SQLiteStore(":memory:"),
+        rng=random.Random(3),
+    )
+    session = service.create_session("white")
+    active = service.sessions[session["session_id"]]
+    active.board = knight_repetition_board(3)
+    active.phase = "middlegame"
+
+    with TestClient(create_app(service)) as client:
+        claimed = client.post(f"/api/sessions/{session['session_id']}/draw/claim")
+
+        assert claimed.status_code == 200
+        assert claimed.json()["game_over"] is True
+        assert claimed.json()["game_end"]["reason"] == "threefold_repetition"
+        assert claimed.json()["game_end"]["result"] == "1/2-1/2"
+
+        repeated = client.post(f"/api/sessions/{session['session_id']}/draw/claim")
+
+        assert repeated.status_code == 409
+        assert repeated.json()["detail"] == "Die Partie ist bereits beendet"

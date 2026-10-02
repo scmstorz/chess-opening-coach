@@ -2223,3 +2223,78 @@ Stockfish took 0.48 seconds for the boundary hint and turn, and 0.24 seconds
 for the suggested free move and reply. ADR 0023 records the tradeoff. The
 learner explicitly approved discarding the in-memory game. The local starter
 was restarted; both backend health and the browser returned successfully.
+
+## 2026-09-26 — French becomes the third guided course
+
+The learner asked whether more openings were appropriate for an opening coach.
+Free play already recognized many names, but guided learning covered only
+Italian and Sicilian positions, both with White. The proposed next course was
+French with White, followed later by a first Black course. The learner
+approved French.
+
+The inactive French sketch under the Italian PGN had played a Classical line
+with `3.Nc3 Nf6 4.e5 Nfd7 5.f4`. It was legal, but the first French teaching
+unit now uses the Advance structure to make one causal plan clear: `d4`
+supports `e5`, Black's `...c5` attacks the base, and `c3` supports `d4`.
+Three named exercises present `4...Nc6`, `4...Qb6`, and `4...cxd4`. The first
+two ask White to develop `Nf3`; the exchange asks White to recapture `cxd4`.
+Each line includes a final Black move, then yields the board to free opening
+play with White to move. The old sketch was removed from the Italian PGN;
+four other foundations sketches remain inactive. The selector explicitly
+labels the meaning of the French variant buttons, following the earlier
+Sicilian usability lesson.
+
+A 0.35-second forced-root Stockfish audit found no taught White move more than
+0.13 pawn behind its short-search best move and no scripted Black move more
+than 0.19 pawn behind. These variable results establish plausibility, not
+uniqueness. All three lines passed service replay through their milestones,
+free suggestions, and a further turn with real Stockfish. Regression tests
+cover selection boundaries, hints, continuation, and undo; the frontend build
+and rendered-shell test include the new course. ADR 0024 and the dated
+evaluation preserve the decision and evidence. No new moves had been recorded
+in the prior local game since the preceding restart. The local starter was
+restarted, backend health and browser responded, and a fresh API session
+accepted `french-white-nc6` with the expected French prompt.
+
+## 2026-10-02 — Threefold repetition existed but could not be claimed
+
+The learner reported that moving a queen back and forth while the coach moved
+its king back and forth did not produce a draw. The latest local interaction
+history confirmed the report: the cycle `Qh2–Kc7–Qh6+–Kc6` produced four
+positions that each appeared three times with the same side to move and the
+same effective move rights. This was not a visual misunderstanding or a case
+where castling or en-passant rights made the positions different.
+
+The service relied on `python-chess` `Board.is_game_over()` without claimable
+draws. That method intentionally treats fivefold repetition as automatic but
+does not end a game at the third occurrence. The missing product behavior was
+the learner's ability to claim. Automatically ending at three was rejected
+because FIDE makes that occurrence claimable rather than mandatory.
+
+The service response now exposes a threefold claim only when the repeated
+position is already on the board and the learner is the player to move. The UI
+offers **Remis beanspruchen** while leaving the learner free to continue. A
+validated claim records `1/2-1/2`, locks the board, explains the result, and
+offers the normal opening review. A fifth occurrence ends automatically.
+Automatic terminal states now use a structured `game_end` response rather
+than only a boolean.
+
+The repair also changed undo snapshots from FEN-only storage to full board
+copies with move stacks. A restored FEN reproduces the visible position but
+cannot reproduce its occurrence history, so the prior representation would
+have silently broken repetition detection after undo. Regression tests cover
+the third occurrence, the claim endpoint, fifth-occurrence automatic draw, and
+post-undo history. ADR 0025 and the dated evaluation record the rule boundary
+and verification. The complete backend suite passed 121 tests; Ruff, frontend
+lint, the production build and rendered-shell test, `git diff --check`, and the
+publication guard also passed.
+
+The running local starter initially remained untouched because restarting it
+would discard the reported in-memory game. After the learner explicitly
+approved that loss, the starter restarted on its fixed ports. The live OpenAPI
+document exposed the new claim route, a fresh session returned the structured
+draw fields, an invalid early claim produced the expected 409 response, and
+the served frontend contained the new action. The packaged in-app browser
+harness could not initialize because it requested a restricted Node built-in,
+so the automated UI build and live HTTP surface check stand in for a visual
+click-through until the learner reaches another repetition.

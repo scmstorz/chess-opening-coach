@@ -6,6 +6,40 @@ Start a new session by reading this file, then inspect the actual Git status and
 runtime health: processes, model availability, and learner data can change while
 the conversation is closed.
 
+## Update: 2026-10-02 — repetition draws
+
+The learner reported that a repeated queen/king cycle did not end the game.
+The latest SQLite interaction history confirmed four equivalent positions had
+each occurred three times with the same player and move rights. The cause was
+the default `python-chess` `is_game_over()` behavior: claimable threefold
+repetition is excluded unless explicitly requested. The local, uncommitted fix
+now offers **Remis beanspruchen** to the learner at an actually repeated current
+position, records the claimed `1/2-1/2` result, and ends fivefold repetition
+automatically. Turn snapshots preserve the board's move stack so undo does not
+erase repetition evidence. See [ADR 0025](docs/decisions/0025-handle-repetition-draw-claims.md)
+and the [evaluation](docs/evaluations/2026-10-02-repetition-draws.md). Backend,
+API, build, rendered-page, lint, Ruff, publication, and the full 121-test
+backend suite passed. After the learner explicitly approved discarding the
+in-memory game, the main local starter restarted on `53686`/`53687`. The live
+OpenAPI document contains the draw-claim route, a fresh session exposes
+`game_end` and `draw_claim`, an invalid early claim returns 409, and the served
+frontend contains the new claim action.
+
+## Update: 2026-09-26 — French with White
+
+The learner asked for more breadth and approved **Französisch mit Weiß** as a
+third guided course. Three named C02 Advance lessons now teach
+`1.e4 e6 2.d4 d5 3.e5 c5 4.c3` against `4...Nc6`, `4...Qb6`, and `4...cxd4`.
+The former inactive Classical French sketch was removed from the Italian PGN.
+Each prepared line ends after the fifth Black move and continues as free
+opening play with White to move. The course has a visible introduction and
+never enters Italian realistic selection. Four foundations sketches remain
+inactive. See [ADR 0024](docs/decisions/0024-introduce-french-advance-course.md),
+the [evaluation](docs/evaluations/2026-09-26-french-white-course.md), and the
+latest journal entry. The work is local and uncommitted as of this note. The
+local starter was restarted and a fresh API session accepted `french-white-nc6`;
+check Git status and runtime health before taking further action.
+
 ## Update: 2026-09-26
 
 The learner approved the first new guided opening course: **Sizilianisch mit
@@ -15,8 +49,8 @@ introduction and three finite exercises against `2...d6`, `2...Nc6`, and
 reply and further play; an initial premature completion was repaired in the
 same work session. The `...d6` sketch was moved out of the Italian PGN and
 reviewed; the other two lines were authored and Stockfish checked. Italian
-realistic selection still stays inside Italian positions, and the other five `1.e4`
-foundations sketches remain inactive. See [ADR 0021](docs/decisions/0021-introduce-sicilian-white-course.md),
+realistic selection still stays inside Italian positions; at that point five `1.e4`
+foundations sketches remained inactive. See [ADR 0021](docs/decisions/0021-introduce-sicilian-white-course.md),
 the [evaluation](docs/evaluations/2026-09-26-sicilian-white-course.md),
 [ADR 0022](docs/decisions/0022-continue-after-sicilian-teaching-line.md), and the
 latest journal entry. The original 2026-09-16 Git and runtime details below
@@ -76,8 +110,9 @@ learner database. Never publish a raw copy of this working directory.
   and a realistic hidden opponent line. All active scenarios stay inside the
   Italian family until after `1.e4 e5 2.Nf3 Nc6 3.Bc4`.
 - A separate guided Sicilian course for White teaches one central plan through
-  three named lines. Five further annotated `1.e4` response scenarios (French,
-  Caro-Kann, Petroff, Philidor, Damiano) remain **inactive** and must not leak
+  three named lines. A French course teaches the Advance pawn chain through
+  three named lines. Four further annotated `1.e4` response scenarios
+  (Caro-Kann, Petroff, Philidor, Damiano) remain **inactive** and must not leak
   into “Italienisch üben”.
 - The correction loop normally gives a strategic hint, then a more concrete
   hint, then reveals the answer on the third unsuccessful attempt. It is for
@@ -201,13 +236,13 @@ identify its process first. See README troubleshooting for platform details.
 
 ## What is *not* decided or finished
 
-The first part of the 2026-09-13 proposal is now implemented: the learner chose
-Sicilian-from-White as the next named course. Expansion to French, Caro-Kann,
-and nearby `1...e5` responses is still undecided. Each authored sketch needs
-didactic and Stockfish review before activation. Hidden mixed-opponent practice
-requires explicit prior teaching and remains locked. A fourth broad book still
-lacks evidence of a current retrieval bottleneck. The next conversation can
-playtest the new Sicilian course, revisit the corrected castling explanation,
+The learner has now chosen Sicilian and French courses for White. A first guided
+course for Black was recommended next but has not been approved. Expansion to
+Caro-Kann and nearby `1...e5` responses is also undecided. Each inactive sketch
+needs didactic and Stockfish review before activation. Hidden mixed-opponent
+practice requires explicit prior teaching and remains locked. A fourth broad
+book still lacks evidence of a current retrieval bottleneck. The next
+conversation can playtest the French course, choose the first Black course,
 or address a newly observed issue.
 
 Other known limits and deferred work:
@@ -231,7 +266,7 @@ Other known limits and deferred work:
 | API/startup/settings | `backend/chess_coach/api.py`, `config.py`, `scripts/start_local.py` |
 | Chess flow, questions, explanations | `backend/chess_coach/service.py` |
 | Opening identity/theory | `backend/chess_coach/openings.py`, `data/openings/` |
-| Guided lesson parsing and selection | `backend/chess_coach/guided.py`, `data/repertoires/italian-white.pgn` |
+| Guided lesson parsing and selection | `backend/chess_coach/guided.py`, `data/repertoires/` |
 | Engine comparison/cache | `backend/chess_coach/engine.py`, `storage.py` |
 | Local model and book grounding | `backend/chess_coach/tutor.py`, `book_knowledge/` |
 | Regression cases | `backend/tests/`, `benchmarks/fixtures/explanation_quality_cases.json` |

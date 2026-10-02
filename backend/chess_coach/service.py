@@ -21,8 +21,10 @@ from chess_coach.engine import (
     StockfishService,
 )
 from chess_coach.guided import (
+    FRENCH_WHITE_LESSON_IDS,
     GUIDED_STYLES,
     ITALIAN_WHITE_LESSON_ID,
+    NAMED_WHITE_FOUNDATION_LESSON_IDS,
     SICILIAN_WHITE_LESSON_IDS,
     GuidedLesson,
     GuidedLessonBook,
@@ -35,13 +37,14 @@ from chess_coach.tutor import OllamaTutor, TutorText
 
 @dataclass(slots=True)
 class TurnSnapshot:
-    fen: str
+    board: chess.Board
     opening: OpeningIdentity | None
     move_history_length: int
     message_history_length: int
     interaction_id: int | None
     phase: str
     opening_end: OpeningEndEvidence | None
+    game_end: GameEnd | None
     lesson_ply: int
     guided_segment_complete: bool
 
@@ -78,6 +81,15 @@ class OpeningEndEvidence:
     can_continue: bool
 
 
+@dataclass(frozen=True, slots=True)
+class GameEnd:
+    reason: str
+    result: str
+    headline: str
+    explanation: str
+    automatic: bool
+
+
 @dataclass(slots=True)
 class GameSession:
     session_id: str
@@ -90,6 +102,7 @@ class GameSession:
     attempts_at_position: int = 0
     phase: str = "opening"
     opening_end: OpeningEndEvidence | None = None
+    game_end: GameEnd | None = None
     opening_summary: dict[str, Any] | None = None
     pending_move_clarification: MoveNotationClarification | None = None
     training_mode: str = "free"
@@ -189,6 +202,8 @@ class CoachService:
     ) -> dict[str, Any]:
         session = self._session(session_id)
         with session.lock:
+            if session.game_end is not None or session.board.is_game_over():
+                raise ValueError("Die Partie ist beendet und kann nur noch ausgewertet werden")
             if session.phase == "transition":
                 raise ValueError(
                     "Bitte entscheide zuerst, ob du weiterspielen oder die Eröffnung "
@@ -422,10 +437,11 @@ class CoachService:
             snapshot = session.undo_stack.pop()
             removed_moves = len(session.move_history) - snapshot.move_history_length
             removed_messages = len(session.message_history) - snapshot.message_history_length
-            session.board = chess.Board(snapshot.fen)
+            session.board = snapshot.board.copy(stack=True)
             session.opening = snapshot.opening
             session.phase = snapshot.phase
             session.opening_end = snapshot.opening_end
+            session.game_end = snapshot.game_end
             session.lesson_ply = snapshot.lesson_ply
             session.guided_segment_complete = snapshot.guided_segment_complete
             session.opening_summary = None
@@ -446,7 +462,7 @@ class CoachService:
         with session.lock:
             if session.phase != "transition":
                 raise ValueError("Für diese Sitzung steht keine Eröffnungsentscheidung an")
-            if session.board.is_game_over():
+            if session.game_end is not None or session.board.is_game_over():
                 raise ValueError("Die Partie ist beendet und kann nur noch ausgewertet werden")
             session.phase = "middlegame"
             message = {
@@ -466,6 +482,35 @@ class CoachService:
                 "engine": None,
             }
             return self._response(session, messages=[message])
+
+    def claim_threefold_repetition(self, session_id: str) -> dict[str, Any]:
+        session = self._session(session_id)
+        with session.lock:
+            if session.game_end is not None or session.board.is_game_over():
+                raise ValueError("Die Partie ist bereits beendet")
+            if session.board.turn != session.learner_color:
+                raise ValueError("Nur der Spieler am Zug kann das Remis beanspruchen")
+            if not session.board.is_repetition(3):
+                raise ValueError(
+                    "Diese Stellung ist noch nicht dreimal mit denselben Zugrechten entstanden"
+                )
+
+            game_end = GameEnd(
+                reason="threefold_repetition",
+                result="1/2-1/2",
+                headline="Remis durch dreifache Stellungswiederholung.",
+                explanation=(
+                    "Du hast das Remis regelgerecht beansprucht. Die Partie endet ½–½."
+                ),
+                automatic=False,
+            )
+            session.game_end = game_end
+            session.phase = "transition"
+            session.opening_end = None
+            return self._response(
+                session,
+                messages=[self._game_end_message(game_end)],
+            )
 
     def finish_opening(self, session_id: str) -> dict[str, Any]:
         session = self._session(session_id)
@@ -502,6 +547,8 @@ class CoachService:
         """Return a theory-first, engine-checked hint without changing the game."""
         session = self._session(session_id)
         with session.lock:
+            if session.game_end is not None or session.board.is_game_over():
+                raise ValueError("Die Partie ist beendet")
             if session.phase == "transition":
                 raise ValueError(
                     "Bitte entscheide zuerst, ob du weiterspielen oder die Eröffnung "
@@ -1677,7 +1724,7 @@ class CoachService:
             session.lesson is None
             or (
                 session.lesson_style != "realistic"
-                and session.lesson.lesson_id not in SICILIAN_WHITE_LESSON_IDS
+                and session.lesson.lesson_id not in NAMED_WHITE_FOUNDATION_LESSON_IDS
             )
             or session.guided_segment_complete
             or session.lesson_ply < len(session.lesson.moves)
@@ -1686,17 +1733,29 @@ class CoachService:
         session.guided_segment_complete = True
         is_mainline = session.lesson.lesson_id == ITALIAN_WHITE_LESSON_ID
         is_sicilian = session.lesson.lesson_id in SICILIAN_WHITE_LESSON_IDS
+        is_french = session.lesson.lesson_id in FRENCH_WHITE_LESSON_IDS
+        if is_sicilian:
+            summary = (
+                "Der Sizilianisch-Grundplan ist geübt. "
+                "Jetzt spielen wir die Eröffnung frei weiter."
+            )
+        elif is_french:
+            summary = (
+                "Die französische Bauernkette ist geübt. "
+                "Jetzt spielen wir die Eröffnung frei weiter."
+            )
+        elif is_mainline:
+            summary = "Die Grundlinie sitzt. Jetzt spielen wir die Eröffnungsphase frei weiter."
+        else:
+            summary = (
+                "Du hast diese Abweichung beantwortet. "
+                "Wir spielen die Eröffnungsphase weiter."
+            )
         return {
             "kind": "milestone",
             "actor": "coach",
             "move": None,
-            "summary": (
-                "Der Sizilianisch-Grundplan ist geübt. Jetzt spielen wir die Eröffnung frei weiter."
-                if is_sicilian
-                else "Die Grundlinie sitzt. Jetzt spielen wir die Eröffnungsphase frei weiter."
-                if is_mainline
-                else "Du hast diese Abweichung beantwortet. Wir spielen die Eröffnungsphase weiter."
-            ),
+            "summary": summary,
             "details": (
                 "Der vorbereitete Variantenabschnitt endet hier, nicht die Partie. "
                 "Von jetzt an bewertet der Coach deine freien Züge mit Eröffnungstheorie, "
@@ -1747,6 +1806,14 @@ class CoachService:
                 "Dein Grundplan: Nf3 entwickeln, mit d4 das Zentrum herausfordern "
                 "und nach ...cxd4 mit Nxd4 zurücknehmen. Falls ...Nf6 den Bauern "
                 "auf e4 angreift, entwickelt Nc3 eine Figur und deckt ihn. "
+                "Die schwarzen Antworten werden in benannten Übungen gezeigt."
+            )
+        elif session.lesson.lesson_id in FRENCH_WHITE_LESSON_IDS:
+            summary = "Du lernst Französisch mit Weiß. Was ist dein erster Zug?"
+            details = (
+                "Nach 1...e6 bereitet Schwarz ...d5 vor. Stelle e4 und d4 ins Zentrum, "
+                "schiebe den angegriffenen e-Bauern nach e5 und stütze d4 mit c3 "
+                "gegen ...c5. Danach entwickelst du deine Figuren. "
                 "Die schwarzen Antworten werden in benannten Übungen gezeigt."
             )
         else:
@@ -2179,13 +2246,14 @@ class CoachService:
     def _save_turn_snapshot(self, session: GameSession) -> None:
         session.undo_stack.append(
             TurnSnapshot(
-                fen=session.board.fen(),
+                board=session.board.copy(stack=True),
                 opening=session.opening,
                 move_history_length=len(session.move_history),
                 message_history_length=len(session.message_history),
                 interaction_id=self.store.latest_interaction_id(session.session_id),
                 phase=session.phase,
                 opening_end=session.opening_end,
+                game_end=session.game_end,
                 lesson_ply=session.lesson_ply,
                 guided_segment_complete=session.guided_segment_complete,
             )
@@ -2198,12 +2266,16 @@ class CoachService:
         messages: list[dict[str, Any]],
         correction: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        automatic_game_end_message = self._sync_automatic_game_end(session)
+        if automatic_game_end_message is not None:
+            messages.append(automatic_game_end_message)
         guided_complete = bool(
             session.lesson is not None
             and session.lesson_style != "realistic"
-            and session.lesson.lesson_id not in SICILIAN_WHITE_LESSON_IDS
+            and session.lesson.lesson_id not in NAMED_WHITE_FOUNDATION_LESSON_IDS
             and session.lesson_ply >= len(session.lesson.moves)
             and correction is None
+            and session.game_end is None
         )
         if guided_complete and session.phase != "complete":
             summary = self._build_opening_summary(session)
@@ -2246,8 +2318,9 @@ class CoachService:
             message.get("actor") == "coach" and message.get("move_uci") for message in messages
         )
         should_check_phase = completed_turn or (
-            session.board.is_game_over() and any(message.get("move_uci") for message in messages)
+            session.game_end is not None and any(message.get("move_uci") for message in messages)
         )
+        draw_claim = self._draw_claim(session)
         guided_continuation = bool(
             session.lesson is not None
             and session.guided_segment_complete
@@ -2267,6 +2340,8 @@ class CoachService:
             and session.phase == "opening"
             and correction is None
             and should_check_phase
+            and session.game_end is None
+            and draw_claim is None
         ):
             evidence = self._opening_end_evidence(session)
             if evidence.likely:
@@ -2277,7 +2352,11 @@ class CoachService:
             self._prepare_message(message, session.board.fen())
         session.message_history.extend(messages)
         opening = asdict(session.opening) if session.opening else None
-        legal_moves = [move.uci() for move in session.board.legal_moves]
+        legal_moves = (
+            []
+            if session.game_end is not None
+            else [move.uci() for move in session.board.legal_moves]
+        )
         realistic_revealed = self._realistic_lesson_revealed(session)
         public_lesson_title = (
             session.lesson.title
@@ -2370,7 +2449,9 @@ class CoachService:
             "message_history": session.message_history,
             "can_undo": bool(session.undo_stack),
             "correction": correction,
-            "game_over": session.board.is_game_over(),
+            "game_over": session.game_end is not None,
+            "game_end": asdict(session.game_end) if session.game_end else None,
+            "draw_claim": draw_claim,
             "phase": session.phase,
             "opening_end": asdict(session.opening_end)
             if session.phase == "transition" and session.opening_end
@@ -2439,7 +2520,7 @@ class CoachService:
             + (1 if center_pawns_moved >= 3 else 0)
             + (1 if plies >= 18 else 0)
         )
-        game_over = board.is_game_over()
+        game_over = session.game_end is not None or board.is_game_over()
         likely = (
             game_over or (enough_history and score >= 4) or (extended_history and theory_exhausted)
         )
@@ -2466,6 +2547,96 @@ class CoachService:
             signals=signals,
             can_continue=not game_over,
         )
+
+    @staticmethod
+    def _draw_claim(session: GameSession) -> dict[str, str] | None:
+        if (
+            session.game_end is not None
+            or session.phase == "complete"
+            or session.board.turn != session.learner_color
+            or not session.board.is_repetition(3)
+        ):
+            return None
+        return {
+            "reason": "threefold_repetition",
+            "headline": "Dreifache Stellungswiederholung",
+            "explanation": (
+                "Diese Stellung ist zum dritten Mal mit derselben Seite am Zug und denselben "
+                "Zugrechten entstanden. Du kannst weiterspielen oder jetzt Remis beanspruchen."
+            ),
+        }
+
+    def _sync_automatic_game_end(self, session: GameSession) -> dict[str, Any] | None:
+        if session.game_end is not None:
+            return None
+        outcome = session.board.outcome(claim_draw=False)
+        if outcome is None:
+            return None
+
+        game_end = self._automatic_game_end(session, outcome)
+        session.game_end = game_end
+        session.phase = "transition"
+        session.opening_end = None
+        return self._game_end_message(game_end)
+
+    @staticmethod
+    def _automatic_game_end(session: GameSession, outcome: chess.Outcome) -> GameEnd:
+        termination = outcome.termination
+        if termination == chess.Termination.FIVEFOLD_REPETITION:
+            return GameEnd(
+                reason="fivefold_repetition",
+                result=outcome.result(),
+                headline="Remis durch fünffache Stellungswiederholung.",
+                explanation=(
+                    "Dieselbe Stellung ist zum fünften Mal entstanden. Die Partie endet "
+                    "nach den Schachregeln automatisch ½–½."
+                ),
+                automatic=True,
+            )
+        if termination == chess.Termination.STALEMATE:
+            headline = "Remis durch Patt."
+            explanation = "Die Seite am Zug hat keinen legalen Zug und steht nicht im Schach."
+        elif termination == chess.Termination.INSUFFICIENT_MATERIAL:
+            headline = "Remis wegen unzureichenden Materials."
+            explanation = "Mit dem verbliebenen Material kann keine Seite mehr mattsetzen."
+        elif termination == chess.Termination.SEVENTYFIVE_MOVES:
+            headline = "Remis nach der 75-Züge-Regel."
+            explanation = (
+                "75 Züge lang wurde kein Bauer gezogen und keine Figur geschlagen. "
+                "Die Partie endet automatisch."
+            )
+        elif termination == chess.Termination.CHECKMATE:
+            learner_won = outcome.winner == session.learner_color
+            headline = "Schachmatt – du hast gewonnen." if learner_won else "Schachmatt."
+            explanation = (
+                "Der gegnerische König ist mattgesetzt."
+                if learner_won
+                else "Dein König ist mattgesetzt; die Partie ist beendet."
+            )
+        else:
+            headline = "Die Partie ist beendet."
+            explanation = "Nach den Schachregeln kann die Partie nicht fortgesetzt werden."
+        return GameEnd(
+            reason=termination.name.lower(),
+            result=outcome.result(),
+            headline=headline,
+            explanation=explanation,
+            automatic=True,
+        )
+
+    @staticmethod
+    def _game_end_message(game_end: GameEnd) -> dict[str, Any]:
+        return {
+            "kind": "game_end",
+            "actor": "coach",
+            "move": None,
+            "summary": game_end.headline,
+            "details": game_end.explanation,
+            "source": "verified-chess-rule",
+            "model": None,
+            "attempt": None,
+            "engine": None,
+        }
 
     @staticmethod
     def _opening_end_message(evidence: OpeningEndEvidence) -> dict[str, Any]:

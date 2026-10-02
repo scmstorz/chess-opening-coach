@@ -10,12 +10,17 @@ type Piece = {
 type PlayerColor = "white" | "black" | "random";
 type TrainingMode = "free" | "guided";
 type GuidedStyle = "mainline" | "branches" | "realistic";
-type GuidedCourse = "italian" | "sicilian";
+type GuidedCourse = "italian" | "sicilian" | "french";
 
 const sicilianLessons = [
   { id: "sicilian-white-d6", label: "d6" },
   { id: "sicilian-white-nc6", label: "Nc6" },
   { id: "sicilian-white-e6", label: "e6" },
+] as const;
+const frenchLessons = [
+  { id: "french-white-nc6", label: "Nc6" },
+  { id: "french-white-qb6", label: "Qb6" },
+  { id: "french-white-cxd4", label: "cxd4" },
 ] as const;
 
 type EngineInfo = {
@@ -85,7 +90,7 @@ type FeedbackReviewRecord = ExplanationFeedback & {
 
 type CoachMessage = {
   message_id?: string;
-  kind?: "move" | "question" | "clarification" | "phase" | "summary" | "prompt" | "milestone";
+  kind?: "move" | "question" | "clarification" | "phase" | "summary" | "prompt" | "milestone" | "game_end";
   actor: "learner" | "coach";
   question?: string;
   move: string | null;
@@ -183,6 +188,20 @@ type OpeningEnd = {
   can_continue: boolean;
 };
 
+type DrawClaim = {
+  reason: "threefold_repetition";
+  headline: string;
+  explanation: string;
+};
+
+type GameEnd = {
+  reason: string;
+  result: string;
+  headline: string;
+  explanation: string;
+  automatic: boolean;
+};
+
 type OpeningSummary = {
   opening: { eco: string; name: string } | null;
   learner_color: "white" | "black";
@@ -223,6 +242,8 @@ type SessionState = {
     recommended_move: string | null;
   } | null;
   game_over: boolean;
+  game_end: GameEnd | null;
+  draw_claim: DrawClaim | null;
   phase: "opening" | "transition" | "middlegame" | "complete";
   opening_end: OpeningEnd | null;
   opening_summary: OpeningSummary | null;
@@ -614,6 +635,7 @@ export default function Home() {
   const [requestedMode, setRequestedMode] = useState<TrainingMode>("guided");
   const [requestedCourse, setRequestedCourse] = useState<GuidedCourse>("italian");
   const [requestedSicilianLessonId, setRequestedSicilianLessonId] = useState<string>(sicilianLessons[0].id);
+  const [requestedFrenchLessonId, setRequestedFrenchLessonId] = useState<string>(frenchLessons[0].id);
   const [requestedStyle, setRequestedStyle] = useState<GuidedStyle>("realistic");
   const [session, setSession] = useState<SessionState | null>(null);
   const [messages, setMessages] = useState<CoachMessage[]>([]);
@@ -641,8 +663,11 @@ export default function Home() {
   const interactionLocked = loading || askingQuestion;
   const phaseDecisionPending = session?.phase === "transition";
   const sessionComplete = session?.phase === "complete";
-  const boardInteractionLocked = interactionLocked || phaseDecisionPending || sessionComplete;
+  const boardInteractionLocked = interactionLocked || phaseDecisionPending || sessionComplete || Boolean(session?.game_over);
   const isSicilianLesson = sicilianLessons.some((lesson) => lesson.id === session?.lesson?.lesson_id);
+  const isFrenchLesson = frenchLessons.some((lesson) => lesson.id === session?.lesson?.lesson_id);
+  const namedCourseLessons = requestedCourse === "french" ? frenchLessons : sicilianLessons;
+  const selectedNamedLessonId = requestedCourse === "french" ? requestedFrenchLessonId : requestedSicilianLessonId;
 
   useEffect(() => {
     api<Health>("/api/health").then(setHealth).catch(() => setHealth(null));
@@ -839,15 +864,24 @@ export default function Home() {
     color: PlayerColor = requestedColor,
     trainingMode: TrainingMode = requestedMode,
     lessonStyle: GuidedStyle = requestedStyle,
-    lessonId: string | null = requestedCourse === "sicilian" ? requestedSicilianLessonId : null,
+    lessonId: string | null = requestedCourse === "sicilian"
+      ? requestedSicilianLessonId
+      : requestedCourse === "french"
+      ? requestedFrenchLessonId
+      : null,
   ) {
     setRequestedColor(color);
     setRequestedMode(trainingMode);
     setRequestedStyle(lessonStyle);
     if (trainingMode === "guided") {
-      const course = lessonId && sicilianLessons.some((lesson) => lesson.id === lessonId) ? "sicilian" : "italian";
+      const course: GuidedCourse = lessonId && sicilianLessons.some((lesson) => lesson.id === lessonId)
+        ? "sicilian"
+        : lessonId && frenchLessons.some((lesson) => lesson.id === lessonId)
+        ? "french"
+        : "italian";
       setRequestedCourse(course);
       if (course === "sicilian" && lessonId) setRequestedSicilianLessonId(lessonId);
+      if (course === "french" && lessonId) setRequestedFrenchLessonId(lessonId);
     }
     setLoading(true);
     setError(null);
@@ -886,7 +920,7 @@ export default function Home() {
     if (matchingMove) setDisplayFen(optimisticFen);
     setLoading(true);
     const isFinalPreparedMove = Boolean(
-      (session.lesson_style === "realistic" || isSicilianLesson)
+      (session.lesson_style === "realistic" || isSicilianLesson || isFrenchLesson)
       && session.training_progress
       && session.training_progress.current === session.training_progress.total,
     );
@@ -969,6 +1003,27 @@ export default function Home() {
     } finally {
       setLoading(false);
       finishProgress(progressRun);
+    }
+  }
+
+  async function claimDraw() {
+    if (!session?.draw_claim || interactionLocked || session.game_over) return;
+    setLoading(true);
+    setError(null);
+    setSuggestion(null);
+    try {
+      const next = await api<SessionState>(`/api/sessions/${session.session_id}/draw/claim`, {
+        method: "POST",
+      });
+      setSession(next);
+      setMessages(next.message_history);
+      setDisplayFen(next.fen);
+      setSelectedSquare(null);
+      setDraggedFrom(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Das Remis konnte nicht beansprucht werden.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -1097,6 +1152,8 @@ export default function Home() {
                 {requestedMode === "guided"
                   ? requestedCourse === "sicilian"
                     ? "Geführtes Repertoiretraining · Sizilianisch mit Weiß"
+                    : requestedCourse === "french"
+                    ? "Geführtes Repertoiretraining · Französisch mit Weiß"
                     : `Geführtes Repertoiretraining · ${requestedStyle === "mainline" ? "Grundlinie" : requestedStyle === "branches" ? "Abweichung" : "Realistischer Gegner"}`
                   : "Freies Eröffnungsspiel"}
               </p>
@@ -1123,6 +1180,15 @@ export default function Home() {
                   Sizilianisch üben
                 </button>
                 <button
+                  aria-pressed={requestedMode === "guided" && requestedCourse === "french"}
+                  className={requestedMode === "guided" && requestedCourse === "french" ? "mode-option active" : "mode-option"}
+                  disabled={interactionLocked || phaseDecisionPending}
+                  onClick={() => void startSession("white", "guided", "mainline", requestedFrenchLessonId)}
+                  type="button"
+                >
+                  Französisch üben
+                </button>
+                <button
                   aria-pressed={requestedMode === "free"}
                   className={requestedMode === "free" ? "mode-option active" : "mode-option"}
                   disabled={interactionLocked || phaseDecisionPending}
@@ -1134,7 +1200,11 @@ export default function Home() {
               </div>
               <span className="selection-caption">
                 {requestedMode === "guided"
-                  ? requestedCourse === "italian" ? "Art der Übung" : "Schwarz spielt nach 1.e4 c5 2.Nf3"
+                  ? requestedCourse === "italian"
+                    ? "Art der Übung"
+                    : requestedCourse === "sicilian"
+                    ? "Schwarz spielt nach 1.e4 c5 2.Nf3"
+                    : "Schwarz antwortet nach 3.e5 c5 4.c3"
                   : "Deine Farbe"}
               </span>
               {requestedMode === "guided" && requestedCourse === "italian" ? (
@@ -1153,12 +1223,12 @@ export default function Home() {
                   ))}
                 </div>
               ) : requestedMode === "guided" ? (
-                <div className="guided-style-picker" aria-label="Schwarze Antwort im Sizilianisch-Kurs wählen">
-                  {sicilianLessons.map((lesson) => (
+                <div className="guided-style-picker" aria-label={`Schwarze Antwort im ${requestedCourse === "french" ? "Französisch" : "Sizilianisch"}-Kurs wählen`}>
+                  {namedCourseLessons.map((lesson) => (
                     <button
-                      aria-label={`Schwarz spielt 2...${lesson.label}`}
-                      aria-pressed={requestedSicilianLessonId === lesson.id}
-                      className={requestedSicilianLessonId === lesson.id ? "style-option active" : "style-option"}
+                      aria-label={`Schwarz spielt ${requestedCourse === "french" ? "4" : "2"}...${lesson.label}`}
+                      aria-pressed={selectedNamedLessonId === lesson.id}
+                      className={selectedNamedLessonId === lesson.id ? "style-option active" : "style-option"}
                       disabled={interactionLocked || phaseDecisionPending}
                       key={lesson.id}
                       onClick={() => void startSession("white", "guided", "mainline", lesson.id)}
@@ -1187,6 +1257,9 @@ export default function Home() {
               {requestedMode === "guided" && requestedCourse === "sicilian" && (
                 <p className="selection-note">Hier wählst du Schwarz&apos; zweiten Zug. Alle drei Linien üben denselben weißen Plan; danach spielst du frei weiter.</p>
               )}
+              {requestedMode === "guided" && requestedCourse === "french" && (
+                <p className="selection-note">Hier wählst du Schwarz&apos; Antwort auf 4.c3. Du übst die Bauernkette und spielst danach frei weiter.</p>
+              )}
             </div>
           </div>
 
@@ -1201,6 +1274,12 @@ export default function Home() {
               <section className="lesson-intro" aria-label="Sizilianisch kennenlernen">
                 <strong>Dein Plan gegen 1...c5</strong>
                 <p>Schwarz greift d4 von der Seite an. Spiele Nf3 und dann d4. Nach ...cxd4 nimmst du mit Nxd4 zurück. Gegen ...Nf6 entwickelt Nc3 eine Figur und deckt e4.</p>
+              </section>
+            )}
+            {isFrenchLesson && session?.phase === "opening" && (
+              <section className="lesson-intro" aria-label="Französisch kennenlernen">
+                <strong>Dein Plan gegen 1...e6</strong>
+                <p>Schwarz bereitet ...d5 vor. Spiele d4 und schiebe den angegriffenen e-Bauern nach e5. Nach ...c5 stützt c3 deinen Bauern auf d4. Entwickle danach Nf3; falls Schwarz auf d4 tauscht, nimm mit dem c-Bauern zurück.</p>
               </section>
             )}
 
@@ -1323,6 +1402,38 @@ export default function Home() {
               </div>
             )}
 
+            {session?.draw_claim && !session.game_over && (
+              <section className="opening-end-banner draw-claim-banner" aria-labelledby="draw-claim-title" role="status">
+                <div className="opening-end-icon" aria-hidden="true">½</div>
+                <div className="opening-end-content">
+                  <p className="eyebrow">Remis möglich</p>
+                  <h3 id="draw-claim-title">{session.draw_claim.headline}</h3>
+                  <p>{session.draw_claim.explanation}</p>
+                  <div className="opening-end-actions">
+                    <button className="primary-action" disabled={interactionLocked} onClick={() => void claimDraw()} type="button">
+                      Remis beanspruchen<span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {session?.game_end && !session.opening_summary && (
+              <section className="opening-end-banner game-end-banner" aria-labelledby="game-end-title" role="status">
+                <div className="opening-end-icon" aria-hidden="true">{session.game_end.result === "1/2-1/2" ? "½" : "♚"}</div>
+                <div className="opening-end-content">
+                  <p className="eyebrow">Partieende · {session.game_end.result}</p>
+                  <h3 id="game-end-title">{session.game_end.headline}</h3>
+                  <p>{session.game_end.explanation}</p>
+                  <div className="opening-end-actions">
+                    <button className="primary-action" disabled={interactionLocked} onClick={() => void resolveOpeningEnd("summary")} type="button">
+                      Eröffnung auswerten<span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+
             {session?.opening_end && (
               <section className="opening-end-banner" aria-labelledby="opening-end-title" role="status">
                 <div className="opening-end-icon" aria-hidden="true">◎</div>
@@ -1417,7 +1528,7 @@ export default function Home() {
             <div className="coach-avatar" aria-hidden="true">♟</div>
             <div>
               <p className="eyebrow">Dein Coach</p>
-              <h2>{sessionComplete ? "Eröffnung ausgewertet" : phaseDecisionPending ? "Zeit für eine Entscheidung" : session?.phase === "middlegame" ? "Wir sind im Mittelspiel" : isSicilianLesson ? "Sizilianisch mit Weiß" : session?.lesson_style === "branches" ? "Reagiere auf die Abweichung" : session?.lesson_style === "realistic" ? "Schwarz entscheidet auf dem Brett" : session?.training_mode === "guided" ? "Italienisch mit Weiß" : session ? "Wir sind in der Partie" : "Bereit für den ersten Zug"}</h2>
+              <h2>{sessionComplete ? "Eröffnung ausgewertet" : phaseDecisionPending ? "Zeit für eine Entscheidung" : session?.phase === "middlegame" ? "Wir sind im Mittelspiel" : isSicilianLesson ? "Sizilianisch mit Weiß" : isFrenchLesson ? "Französisch mit Weiß" : session?.lesson_style === "branches" ? "Reagiere auf die Abweichung" : session?.lesson_style === "realistic" ? "Schwarz entscheidet auf dem Brett" : session?.training_mode === "guided" ? "Italienisch mit Weiß" : session ? "Wir sind in der Partie" : "Bereit für den ersten Zug"}</h2>
             </div>
           </div>
 
@@ -1435,7 +1546,7 @@ export default function Home() {
                 <article className={`coach-message ${message.actor}${message.kind === "question" || message.kind === "clarification" ? " question-answer" : ""}`} key={message.message_id ?? `${index}-${message.move}-${message.question ?? message.summary}`}>
                   <span className="message-index">{String(index + 1).padStart(2, "0")}</span>
                   <div>
-                    <small className="message-author">{message.kind === "prompt" ? "Trainingsfrage" : message.kind === "clarification" ? "Rückfrage zum Zug" : message.kind === "question" ? "Antwort zur Frage" : message.kind === "phase" ? "Phasenwechsel" : message.kind === "summary" ? "Lernbilanz" : message.kind === "milestone" ? "Etappenziel" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
+                    <small className="message-author">{message.kind === "prompt" ? "Trainingsfrage" : message.kind === "clarification" ? "Rückfrage zum Zug" : message.kind === "question" ? "Antwort zur Frage" : message.kind === "phase" ? "Phasenwechsel" : message.kind === "game_end" ? "Partieende" : message.kind === "summary" ? "Lernbilanz" : message.kind === "milestone" ? "Etappenziel" : message.actor === "learner" ? "Dein Zug" : "Coach-Zug"}{message.move ? ` · ${message.move}` : ""}</small>
                     {message.question && <blockquote className="question-quote">„{message.question}“</blockquote>}
                     <p>{message.summary}</p>
                     <details>

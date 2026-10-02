@@ -7,6 +7,7 @@ import chess
 import pytest
 from chess_coach.api import create_app
 from chess_coach.guided import (
+    FRENCH_WHITE_LESSON_IDS,
     ITALIAN_WHITE_LESSON_ID,
     SICILIAN_WHITE_LESSON_IDS,
     GuidedLessonBook,
@@ -36,7 +37,7 @@ def test_italian_lesson_loads_from_annotated_pgn() -> None:
     lesson_book = GuidedLessonBook(REPERTOIRE_PATH)
     lesson = lesson_book.get(ITALIAN_WHITE_LESSON_ID)
 
-    assert len(lesson_book.lessons) == 15
+    assert len(lesson_book.lessons) == 17
     assert sum(item.realistic_weight for item in lesson_book.lessons.values()) == 100
     assert lesson.title == "Italienisches Spiel mit Weiß"
     assert lesson.eco == "C50"
@@ -304,14 +305,15 @@ def test_sicilian_course_is_named_and_other_foundations_stay_inactive() -> None:
         and lesson_book.get(lesson_id).drill_start_ply == 0
         for lesson_id in SICILIAN_WHITE_LESSON_IDS
     )
-    assert lesson_book.get("italian-white-vs-french").realistic_weight == 0
+    assert lesson_book.get("italian-white-vs-caro-kann").realistic_weight == 0
+    assert "italian-white-vs-french" not in lesson_book.lessons
 
     with pytest.raises(ValueError, match="gehört nicht zum Italienisch-Training"):
         coach.create_session(
             "white",
             training_mode="guided",
             lesson_style="mainline",
-            lesson_id="italian-white-vs-french",
+            lesson_id="italian-white-vs-caro-kann",
         )
     with pytest.raises(ValueError, match="benannte Grundlinienübung"):
         coach.create_session(
@@ -403,6 +405,93 @@ def test_sicilian_undo_reopens_the_last_taught_move() -> None:
     )
     session_id = response["session_id"]
     for move_uci in ("e2e4", "g1f3", "d2d4", "f3d4", "b1c3"):
+        coach.play_learner_move(session_id, move_uci[:2], move_uci[2:4])
+
+    reopened = coach.undo_last_turn(session_id)
+
+    assert reopened["phase"] == "opening"
+    assert reopened["training_progress"]["current"] == 5
+    assert len(reopened["move_history"]) == 8
+    assert coach.sessions[session_id].guided_segment_complete is False
+    assert all(message["kind"] != "milestone" for message in reopened["message_history"])
+
+
+def test_french_course_is_named_and_hidden_variations_stay_locked() -> None:
+    lesson_book = GuidedLessonBook(REPERTOIRE_PATH)
+    coach = guided_service()
+
+    assert FRENCH_WHITE_LESSON_IDS <= lesson_book.lessons.keys()
+    assert all(
+        lesson_book.get(lesson_id).family == "e4-white-foundations"
+        and lesson_book.get(lesson_id).realistic_weight == 0
+        and lesson_book.get(lesson_id).drill_start_ply == 0
+        and lesson_book.get(lesson_id).learner_move_count == 5
+        for lesson_id in FRENCH_WHITE_LESSON_IDS
+    )
+    with pytest.raises(ValueError, match="benannte Grundlinienübung"):
+        coach.create_session(
+            "white",
+            training_mode="guided",
+            lesson_style="realistic",
+            lesson_id="french-white-nc6",
+        )
+
+
+@pytest.mark.parametrize(
+    ("lesson_id", "black_fourth_move", "last_white_move"),
+    [
+        ("french-white-nc6", "Nc6", "g1f3"),
+        ("french-white-qb6", "Qb6", "g1f3"),
+        ("french-white-cxd4", "cxd4", "c3d4"),
+    ],
+)
+def test_french_lesson_teaches_then_continues_as_free_opening_play(
+    lesson_id: str, black_fourth_move: str, last_white_move: str
+) -> None:
+    coach = guided_service()
+    coach.tutor.explain = Mock(side_effect=AssertionError("automatic tutor call"))
+    response = coach.create_session(
+        "white", training_mode="guided", lesson_style="mainline", lesson_id=lesson_id
+    )
+    session_id = response["session_id"]
+
+    assert response["lesson"]["lesson_id"] == lesson_id
+    assert response["training_progress"]["total"] == 5
+    assert "Französisch" in response["messages"][0]["summary"]
+    assert "c3" in response["messages"][0]["details"]
+
+    for move_uci in ("e2e4", "d2d4", "e4e5", "c2c3", last_white_move):
+        suggestion = coach.suggest_move(session_id)
+        assert suggestion["move_uci"] == move_uci
+        response = coach.play_learner_move(session_id, move_uci[:2], move_uci[2:4])
+
+    assert response["move_history"][1] == {"actor": "coach", "san": "e6"}
+    assert response["move_history"][7] == {"actor": "coach", "san": black_fourth_move}
+    assert len(response["move_history"]) == 10
+    assert response["phase"] == "opening"
+    assert response["training_progress"] is None
+    assert coach.sessions[session_id].guided_segment_complete is True
+    assert response["messages"][-1]["kind"] == "milestone"
+    assert "frei weiter" in response["messages"][-1]["summary"]
+    assert response["legal_moves"]
+
+    suggestion = coach.suggest_move(session_id)
+    continued = coach.play_learner_move(
+        session_id, suggestion["move_uci"][:2], suggestion["move_uci"][2:4]
+    )
+    assert len(continued["move_history"]) == 12
+    assert continued["messages"][0]["actor"] == "learner"
+    assert continued["messages"][0]["source"] == "deterministic"
+    coach.tutor.explain.assert_not_called()
+
+
+def test_french_undo_reopens_last_taught_decision() -> None:
+    coach = guided_service()
+    response = coach.create_session(
+        "white", training_mode="guided", lesson_id="french-white-cxd4"
+    )
+    session_id = response["session_id"]
+    for move_uci in ("e2e4", "d2d4", "e4e5", "c2c3", "c3d4"):
         coach.play_learner_move(session_id, move_uci[:2], move_uci[2:4])
 
     reopened = coach.undo_last_turn(session_id)

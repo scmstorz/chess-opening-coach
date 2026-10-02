@@ -62,7 +62,9 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .selection-caption { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .06em; line-height: 1.3; text-transform: uppercase; }
 .selection-note { color: var(--muted); font-size: 10px; line-height: 1.35; margin: 0; max-width: 330px; text-align: right; }
 .mode-picker, .color-picker, .guided-style-picker { background: #e9e4d9; border-radius: 10px; display: flex; padding: 4px; }
+.mode-picker { flex-wrap: wrap; gap: 2px; justify-content: flex-end; max-width: 390px; }
 .mode-option, .color-option, .style-option { background: transparent; border: 0; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 9px 13px; }
+.mode-option { font-size: 11px; padding: 8px 10px; }
 .style-option { font-size: 10px; padding: 7px 10px; }
 .mode-option.active, .color-option.active, .style-option.active { background: var(--surface); box-shadow: 0 2px 8px rgba(23, 33, 28, 0.1); }
 .mode-option:focus-visible, .color-option:focus-visible, .style-option:focus-visible, .primary-action:focus-visible, .secondary-action:focus-visible, .square:focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
@@ -145,6 +147,8 @@ h2 { font-size: 25px; letter-spacing: -0.025em; }
 .correction-banner { background: #f7e7db; border: 1px solid #e9bba9; color: #713a2b; }
 .error-banner { background: #f5dddd; border: 1px solid #e4abab; color: #812f2f; }
 .opening-end-banner { align-items: flex-start; background: var(--green); border-radius: 14px; color: #fff; display: flex; gap: 15px; margin-top: 16px; padding: 18px; }
+.draw-claim-banner { background: #66531b; }
+.game-end-banner { background: #32433b; }
 .opening-end-icon { align-items: center; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.22); border-radius: 50%; display: flex; flex: 0 0 auto; font-size: 22px; height: 42px; justify-content: center; width: 42px; }
 .opening-end-content { flex: 1; min-width: 0; }
 .opening-end-content .eyebrow { color: #f0ac96; margin-bottom: 5px; }
@@ -301,6 +305,8 @@ details p { color: var(--muted); font-family: inherit !important; font-size: 13p
   .workspace { padding: 28px 12px 44px; }
   .session-toolbar { align-items: flex-start; flex-direction: column; gap: 18px; }
   .session-options, .mode-picker, .color-picker, .guided-style-picker { justify-items: stretch; width: 100%; }
+  .mode-picker { max-width: none; }
+  .mode-picker .mode-option { flex: 1 1 44%; }
   .selection-caption, .selection-note { justify-self: start; text-align: left; }
   .mode-option, .color-option, .style-option { flex: 1; }
   .lesson-prompt { align-items: flex-start; flex-direction: column; gap: 6px; }

@@ -37,6 +37,23 @@ can be changed explicitly through environment variables. The browser sees one
 origin; the web development server proxies `/api` requests to the Python
 service. Neither server binds to the LAN by default.
 
+## Game termination and draw claims
+
+`python-chess` remains the authority for terminal board states. Checkmate,
+stalemate, insufficient material, the 75-move rule, and fivefold repetition
+produce a structured `game_end` response and lock further moves. Threefold
+repetition is deliberately different: it is a right of the player to move,
+not an automatic end. When the current position has appeared at least three
+times with the same side to move and the same effective castling and en-passant
+rights, the API exposes `draw_claim`; the learner may continue or call the
+dedicated claim endpoint. Fivefold repetition ends automatically.
+
+Board snapshots retain the complete `python-chess` move stack rather than only
+the latest FEN. This is required because a FEN describes the current position
+but cannot prove how often it occurred. Full-turn undo therefore restores both
+the visible position and the repetition evidence. A claimed draw is stored in
+session state because claiming does not itself change the board.
+
 ## Guided repertoire scenarios
 
 Guided practice is a separate decision policy from free play. Its tracked,
@@ -53,11 +70,14 @@ Sicilian-from-White course explicitly selects three named lines against
 `2...d6`, `2...Nc6`, and `2...e6`. Each starts at move one and introduces the
 central `d4` plan. Its authored segment ends after the first five White moves;
 the coach then replies from theory or Stockfish and the opening game continues.
-These lines have zero realistic-selection weight, so they cannot appear in
-Italian practice or
-a hidden mixed-opponent session. The five other `1.e4` response lessons remain
-inactive in `e4-white-foundations`. Italian scenarios can be presented in three
-ways:
+A separate French-from-White course teaches the Advance pawn chain through
+`1.e4 e6 2.d4 d5 3.e5 c5 4.c3`. Its three named lines show Black developing
+with `...Nc6`, placing the queen on `b6`, or exchanging on `d4`. The coach's
+fifth move is scripted, then play continues from the real position. Both named
+courses have zero realistic-selection weight, so they cannot appear in Italian
+practice or a hidden mixed-opponent session. The four other `1.e4` response
+lessons remain inactive in `e4-white-foundations`. Italian scenarios can be
+presented in three ways:
 
 ```text
 model line
@@ -550,7 +570,7 @@ a settled product requirement rather than an incidental implementation detail.
 
 - Single local learner
 - Standard chess only
-- Untimed free opening play, guided Italian scenarios, and named Sicilian exercises for White
+- Untimed free opening play, guided Italian scenarios, and named Sicilian and French exercises for White
 - No authentication or cloud persistence
 - No imported PGN analysis
 - No automatic network refresh

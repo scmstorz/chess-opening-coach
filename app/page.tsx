@@ -10,7 +10,7 @@ type Piece = {
 type PlayerColor = "white" | "black" | "random";
 type TrainingMode = "free" | "guided";
 type GuidedStyle = "mainline" | "branches" | "realistic";
-type GuidedCourse = "italian" | "sicilian" | "french";
+type GuidedCourse = "italian" | "sicilian" | "french" | "caro-kann";
 
 const sicilianLessons = [
   { id: "sicilian-white-d6", label: "d6" },
@@ -21,6 +21,11 @@ const frenchLessons = [
   { id: "french-white-nc6", label: "Nc6" },
   { id: "french-white-qb6", label: "Qb6" },
   { id: "french-white-cxd4", label: "cxd4" },
+] as const;
+const caroKannLessons = [
+  { id: "caro-kann-white-bf5", label: "Bf5" },
+  { id: "caro-kann-white-c5", label: "c5" },
+  { id: "caro-kann-white-e6", label: "e6" },
 ] as const;
 
 type EngineInfo = {
@@ -636,6 +641,7 @@ export default function Home() {
   const [requestedCourse, setRequestedCourse] = useState<GuidedCourse>("italian");
   const [requestedSicilianLessonId, setRequestedSicilianLessonId] = useState<string>(sicilianLessons[0].id);
   const [requestedFrenchLessonId, setRequestedFrenchLessonId] = useState<string>(frenchLessons[0].id);
+  const [requestedCaroKannLessonId, setRequestedCaroKannLessonId] = useState<string>(caroKannLessons[0].id);
   const [requestedStyle, setRequestedStyle] = useState<GuidedStyle>("realistic");
   const [session, setSession] = useState<SessionState | null>(null);
   const [messages, setMessages] = useState<CoachMessage[]>([]);
@@ -666,8 +672,17 @@ export default function Home() {
   const boardInteractionLocked = interactionLocked || phaseDecisionPending || sessionComplete || Boolean(session?.game_over);
   const isSicilianLesson = sicilianLessons.some((lesson) => lesson.id === session?.lesson?.lesson_id);
   const isFrenchLesson = frenchLessons.some((lesson) => lesson.id === session?.lesson?.lesson_id);
-  const namedCourseLessons = requestedCourse === "french" ? frenchLessons : sicilianLessons;
-  const selectedNamedLessonId = requestedCourse === "french" ? requestedFrenchLessonId : requestedSicilianLessonId;
+  const isCaroKannLesson = caroKannLessons.some((lesson) => lesson.id === session?.lesson?.lesson_id);
+  const namedCourseLessons = requestedCourse === "french"
+    ? frenchLessons
+    : requestedCourse === "caro-kann"
+    ? caroKannLessons
+    : sicilianLessons;
+  const selectedNamedLessonId = requestedCourse === "french"
+    ? requestedFrenchLessonId
+    : requestedCourse === "caro-kann"
+    ? requestedCaroKannLessonId
+    : requestedSicilianLessonId;
 
   useEffect(() => {
     api<Health>("/api/health").then(setHealth).catch(() => setHealth(null));
@@ -868,6 +883,8 @@ export default function Home() {
       ? requestedSicilianLessonId
       : requestedCourse === "french"
       ? requestedFrenchLessonId
+      : requestedCourse === "caro-kann"
+      ? requestedCaroKannLessonId
       : null,
   ) {
     setRequestedColor(color);
@@ -878,10 +895,13 @@ export default function Home() {
         ? "sicilian"
         : lessonId && frenchLessons.some((lesson) => lesson.id === lessonId)
         ? "french"
+        : lessonId && caroKannLessons.some((lesson) => lesson.id === lessonId)
+        ? "caro-kann"
         : "italian";
       setRequestedCourse(course);
       if (course === "sicilian" && lessonId) setRequestedSicilianLessonId(lessonId);
       if (course === "french" && lessonId) setRequestedFrenchLessonId(lessonId);
+      if (course === "caro-kann" && lessonId) setRequestedCaroKannLessonId(lessonId);
     }
     setLoading(true);
     setError(null);
@@ -920,7 +940,7 @@ export default function Home() {
     if (matchingMove) setDisplayFen(optimisticFen);
     setLoading(true);
     const isFinalPreparedMove = Boolean(
-      (session.lesson_style === "realistic" || isSicilianLesson || isFrenchLesson)
+      (session.lesson_style === "realistic" || isSicilianLesson || isFrenchLesson || isCaroKannLesson)
       && session.training_progress
       && session.training_progress.current === session.training_progress.total,
     );
@@ -1154,6 +1174,8 @@ export default function Home() {
                     ? "Geführtes Repertoiretraining · Sizilianisch mit Weiß"
                     : requestedCourse === "french"
                     ? "Geführtes Repertoiretraining · Französisch mit Weiß"
+                    : requestedCourse === "caro-kann"
+                    ? "Geführtes Repertoiretraining · Caro-Kann mit Weiß"
                     : `Geführtes Repertoiretraining · ${requestedStyle === "mainline" ? "Grundlinie" : requestedStyle === "branches" ? "Abweichung" : "Realistischer Gegner"}`
                   : "Freies Eröffnungsspiel"}
               </p>
@@ -1189,6 +1211,15 @@ export default function Home() {
                   Französisch üben
                 </button>
                 <button
+                  aria-pressed={requestedMode === "guided" && requestedCourse === "caro-kann"}
+                  className={requestedMode === "guided" && requestedCourse === "caro-kann" ? "mode-option active" : "mode-option"}
+                  disabled={interactionLocked || phaseDecisionPending}
+                  onClick={() => void startSession("white", "guided", "mainline", requestedCaroKannLessonId)}
+                  type="button"
+                >
+                  Caro-Kann üben
+                </button>
+                <button
                   aria-pressed={requestedMode === "free"}
                   className={requestedMode === "free" ? "mode-option active" : "mode-option"}
                   disabled={interactionLocked || phaseDecisionPending}
@@ -1204,7 +1235,9 @@ export default function Home() {
                     ? "Art der Übung"
                     : requestedCourse === "sicilian"
                     ? "Schwarz spielt nach 1.e4 c5 2.Nf3"
-                    : "Schwarz antwortet nach 3.e5 c5 4.c3"
+                    : requestedCourse === "french"
+                    ? "Schwarz antwortet nach 3.e5 c5 4.c3"
+                    : "Schwarz antwortet nach 1.e4 c6 2.d4 d5 3.e5"
                   : "Deine Farbe"}
               </span>
               {requestedMode === "guided" && requestedCourse === "italian" ? (
@@ -1223,10 +1256,10 @@ export default function Home() {
                   ))}
                 </div>
               ) : requestedMode === "guided" ? (
-                <div className="guided-style-picker" aria-label={`Schwarze Antwort im ${requestedCourse === "french" ? "Französisch" : "Sizilianisch"}-Kurs wählen`}>
+                <div className="guided-style-picker" aria-label={`Schwarze Antwort im ${requestedCourse === "french" ? "Französisch" : requestedCourse === "caro-kann" ? "Caro-Kann" : "Sizilianisch"}-Kurs wählen`}>
                   {namedCourseLessons.map((lesson) => (
                     <button
-                      aria-label={`Schwarz spielt ${requestedCourse === "french" ? "4" : "2"}...${lesson.label}`}
+                      aria-label={`Schwarz spielt ${requestedCourse === "french" ? "4" : requestedCourse === "caro-kann" ? "3" : "2"}...${lesson.label}`}
                       aria-pressed={selectedNamedLessonId === lesson.id}
                       className={selectedNamedLessonId === lesson.id ? "style-option active" : "style-option"}
                       disabled={interactionLocked || phaseDecisionPending}
@@ -1260,6 +1293,9 @@ export default function Home() {
               {requestedMode === "guided" && requestedCourse === "french" && (
                 <p className="selection-note">Hier wählst du Schwarz&apos; Antwort auf 4.c3. Du übst die Bauernkette und spielst danach frei weiter.</p>
               )}
+              {requestedMode === "guided" && requestedCourse === "caro-kann" && (
+                <p className="selection-note">Hier wählst du Schwarz&apos; Antwort auf 3.e5. Du übst den Vorstoß und spielst danach frei weiter.</p>
+              )}
             </div>
           </div>
 
@@ -1280,6 +1316,12 @@ export default function Home() {
               <section className="lesson-intro" aria-label="Französisch kennenlernen">
                 <strong>Dein Plan gegen 1...e6</strong>
                 <p>Schwarz bereitet ...d5 vor. Spiele d4 und schiebe den angegriffenen e-Bauern nach e5. Nach ...c5 stützt c3 deinen Bauern auf d4. Entwickle danach Nf3; falls Schwarz auf d4 tauscht, nimm mit dem c-Bauern zurück.</p>
+              </section>
+            )}
+            {isCaroKannLesson && session?.phase === "opening" && (
+              <section className="lesson-intro" aria-label="Caro-Kann kennenlernen">
+                <strong>Dein Plan gegen 1...c6</strong>
+                <p>Schwarz bereitet ...d5 vor. Spiele d4 und schiebe den angegriffenen e-Bauern nach e5. Entwickle anschließend deine Figuren und achte auf ...c5 gegen die Basis deiner Bauernkette auf d4.</p>
               </section>
             )}
 
@@ -1528,7 +1570,7 @@ export default function Home() {
             <div className="coach-avatar" aria-hidden="true">♟</div>
             <div>
               <p className="eyebrow">Dein Coach</p>
-              <h2>{sessionComplete ? "Eröffnung ausgewertet" : phaseDecisionPending ? "Zeit für eine Entscheidung" : session?.phase === "middlegame" ? "Wir sind im Mittelspiel" : isSicilianLesson ? "Sizilianisch mit Weiß" : isFrenchLesson ? "Französisch mit Weiß" : session?.lesson_style === "branches" ? "Reagiere auf die Abweichung" : session?.lesson_style === "realistic" ? "Schwarz entscheidet auf dem Brett" : session?.training_mode === "guided" ? "Italienisch mit Weiß" : session ? "Wir sind in der Partie" : "Bereit für den ersten Zug"}</h2>
+              <h2>{sessionComplete ? "Eröffnung ausgewertet" : phaseDecisionPending ? "Zeit für eine Entscheidung" : session?.phase === "middlegame" ? "Wir sind im Mittelspiel" : isSicilianLesson ? "Sizilianisch mit Weiß" : isFrenchLesson ? "Französisch mit Weiß" : isCaroKannLesson ? "Caro-Kann mit Weiß" : session?.lesson_style === "branches" ? "Reagiere auf die Abweichung" : session?.lesson_style === "realistic" ? "Schwarz entscheidet auf dem Brett" : session?.training_mode === "guided" ? "Italienisch mit Weiß" : session ? "Wir sind in der Partie" : "Bereit für den ersten Zug"}</h2>
             </div>
           </div>
 

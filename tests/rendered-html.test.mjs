@@ -24,6 +24,7 @@ test("server-renders the chess coach product shell", async () => {
   assert.match(html, /Italienisch üben/);
   assert.match(html, /Sizilianisch üben/);
   assert.match(html, /Französisch üben/);
+  assert.match(html, /Caro-Kann üben/);
   assert.match(html, /Freies Spiel/);
   assert.match(html, /Art der Übung/);
   assert.match(html, /Grundlinie/);

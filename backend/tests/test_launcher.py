@@ -9,6 +9,7 @@ assert launcher_spec and launcher_spec.loader
 launcher = importlib.util.module_from_spec(launcher_spec)
 launcher_spec.loader.exec_module(launcher)
 configured_port = launcher.configured_port
+frontend_command = launcher.frontend_command
 
 
 def test_launcher_uses_stable_default_ports(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -24,3 +25,9 @@ def test_launcher_rejects_invalid_configured_port(monkeypatch: pytest.MonkeyPatc
 
     with pytest.raises(ValueError, match="muss eine Portnummer sein"):
         configured_port("CHESS_COACH_FRONTEND_PORT", 53687)
+
+
+def test_frontend_binds_to_ipv4_loopback() -> None:
+    command = frontend_command(53687)
+
+    assert command[command.index("--hostname") + 1] == "127.0.0.1"

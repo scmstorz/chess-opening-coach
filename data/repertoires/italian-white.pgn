@@ -37,34 +37,6 @@
 10. h3 {Der Zug verhindert ...Bg4 und gibt deinem König ein Luftfeld, ohne den zentralen Aufbau zu verändern. [%hint1 Verhindere, dass der Läufer auf c8 eine Figur auf f3 fesselt.] [%hint2 Ein Randbauer kann dem Feld g4 die Kontrolle entziehen.]}
 10... h6 {Schwarz nimmt dem weißen Läufer oder Springer das Feld g5 und schafft ebenfalls ein Luftfeld.} *
 
-[Event "Italian White: Caro-Kann switch"]
-[Site "Local"]
-[Date "2026.09.11"]
-[Round "-"]
-[White "Learner"]
-[Black "Coach"]
-[Result "*"]
-[ECO "B18"]
-[Opening "Caro-Kann Defense: Classical Variation"]
-[LessonId "italian-white-vs-caro-kann"]
-[LessonFamily "e4-white-foundations"]
-[LessonTitle "Wenn Schwarz Caro-Kann wählt"]
-[TrainingSide "White"]
-[LessonGoal "Das Zentrum besetzen und nach dem Tausch mit einer Figur zurücknehmen"]
-[DrillStartPly "2"]
-[RealisticWeight "0"]
-[OpponentCategory "established"]
-
-1. e4 {Du besetzt das Zentrum und öffnest Dame und Läufer. [%hint1 Besetze das Zentrum mit Tempo.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
-1... c6 {Schwarz wählt Caro-Kann und bereitet ...d5 vor. Italienisch ist damit nicht mehr möglich.}
-2. d4 {Du nimmst Raum und stellst zwei Bauern nebeneinander ins Zentrum. [%hint1 Ergänze e4 durch einen zweiten Zentralbauern.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
-2... d5 {Schwarz greift dein Zentrum an und möchte den weißfeldrigen Läufer außerhalb der Bauernkette entwickeln.}
-3. Nc3 {Du entwickelst den Damenspringer und deckst den angegriffenen e4-Bauern. [%hint1 Verbinde Verteidigung des Bauern mit Figurenentwicklung.] [%hint2 Entwickle den Springer nach c3.]}
-3... dxe4 {Schwarz löst die Spannung und nimmt den e4-Bauern.}
-4. Nxe4 {Der Springer nimmt zentral zurück und bleibt aktiv. [%hint1 Nimm mit einer entwickelten Figur zurück.] [%hint2 Der Springer auf c3 kann nach e4 schlagen.]}
-4... Bf5 {Schwarz entwickelt den Läufer, bevor ...e6 die Diagonale schließt.}
-5. Ng3 {Du greifst den Läufer an und entwickelst den Springer mit Tempo weiter. [%hint1 Befrage den aktiven Läufer und halte deinen Springer sicher.] [%hint2 Der Springer auf e4 kann nach g3.]} *
-
 [Event "Italian White: Petroff switch"]
 [Site "Local"]
 [Date "2026.09.11"]

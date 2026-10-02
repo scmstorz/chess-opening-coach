@@ -15,6 +15,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BACKEND_PORT = 53686
 DEFAULT_FRONTEND_PORT = 53687
+LOOPBACK_HOST = "127.0.0.1"
 
 
 def configured_port(variable: str, default: int) -> int:
@@ -32,7 +33,7 @@ def ensure_port_available(port: int, label: str, variable: str) -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            sock.bind(("127.0.0.1", port))
+            sock.bind((LOOPBACK_HOST, port))
         except OSError as exc:
             raise RuntimeError(
                 f"{label}-Port {port} ist bereits belegt. "
@@ -52,6 +53,20 @@ def wait_for(url: str, timeout: float = 25) -> None:
     raise RuntimeError(f"Lokaler Dienst wurde nicht rechtzeitig erreichbar: {url}")
 
 
+def frontend_command(port: int) -> list[str]:
+    return [
+        "npm",
+        "run",
+        "dev",
+        "--",
+        "--hostname",
+        LOOPBACK_HOST,
+        "--port",
+        str(port),
+        "--strictPort",
+    ]
+
+
 def main() -> int:
     venv_python = PROJECT_ROOT / ".venv" / "bin" / "python"
     if venv_python.exists() and Path(sys.executable).resolve() != venv_python.resolve():
@@ -66,7 +81,7 @@ def main() -> int:
         print(f"\nChess Opening Coach konnte nicht starten:\n  {exc}\n", file=sys.stderr)
         return 2
     environment = os.environ.copy()
-    environment["CHESS_COACH_BACKEND_URL"] = f"http://127.0.0.1:{backend_port}"
+    environment["CHESS_COACH_BACKEND_URL"] = f"http://{LOOPBACK_HOST}:{backend_port}"
 
     backend = subprocess.Popen(
         [
@@ -77,7 +92,7 @@ def main() -> int:
             "--app-dir",
             "backend",
             "--host",
-            "127.0.0.1",
+            LOOPBACK_HOST,
             "--port",
             str(backend_port),
         ],
@@ -85,17 +100,7 @@ def main() -> int:
         env=environment,
     )
     frontend = subprocess.Popen(
-        [
-            "npm",
-            "run",
-            "dev",
-            "--",
-            "--host",
-            "localhost",
-            "--port",
-            str(frontend_port),
-            "--strictPort",
-        ],
+        frontend_command(frontend_port),
         cwd=PROJECT_ROOT,
         env=environment,
     )
@@ -110,8 +115,8 @@ def main() -> int:
     signal.signal(signal.SIGTERM, stop)
 
     try:
-        wait_for(f"http://127.0.0.1:{backend_port}/api/health")
-        wait_for(f"http://localhost:{frontend_port}/")
+        wait_for(f"http://{LOOPBACK_HOST}:{backend_port}/api/health")
+        wait_for(f"http://{LOOPBACK_HOST}:{frontend_port}/")
         print("\nChess Opening Coach ist bereit:")
         print(f"  http://localhost:{frontend_port}/")
         print("\nMit Ctrl+C beenden.\n")

@@ -33,10 +33,12 @@ operator.
 - Guided Italian-from-White curriculum with one model line and six active Italian deviations
 - Separate Sicilian-from-White course with a taught central plan and three named `...d6`, `...Nc6`, and `...e6` exercises
 - Separate French-from-White course with the Advance pawn-chain plan and named `...Nc6`, `...Qb6`, and `...cxd4` exercises
-- Four additional `1.e4` response lessons retained locally for a later foundations curriculum
+- Separate Caro-Kann-from-White course with the Advance plan and named `...Bf5`, `...c5`, and `...e6` exercises
+- Three additional `1.e4` response lessons retained locally for a later foundations curriculum
 - Italian guided styles: repeat the model line, start at a deviation, or face a hidden varying opponent line
 - Sicilian exercises start at move one with a visible introduction, then continue as free opening play after the taught line
 - French exercises start at move one, then continue as free opening play after the prepared pawn-chain segment
+- Caro-Kann exercises start at move one, then continue as free opening play after the prepared Advance segment
 - Hidden mixed-opponent practice remains locked until its responses are taught
 - Realistic-opponent sessions continue as free opening play after a prepared variation ends
 - Immediate recall, two hints, and a third-attempt reveal in every guided scenario
@@ -376,6 +378,7 @@ by this repository nor licensed under MIT.
 - [Italian curriculum scope acceptance](docs/evaluations/2026-09-12-italian-scope-acceptance.md)
 - [Sicilian course audit](docs/evaluations/2026-09-26-sicilian-white-course.md)
 - [French course audit](docs/evaluations/2026-09-26-french-white-course.md)
+- [Caro-Kann course audit](docs/evaluations/2026-10-02-caro-kann-white-course.md)
 - [Continue after Sicilian teaching lines](docs/decisions/0022-continue-after-sicilian-teaching-line.md)
 - [Public repository and license decision](docs/decisions/0017-public-repository-license.md)
 - [Public-clone onboarding audit](docs/evaluations/2026-09-12-public-clone-onboarding.md)

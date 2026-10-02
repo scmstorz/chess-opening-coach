@@ -6,14 +6,37 @@ Start a new session by reading this file, then inspect the actual Git status and
 runtime health: processes, model availability, and learner data can change while
 the conversation is closed.
 
+## Update: 2026-10-02 — Caro-Kann with White and local alias repair
+
+The learner approved **Caro-Kann mit Weiß** as the fourth guided course. Three
+new B12 Advance lessons teach `1.e4 c6 2.d4 d5 3.e5` against `3...Bf5`,
+`3...c5`, and `3...e6`. Each contains five White decisions, a final scripted
+Black move, and then free opening play. The old inactive Classical Caro-Kann
+sketch was removed from the Italian PGN. Selection boundaries, suggestions,
+continuation, and undo are covered by tests. See [ADR 0026](docs/decisions/0026-introduce-caro-kann-advance-course.md)
+and the [evaluation](docs/evaluations/2026-10-02-caro-kann-white-course.md).
+The complete backend suite, Ruff, frontend lint, production build, rendered
+shell, short Stockfish audit, and isolated real-engine replays passed. After
+explicit approval to discard the current in-memory game, the live starter was
+restarted. Backend, frontend, and `schach.localhost` returned HTTP 200, and a
+fresh API session accepted `caro-kann-white-bf5` with the expected five-move
+progress and Caro-Kann prompt.
+
+Earlier in the same session, `schach.localhost` returned 502 because vinext
+ignored `--host` and bound its default `localhost` to IPv6 while nginx proxied
+to IPv4. `scripts/start_local.py` now uses vinext's actual `--hostname`
+argument with `127.0.0.1`; its regression test passes, and the alias returned
+HTTP 200 after restart. The launcher repair and the Caro-Kann course belong to
+the same delivery.
+
 ## Update: 2026-10-02 — repetition draws
 
 The learner reported that a repeated queen/king cycle did not end the game.
 The latest SQLite interaction history confirmed four equivalent positions had
 each occurred three times with the same player and move rights. The cause was
 the default `python-chess` `is_game_over()` behavior: claimable threefold
-repetition is excluded unless explicitly requested. The local, uncommitted fix
-now offers **Remis beanspruchen** to the learner at an actually repeated current
+repetition is excluded unless explicitly requested. The implemented fix offers
+**Remis beanspruchen** to the learner at an actually repeated current
 position, records the claimed `1/2-1/2` result, and ends fivefold repetition
 automatically. Turn snapshots preserve the board's move stack so undo does not
 erase repetition evidence. See [ADR 0025](docs/decisions/0025-handle-repetition-draw-claims.md)
@@ -36,8 +59,8 @@ opening play with White to move. The course has a visible introduction and
 never enters Italian realistic selection. Four foundations sketches remain
 inactive. See [ADR 0024](docs/decisions/0024-introduce-french-advance-course.md),
 the [evaluation](docs/evaluations/2026-09-26-french-white-course.md), and the
-latest journal entry. The work is local and uncommitted as of this note. The
-local starter was restarted and a fresh API session accepted `french-white-nc6`;
+latest journal entry. The work was published in commit `5615881`. The local
+starter was restarted and a fresh API session accepted `french-white-nc6`;
 check Git status and runtime health before taking further action.
 
 ## Update: 2026-09-26
@@ -111,9 +134,10 @@ learner database. Never publish a raw copy of this working directory.
   Italian family until after `1.e4 e5 2.Nf3 Nc6 3.Bc4`.
 - A separate guided Sicilian course for White teaches one central plan through
   three named lines. A French course teaches the Advance pawn chain through
-  three named lines. Four further annotated `1.e4` response scenarios
-  (Caro-Kann, Petroff, Philidor, Damiano) remain **inactive** and must not leak
-  into “Italienisch üben”.
+  three named lines. A Caro-Kann course teaches its Advance through three more
+  named lines. Three further annotated `1.e4` response scenarios (Petroff,
+  Philidor, Damiano) remain **inactive** and must not leak into
+  “Italienisch üben”.
 - The correction loop normally gives a strategic hint, then a more concrete
   hint, then reveals the answer on the third unsuccessful attempt. It is for
   materially bad moves, not sound moves merely absent from the training line.
@@ -236,13 +260,13 @@ identify its process first. See README troubleshooting for platform details.
 
 ## What is *not* decided or finished
 
-The learner has now chosen Sicilian and French courses for White. A first guided
-course for Black was recommended next but has not been approved. Expansion to
-Caro-Kann and nearby `1...e5` responses is also undecided. Each inactive sketch
+The learner has now chosen Sicilian, French, and Caro-Kann courses for White. A
+first guided course for Black was recommended next but has not been approved.
+Expansion to nearby `1...e5` responses is also undecided. Each inactive sketch
 needs didactic and Stockfish review before activation. Hidden mixed-opponent
 practice requires explicit prior teaching and remains locked. A fourth broad
 book still lacks evidence of a current retrieval bottleneck. The next
-conversation can playtest the French course, choose the first Black course,
+conversation can playtest the Caro-Kann course, choose the first Black course,
 or address a newly observed issue.
 
 Other known limits and deferred work:

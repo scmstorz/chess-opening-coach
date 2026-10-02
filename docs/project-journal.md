@@ -2298,3 +2298,37 @@ the served frontend contained the new action. The packaged in-app browser
 harness could not initialize because it requested a restricted Node built-in,
 so the automated UI build and live HTTP surface check stand in for a visual
 click-through until the learner reaches another repetition.
+
+## 2026-10-02 — Caro-Kann becomes the fourth guided White course
+
+After Italian, Sicilian, and French practice, the learner asked for another
+opening and approved Caro-Kann with White. The old inactive Caro-Kann sketch
+inside the Italian PGN used the Classical line with `3.Nc3` and one continuation.
+The new standalone course instead uses the Advance `1.e4 c6 2.d4 d5 3.e5` so
+the learner can reuse the idea of gaining space while seeing how Caro-Kann
+differs from the French Defense: Black's light-squared bishop can leave the
+pawn chain before `...e6`.
+
+Three named exercises teach different responses. Against `3...Bf5`, White
+develops `Nf3` and `Be2`; against the immediate `3...c5`, White exchanges on
+c5 and develops without trying to keep the temporary pawn; against `3...e6`,
+White develops `Nf3` and supports d4 with `c3` after Black's pawn break. Each
+line scripts five White decisions and a final Black move, then continues as
+free opening play. The old Classical sketch was removed, leaving Petroff,
+Philidor, and Damiano as the three inactive foundations scenarios.
+
+A 0.35-second forced-root Stockfish audit found no taught White move more than
+0.13 pawn behind its short-search best move. The maximum Black losses were
+0.01, 0.16, and 0.37 pawns for the `...Bf5`, `...c5`, and `...e6` exercises;
+the last is deliberately described as a passive but playable reply rather than
+as best play. Isolated real-Stockfish sessions reached all three milestones,
+continued with legal free moves, and used an in-memory database. Regression
+tests cover explicit selection, the five suggestions, continuation without an
+automatic tutor call, undo, and the rendered course control. The full 127-test
+backend suite, Ruff, frontend lint, production build, rendered-shell test, and
+`git diff --check` passed. ADR 0026 and the dated evaluation record the scope
+and evidence. After the learner explicitly approved discarding the active
+in-memory game, the local starter restarted. Backend, frontend, and
+`schach.localhost` returned HTTP 200; a fresh live session selected
+`caro-kann-white-bf5`, exposed five learner decisions, and showed the expected
+Caro-Kann prompt.

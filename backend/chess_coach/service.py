@@ -21,6 +21,7 @@ from chess_coach.engine import (
     StockfishService,
 )
 from chess_coach.guided import (
+    CARO_KANN_WHITE_LESSON_IDS,
     FRENCH_WHITE_LESSON_IDS,
     GUIDED_STYLES,
     ITALIAN_WHITE_LESSON_ID,
@@ -1734,6 +1735,7 @@ class CoachService:
         is_mainline = session.lesson.lesson_id == ITALIAN_WHITE_LESSON_ID
         is_sicilian = session.lesson.lesson_id in SICILIAN_WHITE_LESSON_IDS
         is_french = session.lesson.lesson_id in FRENCH_WHITE_LESSON_IDS
+        is_caro_kann = session.lesson.lesson_id in CARO_KANN_WHITE_LESSON_IDS
         if is_sicilian:
             summary = (
                 "Der Sizilianisch-Grundplan ist geübt. "
@@ -1742,6 +1744,11 @@ class CoachService:
         elif is_french:
             summary = (
                 "Die französische Bauernkette ist geübt. "
+                "Jetzt spielen wir die Eröffnung frei weiter."
+            )
+        elif is_caro_kann:
+            summary = (
+                "Der Caro-Kann-Vorstoß ist geübt. "
                 "Jetzt spielen wir die Eröffnung frei weiter."
             )
         elif is_mainline:
@@ -1814,6 +1821,14 @@ class CoachService:
                 "Nach 1...e6 bereitet Schwarz ...d5 vor. Stelle e4 und d4 ins Zentrum, "
                 "schiebe den angegriffenen e-Bauern nach e5 und stütze d4 mit c3 "
                 "gegen ...c5. Danach entwickelst du deine Figuren. "
+                "Die schwarzen Antworten werden in benannten Übungen gezeigt."
+            )
+        elif session.lesson.lesson_id in CARO_KANN_WHITE_LESSON_IDS:
+            summary = "Du lernst Caro-Kann mit Weiß. Was ist dein erster Zug?"
+            details = (
+                "Nach 1...c6 bereitet Schwarz ...d5 vor. Stelle e4 und d4 ins Zentrum "
+                "und schiebe den angegriffenen e-Bauern nach e5. Entwickle danach deine "
+                "Figuren und achte auf den Gegenangriff ...c5 gegen d4. "
                 "Die schwarzen Antworten werden in benannten Übungen gezeigt."
             )
         else:

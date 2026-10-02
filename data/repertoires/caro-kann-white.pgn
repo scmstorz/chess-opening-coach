@@ -1,0 +1,86 @@
+[Event "Caro-Kann White: Advance plan against Bf5"]
+[Site "Local"]
+[Date "2026.10.02"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "B12"]
+[Opening "Caro-Kann Defense: Advance Variation"]
+[LessonId "caro-kann-white-bf5"]
+[LessonFamily "e4-white-foundations"]
+[LessonTitle "Caro-Kann: entwickeln gegen ...Bf5"]
+[TrainingSide "White"]
+[LessonGoal "Mit e5 Raum gewinnen und gegen den aktiven Läufer ruhig entwickeln"]
+[DrillStartPly "0"]
+[RealisticWeight "0"]
+[OpponentCategory "established"]
+
+1. e4 {Du besetzt das Zentrum und öffnest Linien für Dame und Läufer. [%hint1 Besetze das Zentrum mit einem Bauern.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
+1... c6 {Schwarz bereitet ...d5 vor. Anders als im Französischen bleibt der Läufer auf c8 zunächst außerhalb der Bauernkette beweglich.}
+2. d4 {Du stellst einen zweiten Bauern ins Zentrum und beanspruchst Raum auf e5 und c5. [%hint1 Ergänze den e-Bauern durch einen zweiten Zentralbauern.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+2... d5 {Schwarz greift deinen Bauern auf e4 an und stellt eine feste Bauernkette c6–d5 auf.}
+3. e5 {Du schiebst den angegriffenen Bauern vor. Der Raumgewinn erschwert dem schwarzen Königsspringer das natürliche Feld f6. [%hint1 Gewinne Raum, indem du den angegriffenen Bauern vorschiebst.] [%hint2 Ziehe den Bauern von e4 nach e5.]}
+3... Bf5 {Schwarz entwickelt den weißfeldrigen Läufer, bevor ...e6 die eigene Bauernkette schließt.}
+4. Nf3 {Du entwickelst den Königsspringer, stützt d4 und bereitest die kurze Rochade vor. [%hint1 Entwickle eine Figur und bereite die Rochade vor.] [%hint2 Der Königsspringer gehört nach f3.]}
+4... e6 {Schwarz stützt d5 und öffnet dem Läufer auf f8 den Weg, schließt aber den bereits entwickelten Läufer auf f5 nicht ein.}
+5. Be2 {Du entwickelst den Läufer auf ein sicheres Feld und kannst als Nächstes kurz rochieren. [%hint1 Entwickle die letzte Figur, die du vor der kurzen Rochade noch bewegen musst.] [%hint2 Stelle den Läufer von f1 nach e2.]}
+5... c5 {Schwarz greift mit dem c-Bauern deine Bauernkette an. Der wichtigste Druck richtet sich gegen ihre Basis auf d4.} *
+
+[Event "Caro-Kann White: Advance plan against c5"]
+[Site "Local"]
+[Date "2026.10.02"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "B12"]
+[Opening "Caro-Kann Defense: Advance Variation"]
+[LessonId "caro-kann-white-c5"]
+[LessonFamily "e4-white-foundations"]
+[LessonTitle "Caro-Kann: auf den frühen Hebel ...c5 reagieren"]
+[TrainingSide "White"]
+[LessonGoal "Den frühen Angriff auf d4 erkennen, die Spannung lösen und entwickeln"]
+[DrillStartPly "0"]
+[RealisticWeight "0"]
+[OpponentCategory "established"]
+
+1. e4 {Du besetzt das Zentrum und öffnest Linien für Dame und Läufer. [%hint1 Beginne mit einem Bauernzug ins Zentrum.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
+1... c6 {Schwarz bereitet ...d5 vor und hält sich die Entwicklung des Läufers auf c8 offen.}
+2. d4 {Mit zwei Bauern nebeneinander kontrollierst du wichtige Zentralfelder. [%hint1 Baue neben e4 einen zweiten Zentralbauern auf.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+2... d5 {Schwarz greift e4 an und fordert eine Entscheidung im Zentrum.}
+3. e5 {Du schiebst den angegriffenen Bauern vor und gewinnst Raum. [%hint1 Halte den Bauern im Zentrum, indem du ihn vorschiebst.] [%hint2 Ziehe e4 nach e5.]}
+3... c5 {Schwarz greift sofort deinen Bauern auf d4 an. Der c-Bauer, der den Aufbau mit ...c6 vorbereitet hat, zieht nun weiter nach c5.}
+4. dxc5 {Du löst die Spannung und nimmst auf c5. Den Mehrbauern wirst du nicht dauerhaft halten; wichtiger ist, Schwarz Zeit zum Zurücknehmen zu kosten. [%hint1 Löse den Druck auf d4 durch einen Tausch.] [%hint2 Der Bauer auf d4 kann den Angreifer auf c5 schlagen.]}
+4... e6 {Schwarz öffnet dem Läufer auf f8 die Diagonale zum Bauern auf c5 und bereitet dessen Rückgewinn vor.}
+5. Nf3 {Du entwickelst eine Figur, stützt e5 und bereitest die kurze Rochade vor, statt den c5-Bauern mit weiteren Zügen festhalten zu wollen. [%hint1 Entwickle eine Figur und stütze zugleich deinen vorgerückten Bauern.] [%hint2 Der Königsspringer kann nach f3.]}
+5... Bxc5 {Schwarz gewinnt den vorübergehend abgegebenen Bauern zurück und entwickelt dabei den Läufer. Das Material ist wieder ausgeglichen.} *
+
+[Event "Caro-Kann White: Advance plan against e6"]
+[Site "Local"]
+[Date "2026.10.02"]
+[Round "-"]
+[White "Learner"]
+[Black "Coach"]
+[Result "*"]
+[ECO "B12"]
+[Opening "Caro-Kann Defense: Advance Variation"]
+[LessonId "caro-kann-white-e6"]
+[LessonFamily "e4-white-foundations"]
+[LessonTitle "Caro-Kann: Raum nutzen gegen ...e6"]
+[TrainingSide "White"]
+[LessonGoal "Den Raumvorteil sichern, das Zentrum stützen und Figuren entwickeln"]
+[DrillStartPly "0"]
+[RealisticWeight "0"]
+[OpponentCategory "slow"]
+
+1. e4 {Du besetzt das Zentrum und öffnest Linien für Dame und Läufer. [%hint1 Besetze das Zentrum mit einem Bauern.] [%hint2 Ziehe den Königsbauern zwei Felder.]}
+1... c6 {Schwarz bereitet ...d5 vor. Caro-Kann gibt Schwarz eine solide Bauernbasis für diesen Vorstoß.}
+2. d4 {Du nutzt den Raum und stellst zwei Bauern nebeneinander ins Zentrum. [%hint1 Ergänze deinen ersten Zentralbauern.] [%hint2 Ziehe den d-Bauern zwei Felder.]}
+2... d5 {Schwarz greift e4 an.}
+3. e5 {Du schiebst den angegriffenen Bauern vor und gewinnst Raum am Königsflügel. [%hint1 Gewinne Raum mit dem angegriffenen Bauern.] [%hint2 Ziehe e4 nach e5.]}
+3... e6 {Schwarz stützt d5, schließt damit aber den Läufer auf c8 hinter der eigenen Bauernkette ein.}
+4. Nf3 {Du entwickelst den Königsspringer, deckst d4 und bereitest die Rochade vor. [%hint1 Entwickle eine Figur, die d4 zusätzlich schützt.] [%hint2 Ziehe den Königsspringer nach f3.]}
+4... c5 {Schwarz greift die Basis deiner Bauernkette auf d4 an.}
+5. c3 {Du stützt d4 mit dem c-Bauern und erhältst die Bauernkette c3–d4–e5. Danach sollen die übrigen Figuren folgen. [%hint1 Stütze die Basis deiner Bauernkette mit einem Nachbarbauern.] [%hint2 Ziehe den Bauern von c2 nach c3.]}
+5... Nc6 {Schwarz entwickelt den Damenspringer und erhöht den Druck auf d4.} *

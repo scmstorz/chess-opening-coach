@@ -7,6 +7,7 @@ import chess
 import pytest
 from chess_coach.api import create_app
 from chess_coach.guided import (
+    CARO_KANN_WHITE_LESSON_IDS,
     FRENCH_WHITE_LESSON_IDS,
     ITALIAN_WHITE_LESSON_ID,
     SICILIAN_WHITE_LESSON_IDS,
@@ -37,7 +38,7 @@ def test_italian_lesson_loads_from_annotated_pgn() -> None:
     lesson_book = GuidedLessonBook(REPERTOIRE_PATH)
     lesson = lesson_book.get(ITALIAN_WHITE_LESSON_ID)
 
-    assert len(lesson_book.lessons) == 17
+    assert len(lesson_book.lessons) == 19
     assert sum(item.realistic_weight for item in lesson_book.lessons.values()) == 100
     assert lesson.title == "Italienisches Spiel mit Weiß"
     assert lesson.eco == "C50"
@@ -305,7 +306,7 @@ def test_sicilian_course_is_named_and_other_foundations_stay_inactive() -> None:
         and lesson_book.get(lesson_id).drill_start_ply == 0
         for lesson_id in SICILIAN_WHITE_LESSON_IDS
     )
-    assert lesson_book.get("italian-white-vs-caro-kann").realistic_weight == 0
+    assert "italian-white-vs-caro-kann" not in lesson_book.lessons
     assert "italian-white-vs-french" not in lesson_book.lessons
 
     with pytest.raises(ValueError, match="gehört nicht zum Italienisch-Training"):
@@ -313,7 +314,7 @@ def test_sicilian_course_is_named_and_other_foundations_stay_inactive() -> None:
             "white",
             training_mode="guided",
             lesson_style="mainline",
-            lesson_id="italian-white-vs-caro-kann",
+            lesson_id="italian-white-vs-petroff",
         )
     with pytest.raises(ValueError, match="benannte Grundlinienübung"):
         coach.create_session(
@@ -492,6 +493,108 @@ def test_french_undo_reopens_last_taught_decision() -> None:
     )
     session_id = response["session_id"]
     for move_uci in ("e2e4", "d2d4", "e4e5", "c2c3", "c3d4"):
+        coach.play_learner_move(session_id, move_uci[:2], move_uci[2:4])
+
+    reopened = coach.undo_last_turn(session_id)
+
+    assert reopened["phase"] == "opening"
+    assert reopened["training_progress"]["current"] == 5
+    assert len(reopened["move_history"]) == 8
+    assert coach.sessions[session_id].guided_segment_complete is False
+    assert all(message["kind"] != "milestone" for message in reopened["message_history"])
+
+
+def test_caro_kann_course_is_named_and_hidden_variations_stay_locked() -> None:
+    lesson_book = GuidedLessonBook(REPERTOIRE_PATH)
+    coach = guided_service()
+
+    assert CARO_KANN_WHITE_LESSON_IDS <= lesson_book.lessons.keys()
+    assert all(
+        lesson_book.get(lesson_id).family == "e4-white-foundations"
+        and lesson_book.get(lesson_id).realistic_weight == 0
+        and lesson_book.get(lesson_id).drill_start_ply == 0
+        and lesson_book.get(lesson_id).learner_move_count == 5
+        for lesson_id in CARO_KANN_WHITE_LESSON_IDS
+    )
+    with pytest.raises(ValueError, match="benannte Grundlinienübung"):
+        coach.create_session(
+            "white",
+            training_mode="guided",
+            lesson_style="realistic",
+            lesson_id="caro-kann-white-bf5",
+        )
+
+
+@pytest.mark.parametrize(
+    ("lesson_id", "black_third_move", "white_moves"),
+    [
+        (
+            "caro-kann-white-bf5",
+            "Bf5",
+            ("e2e4", "d2d4", "e4e5", "g1f3", "f1e2"),
+        ),
+        (
+            "caro-kann-white-c5",
+            "c5",
+            ("e2e4", "d2d4", "e4e5", "d4c5", "g1f3"),
+        ),
+        (
+            "caro-kann-white-e6",
+            "e6",
+            ("e2e4", "d2d4", "e4e5", "g1f3", "c2c3"),
+        ),
+    ],
+)
+def test_caro_kann_lesson_teaches_then_continues_as_free_opening_play(
+    lesson_id: str, black_third_move: str, white_moves: tuple[str, ...]
+) -> None:
+    coach = guided_service()
+    coach.tutor.explain = Mock(side_effect=AssertionError("automatic tutor call"))
+    response = coach.create_session(
+        "white", training_mode="guided", lesson_style="mainline", lesson_id=lesson_id
+    )
+    session_id = response["session_id"]
+
+    assert response["lesson"]["lesson_id"] == lesson_id
+    assert response["training_progress"]["total"] == 5
+    assert "Caro-Kann" in response["messages"][0]["summary"]
+    assert "e5" in response["messages"][0]["details"]
+
+    for move_uci in white_moves:
+        suggestion = coach.suggest_move(session_id)
+        assert suggestion["move_uci"] == move_uci
+        response = coach.play_learner_move(session_id, move_uci[:2], move_uci[2:4])
+
+    assert response["move_history"][1] == {"actor": "coach", "san": "c6"}
+    assert response["move_history"][5] == {
+        "actor": "coach",
+        "san": black_third_move,
+    }
+    assert len(response["move_history"]) == 10
+    assert response["phase"] == "opening"
+    assert response["training_progress"] is None
+    assert coach.sessions[session_id].guided_segment_complete is True
+    assert response["messages"][-1]["kind"] == "milestone"
+    assert "frei weiter" in response["messages"][-1]["summary"]
+    assert response["legal_moves"]
+
+    suggestion = coach.suggest_move(session_id)
+    continued = coach.play_learner_move(
+        session_id, suggestion["move_uci"][:2], suggestion["move_uci"][2:4]
+    )
+    assert len(continued["move_history"]) == 12
+    assert continued["messages"][0]["actor"] == "learner"
+    assert continued["messages"][0]["source"] == "deterministic"
+    coach.tutor.explain.assert_not_called()
+
+
+def test_caro_kann_undo_reopens_last_taught_decision() -> None:
+    coach = guided_service()
+    response = coach.create_session(
+        "white", training_mode="guided", lesson_id="caro-kann-white-c5"
+    )
+    session_id = response["session_id"]
+    for move_uci in ("e2e4", "d2d4", "e4e5", "d4c5", "g1f3"):
         coach.play_learner_move(session_id, move_uci[:2], move_uci[2:4])
 
     reopened = coach.undo_last_turn(session_id)

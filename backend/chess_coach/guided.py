@@ -19,7 +19,14 @@ SICILIAN_WHITE_LESSON_IDS = frozenset(
 FRENCH_WHITE_LESSON_IDS = frozenset(
     {"french-white-nc6", "french-white-qb6", "french-white-cxd4"}
 )
-NAMED_WHITE_FOUNDATION_LESSON_IDS = SICILIAN_WHITE_LESSON_IDS | FRENCH_WHITE_LESSON_IDS
+CARO_KANN_WHITE_LESSON_IDS = frozenset(
+    {"caro-kann-white-bf5", "caro-kann-white-c5", "caro-kann-white-e6"}
+)
+NAMED_WHITE_FOUNDATION_LESSON_IDS = (
+    SICILIAN_WHITE_LESSON_IDS
+    | FRENCH_WHITE_LESSON_IDS
+    | CARO_KANN_WHITE_LESSON_IDS
+)
 GUIDED_STYLES = frozenset({"mainline", "branches", "realistic"})
 OPPONENT_CATEGORIES = frozenset(
     {"established", "solid", "slow", "dubious", "trap", "mistake"}
